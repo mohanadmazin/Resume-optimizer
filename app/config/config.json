@@ -1,0 +1,10 @@
+{
+    "theme": "light",
+    "ollama_url": "http://localhost:11434",
+    "model": "llama3.1",
+    "available_models": [
+        "qwen3",
+        "llama3.1"
+    ],
+    "temperature": 0.3
+}
