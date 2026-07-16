@@ -1,17 +1,34 @@
-"""AI resume optimization via Ollama. Facts are always preserved:
-only the summary and experience bullets are rewritten."""
+"""AI resume optimization via Ollama with deterministic fact guard.
+
+The AI rewrites summary, headline, and experience bullets.  A FactGuard
+then validates every proposed change against the source resume to catch
+unsupported numbers, entities, and skills before the user sees them.
+"""
 import json
 import logging
 
 from app.ai.ollama_client import OllamaClient
 from app.ai.prompts import OPTIMIZE_PROMPT, OPTIMIZE_SYSTEM
+from app.domain.fact_guard import FactGuardResult
 from app.schemas import ResumeData
 from app.services.ats_engine import ATSResult
+from app.services.fact_guard import FactGuard
 
 logger = logging.getLogger(__name__)
 
 
-def optimize_resume(resume: ResumeData, jd_text: str, ats: ATSResult, client: OllamaClient) -> ResumeData:
+def optimize_resume(
+    resume: ResumeData,
+    jd_text: str,
+    ats: ATSResult,
+    client: OllamaClient,
+) -> tuple[ResumeData, FactGuardResult]:
+    """Optimize resume via AI and validate changes with FactGuard.
+
+    Returns:
+        A tuple of (optimized_resume, fact_guard_result).
+        The fact_guard_result contains safe and flagged changes.
+    """
     logger.info("Optimizing resume for ATS (missing_keywords=%d)", len(ats.missing_keywords))
     payload = {
         "summary": resume.summary,
@@ -44,6 +61,16 @@ def optimize_resume(resume: ResumeData, jd_text: str, ats: ATSResult, client: Ol
                 original.bullets = [str(b).strip() for b in bullets if str(b).strip()]
     headline = data.get("headline")
 
-    if isinstance(headline, str) and headline.strip():  
+    if isinstance(headline, str) and headline.strip():
         optimized.headline = headline.strip()
-    return optimized
+
+    # Run deterministic fact guard
+    guard = FactGuard()
+    fact_result = guard.validate(source=resume, optimized=optimized)
+
+    logger.info(
+        "FactGuard: %d safe, %d flagged",
+        len(fact_result.safe_changes), len(fact_result.flagged_changes),
+    )
+
+    return optimized, fact_result

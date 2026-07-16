@@ -1,6 +1,6 @@
 # app/ui/pages/optimization.py
 
-"""Optimization page: AI-powered resume optimization with ATS score comparison."""
+"""Optimization page: AI-powered resume optimization with fact guard review."""
 
 import re
 from dataclasses import replace
@@ -9,10 +9,12 @@ from datetime import date
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -21,6 +23,7 @@ from PySide6.QtWidgets import (
 from app import config
 from app.ai.ollama_client import OllamaClient
 from app.database import db
+from app.domain.fact_guard import FactGuardResult, ProposedChange
 from app.exports.exporter import export_docx, export_markdown, export_pdf, to_markdown
 from app.services.ats_engine import analyze
 from app.services.diff_highlight import resume_diff_html
@@ -64,6 +67,13 @@ class OptimizationPage(QWidget):
 
         layout.addLayout(score_row)
 
+        # Fact Guard banner (hidden by default)
+        self.fact_banner = QLabel("")
+        self.fact_banner.setObjectName("factBanner")
+        self.fact_banner.setWordWrap(True)
+        self.fact_banner.setVisible(False)
+        layout.addWidget(self.fact_banner)
+
         # Resume Display
         columns = QHBoxLayout()
         left = QVBoxLayout()
@@ -85,6 +95,15 @@ class OptimizationPage(QWidget):
         columns.addLayout(left, 1)
         columns.addLayout(right, 1)
         layout.addLayout(columns, 1)
+
+        # Fact Guard review panel (hidden by default)
+        self.review_panel = QWidget()
+        self.review_panel.setObjectName("reviewPanel")
+        self.review_layout = QVBoxLayout(self.review_panel)
+        self.review_layout.setContentsMargins(0, 0, 0, 0)
+        self.review_layout.setSpacing(8)
+        self.review_panel.setVisible(False)
+        layout.addWidget(self.review_panel)
 
         # Exports
         exports = QHBoxLayout()
@@ -114,6 +133,8 @@ class OptimizationPage(QWidget):
         if state.optimized is not None and state.resume is not None:
             self.after.setHtml(resume_diff_html(state.resume, state.optimized))
             self._update_score_display()
+        if state.fact_guard is not None:
+            self._show_fact_guard(state.fact_guard)
 
     def _run(self) -> None:
         state = self.window.state
@@ -146,6 +167,8 @@ class OptimizationPage(QWidget):
 
         self.before.setPlainText(to_markdown(state.resume))
         self.run_btn.setEnabled(False)
+        self.fact_banner.setVisible(False)
+        self.review_panel.setVisible(False)
         model = config.load_config()["model"]
         self.window.notify(f"Optimizing with {model} - this may take a minute...")
         self._overlay.show(self, f"Optimizing resume with {model}...")
@@ -156,10 +179,15 @@ class OptimizationPage(QWidget):
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
-    def _on_done(self, optimized) -> None:
+    def _on_done(self, result) -> None:
         self._overlay.hide(self)
         state = self.window.state
+
+        # Unpack tuple (optimized, fact_guard_result)
+        optimized, fact_result = result
         state.optimized = optimized
+        state.fact_guard = fact_result
+
         self.after.setHtml(resume_diff_html(state.resume, optimized))
         self.run_btn.setEnabled(True)
 
@@ -177,14 +205,134 @@ class OptimizationPage(QWidget):
         self.after_score_label.setText(f"Optimized ATS Score: {new_result.ats_score} / 100")
         self._style_after_score(old_score, new_result.ats_score)
 
-        self.window.notify(
-            f"Optimization complete - new ATS score {new_result.ats_score}/100 (was {old_score})."
-        )
+        # Show fact guard results
+        self._show_fact_guard(fact_result)
+
+        flagged = fact_result.flagged_count
+        if flagged:
+            self.window.notify(
+                f"Optimization complete — {flagged} change(s) require review "
+                f"(new numbers, entities, or skills detected)."
+            )
+        else:
+            self.window.notify(
+                f"Optimization complete — all changes passed fact guard "
+                f"(ATS {new_result.ats_score}/100, was {old_score})."
+            )
 
     def _on_error(self, message: str) -> None:
         self._overlay.hide(self)
         self.run_btn.setEnabled(True)
         QMessageBox.critical(self, "Optimization failed", message)
+
+    # ── Fact Guard UI ─────────────────────────────────────────────────────
+
+    def _show_fact_guard(self, result: FactGuardResult) -> None:
+        """Display the fact guard banner and flagged changes panel."""
+        flagged = result.flagged_count
+        total = len(result.all_changes)
+
+        if total == 0:
+            self.fact_banner.setVisible(False)
+            self.review_panel.setVisible(False)
+            return
+
+        # Banner
+        if flagged:
+            warnings = []
+            if result.unsupported_numbers:
+                warnings.append(f"{len(result.unsupported_numbers)} new number(s)")
+            if result.unsupported_entities:
+                warnings.append(f"{len(result.unsupported_entities)} new entity/entities")
+            if result.unsupported_skills:
+                warnings.append(f"{len(result.unsupported_skills)} new skill(s)")
+
+            self.fact_banner.setText(
+                f"AI suggestions require review — {flagged}/{total} change(s) "
+                f"contain unsupported details: {', '.join(warnings)}. "
+                f"Review each change below before accepting."
+            )
+            self.fact_banner.setStyleSheet(
+                "background-color: rgba(234, 179, 8, 0.15); color: #EAB308; "
+                "padding: 10px; border-radius: 6px; font-weight: bold;"
+            )
+        else:
+            self.fact_banner.setText(
+                f"All {total} AI change(s) passed fact guard — no unsupported "
+                f"numbers, entities, or skills detected."
+            )
+            self.fact_banner.setStyleSheet(
+                "background-color: rgba(34, 197, 94, 0.15); color: #22C55E; "
+                "padding: 10px; border-radius: 6px; font-weight: bold;"
+            )
+        self.fact_banner.setVisible(True)
+
+        # Review panel — show each flagged change
+        # Clear old content
+        while self.review_layout.count():
+            child = self.review_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        if flagged:
+            header = QLabel("Flagged Changes — Review Before Accepting:")
+            header.setObjectName("reviewHeader")
+            self.review_layout.addWidget(header)
+
+            for change in result.flagged_changes:
+                self._add_change_card(change)
+
+        self.review_panel.setVisible(True)
+
+    def _add_change_card(self, change: ProposedChange) -> None:
+        """Add a single change card to the review panel."""
+        card = QFrame()
+        card.setObjectName("changeCard")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(12, 8, 12, 8)
+        card_layout.setSpacing(4)
+
+        # Section + type label
+        type_labels = {"summary": "Summary", "headline": "Headline", "bullet": "Bullet"}
+        badges = []
+        if change.has_new_numbers:
+            badges.append("NEW NUMBERS")
+        if change.has_new_entities:
+            badges.append("NEW ENTITIES")
+        if change.has_new_skills:
+            badges.append("NEW SKILLS")
+
+        header_row = QHBoxLayout()
+        section_label = QLabel(f"{type_labels.get(change.change_type, '?')} — {change.section}")
+        section_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        header_row.addWidget(section_label)
+
+        for badge in badges:
+            badge_label = QLabel(badge)
+            badge_label.setStyleSheet(
+                "background-color: #EF4444; color: white; padding: 2px 6px; "
+                "border-radius: 4px; font-size: 10px; font-weight: bold;"
+            )
+            header_row.addWidget(badge_label)
+
+        header_row.addStretch()
+        card_layout.addLayout(header_row)
+
+        # Original text
+        orig_label = QLabel(f"Original: {change.original[:200]}")
+        orig_label.setWordWrap(True)
+        orig_label.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        card_layout.addWidget(orig_label)
+
+        # Rewritten text
+        rewrite_label = QLabel(f"AI wrote: {change.rewritten[:200]}")
+        rewrite_label.setWordWrap(True)
+        rewrite_label.setStyleSheet("color: #F59E0B; font-size: 12px;")
+        card_layout.addWidget(rewrite_label)
+
+        self.review_layout.addWidget(card)
+
+    # ── Score styling ──────────────────────────────────────────────────────
 
     def _update_score_display(self) -> None:
         """Update score labels when page is shown with existing optimization."""
@@ -199,13 +347,12 @@ class OptimizationPage(QWidget):
             self._style_after_score(state.ats.ats_score, after_result.ats_score)
 
     def _style_before_score(self, score: int) -> None:
-        """Style the before score label based on score value."""
         if score >= 80:
-            color = "#22C55E"  # Green
+            color = "#22C55E"
         elif score >= 60:
-            color = "#EAB308"  # Yellow
+            color = "#EAB308"
         else:
-            color = "#EF4444"  # Red
+            color = "#EF4444"
 
         self.before_score_label.setStyleSheet(
             f"font-size: 14px; font-weight: bold; color: {color}; padding: 8px; "
@@ -213,17 +360,16 @@ class OptimizationPage(QWidget):
         )
 
     def _style_after_score(self, before: int, after: int) -> None:
-        """Style the after score label based on improvement."""
         if after > before:
-            color = "#22C55E"  # Green for improvement
+            color = "#22C55E"
             improvement = after - before
             text = f"Optimized ATS Score: {after} / 100 (+{improvement})"
         elif after < before:
-            color = "#EF4444"  # Red for degradation
+            color = "#EF4444"
             change = before - after
             text = f"Optimized ATS Score: {after} / 100 (-{change})"
         else:
-            color = "#EAB308"  # Yellow for no change
+            color = "#EAB308"
             text = f"Optimized ATS Score: {after} / 100 (no change)"
 
         self.after_score_label.setText(text)
@@ -234,7 +380,6 @@ class OptimizationPage(QWidget):
 
     @staticmethod
     def _hex_to_rgb(hex_color: str) -> str:
-        """Convert hex color to RGB string for rgba() usage."""
         hex_color = hex_color.lstrip("#")
         r = int(hex_color[0:2], 16)
         g = int(hex_color[2:4], 16)

@@ -176,6 +176,7 @@ class DashboardPage(QWidget):
         state.ats = result.ats_before
         state.optimized = result.optimized
         state.cover_letter_text = result.cover_letter
+        state.fact_guard = result.fact_guard
         state.pipeline_result = result
         state.pipeline_running = False
 

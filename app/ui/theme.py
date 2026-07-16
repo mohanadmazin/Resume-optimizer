@@ -207,6 +207,32 @@ LoadingOverlay QLabel {
     font-size: 13px;
 }
 
+/* Fact guard review panel */
+#reviewPanel {
+    background-color: #1E293B;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+#reviewHeader {
+    color: #F59E0B;
+    font-weight: bold;
+    font-size: 14px;
+    padding: 4px 0;
+}
+
+#changeCard {
+    background-color: #0F172A;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+#factBanner {
+    border-radius: 6px;
+}
+
 """
 LIGHT_STYLESHEET = """
 
@@ -345,6 +371,32 @@ LoadingOverlay QLabel {
 #stepLabel {
     color: #64748B;
     font-size: 13px;
+}
+
+/* Fact guard review panel */
+#reviewPanel {
+    background-color: #F1F5F9;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+#reviewHeader {
+    color: #D97706;
+    font-weight: bold;
+    font-size: 14px;
+    padding: 4px 0;
+}
+
+#changeCard {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+#factBanner {
+    border-radius: 6px;
 }
 
 """

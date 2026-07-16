@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from app.domain.fact_guard import FactGuardResult
 from app.services.ats_engine import ATSResult
 from app.schemas import ResumeData
 
@@ -13,6 +14,7 @@ class PipelineResult:
     ats_before: ATSResult
     optimized: ResumeData
     cover_letter: str
+    fact_guard: FactGuardResult | None = None
     ats_after_score: int = 0
     duration_seconds: float = 0.0
     completed_at: datetime = field(default_factory=datetime.now)

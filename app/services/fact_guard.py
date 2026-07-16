@@ -1,0 +1,242 @@
+"""Deterministic fact guard — validates AI-generated resume changes against source."""
+import logging
+import re
+from collections import Counter
+
+from app.domain.fact_guard import ChangeType, FactGuardResult, ProposedChange
+from app.domain.resume import ResumeData
+
+logger = logging.getLogger(__name__)
+
+# Common false-positive entity patterns to ignore
+_IGNORE_TOKENS = {
+    "team", "project", "product", "system", "platform", "process", "service",
+    "application", "solution", "environment", "infrastructure", "architecture",
+    "methodology", "framework", "approach", "strategy", "initiative", "program",
+    "department", "organization", "group", "division", "unit", "office",
+    "client", "stakeholder", "customer", "user", "partner", "vendor",
+}
+
+# Pattern for numbers (integers, decimals, percentages, currency)
+_NUMBER_RE = re.compile(
+    r"(?:"
+    r"\$[\d,]+(?:\.\d+)?"       # currency: $1,000, $50.50
+    r"|\d{1,3}(?:,\d{3})+"      # comma-separated: 1,000,000
+    r"|\d+%"                     # percentages: 50%
+    r"|\d+(?:\.\d+)?"           # plain numbers: 42, 3.14
+    r")"
+)
+
+# Pattern for capitalized words (potential proper nouns / entities)
+_ENTITY_RE = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b")
+
+# Pattern for tech-looking tokens
+_TECH_RE = re.compile(
+    r"\b([A-Z][A-Za-z#+.]{1,20})\b"  # React, C++, Node.js, etc.
+)
+
+
+def _extract_numbers(text: str) -> set[str]:
+    """Extract all number-like tokens from text."""
+    return set(_NUMBER_RE.findall(text))
+
+
+def _extract_entities(text: str) -> set[str]:
+    """Extract capitalized proper-noun phrases."""
+    return {m for m in _ENTITY_RE.findall(text) if m.lower() not in _IGNORE_TOKENS}
+
+
+def _extract_tech_tokens(text: str) -> set[str]:
+    """Extract technology-looking tokens (CamelCase, #, ++, .js, etc.)."""
+    return {m for m in _TECH_RE.findall(text) if len(m) > 1}
+
+
+def _source_vocabulary(resume: ResumeData) -> set[str]:
+    """Build a vocabulary of all known tokens from the source resume.
+
+    Includes: all skills, company names, titles, degree names, certification
+    names, and project titles.  This is used to detect AI-injected tokens
+    that have no basis in the source material.
+    """
+    vocab: set[str] = set()
+    for s in resume.skills:
+        vocab.update(s.lower().split())
+        vocab.add(s.lower())
+    for exp in resume.experience:
+        vocab.update(exp.company.lower().split())
+        vocab.update(exp.title.lower().split())
+        for b in exp.bullets:
+            vocab.update(b.lower().split())
+    for edu in resume.education:
+        vocab.update(edu.degree.lower().split())
+        vocab.update(edu.institution.lower().split())
+    for cert in resume.certifications:
+        vocab.update(cert.lower().split())
+    for proj in resume.projects:
+        vocab.update(proj.title.lower().split())
+    return vocab
+
+
+class FactGuard:
+    """Deterministic post-generation validator for AI resume changes."""
+
+    def __init__(self, max_bullet_change_ratio: float = 0.6):
+        """Args:
+            max_bullet_change_ratio: maximum fraction of bullets that can
+                change in a single experience entry before flagging.
+                0.6 means "if more than 60% of bullets changed, flag it."
+        """
+        self.max_bullet_change_ratio = max_bullet_change_ratio
+
+    def validate(
+        self,
+        source: ResumeData,
+        optimized: ResumeData,
+    ) -> FactGuardResult:
+        """Compare source and optimized resumes, flag unsupported changes."""
+        all_changes: list[ProposedChange] = []
+        all_unsupported_numbers: list[str] = []
+        all_unsupported_entities: list[str] = []
+        all_unsupported_skills: list[str] = []
+
+        # --- Summary ---
+        if source.summary.strip() != optimized.summary.strip():
+            change = self._check_text_change(
+                ChangeType.SUMMARY, "Summary",
+                source.summary, optimized.summary, source,
+            )
+            all_changes.append(change)
+            if change.has_new_numbers:
+                all_unsupported_numbers.extend(
+                    _extract_numbers(optimized.summary) - _extract_numbers(source.summary)
+                )
+            if change.has_new_entities:
+                all_unsupported_entities.extend(
+                    _extract_entities(optimized.summary) - _extract_entities(source.summary)
+                )
+
+        # --- Headline ---
+        if source.headline.strip() != optimized.headline.strip():
+            change = self._check_text_change(
+                ChangeType.HEADLINE, "Headline",
+                source.headline, optimized.headline, source,
+            )
+            all_changes.append(change)
+
+        # --- Experience bullets ---
+        if len(source.experience) == len(optimized.experience):
+            for idx, (src_exp, opt_exp) in enumerate(zip(source.experience, optimized.experience)):
+                section = f"{src_exp.title or 'Experience'} #{idx + 1}"
+                src_bullets = src_exp.bullets
+                opt_bullets = opt_exp.bullets
+
+                # Check if bullet count changed significantly
+                if len(opt_bullets) > len(src_bullets) * 1.5:
+                    logger.warning(
+                        "Bullet count inflated in %s: %d → %d",
+                        section, len(src_bullets), len(opt_bullets),
+                    )
+
+                # Check each bullet pair
+                max_pairs = min(len(src_bullets), len(opt_bullets))
+                for bidx in range(max_pairs):
+                    src_b = src_bullets[bidx]
+                    opt_b = opt_bullets[bidx]
+                    if src_b.strip() == opt_b.strip():
+                        continue
+                    change = self._check_text_change(
+                        ChangeType.BULLET, section,
+                        src_b, opt_b, source,
+                    )
+                    all_changes.append(change)
+                    if change.has_new_numbers:
+                        all_unsupported_numbers.extend(
+                            _extract_numbers(opt_b) - _extract_numbers(src_b)
+                        )
+                    if change.has_new_entities:
+                        all_unsupported_entities.extend(
+                            _extract_entities(opt_b) - _extract_entities(src_b)
+                        )
+                    if change.has_new_skills:
+                        all_unsupported_skills.extend(
+                            _extract_tech_tokens(opt_b) - _extract_tech_tokens(src_b)
+                        )
+
+        # Deduplicate
+        all_unsupported_numbers = list(dict.fromkeys(all_unsupported_numbers))
+        all_unsupported_entities = list(dict.fromkeys(all_unsupported_entities))
+        all_unsupported_skills = list(dict.fromkeys(all_unsupported_skills))
+
+        safe = [c for c in all_changes if not (c.has_new_numbers or c.has_new_entities or c.has_new_skills)]
+        flagged = [c for c in all_changes if c.has_new_numbers or c.has_new_entities or c.has_new_skills]
+
+        logger.info(
+            "FactGuard: %d changes total, %d safe, %d flagged",
+            len(all_changes), len(safe), len(flagged),
+        )
+
+        return FactGuardResult(
+            safe_changes=safe,
+            flagged_changes=flagged,
+            unsupported_numbers=all_unsupported_numbers,
+            unsupported_entities=all_unsupported_entities,
+            unsupported_skills=all_unsupported_skills,
+        )
+
+    def _check_text_change(
+        self,
+        change_type: ChangeType,
+        section: str,
+        original: str,
+        rewritten: str,
+        source: ResumeData,
+    ) -> ProposedChange:
+        """Run deterministic checks on a single text change."""
+        has_new_numbers = False
+        has_new_entities = False
+        has_new_skills = False
+
+        # Check for new numbers
+        orig_numbers = _extract_numbers(original)
+        new_numbers = _extract_numbers(rewritten)
+        if new_numbers - orig_numbers:
+            has_new_numbers = True
+
+        # Check for new entities (proper nouns not in source)
+        orig_entities = _extract_entities(original)
+        new_entities = _extract_entities(rewritten)
+        source_vocab = _source_vocabulary(source)
+        truly_new = {
+            e for e in (new_entities - orig_entities)
+            if e.lower() not in source_vocab
+        }
+        if truly_new:
+            has_new_entities = True
+
+        # Check for new tech tokens not in source skills or experience
+        orig_tech = _extract_tech_tokens(original)
+        new_tech = _extract_tech_tokens(rewritten)
+        source_tech = set()
+        for s in source.skills:
+            source_tech.update(_extract_tech_tokens(s))
+        for exp in source.experience:
+            for b in exp.bullets:
+                source_tech.update(_extract_tech_tokens(b))
+        # Also add lowercase matches
+        source_tech_lower = {t.lower() for t in source_tech}
+        truly_new_tech = {
+            t for t in (new_tech - orig_tech)
+            if t.lower() not in source_tech_lower
+        }
+        if truly_new_tech:
+            has_new_skills = True
+
+        return ProposedChange(
+            change_type=change_type,
+            section=section,
+            original=original,
+            rewritten=rewritten,
+            has_new_numbers=has_new_numbers,
+            has_new_entities=has_new_entities,
+            has_new_skills=has_new_skills,
+        )

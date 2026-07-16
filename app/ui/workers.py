@@ -81,7 +81,7 @@ class PipelineWorker(QThread):
             # Step 2 — AI Optimization (slow)
             self.progress.emit(self.STEPS[1], 30)
             client = OllamaClient()
-            optimized = optimize_resume(
+            optimized, fact_result = optimize_resume(
                 self.resume, self.job_text, ats_result, client
             )
             if self._cancelled:
@@ -116,6 +116,7 @@ class PipelineWorker(QThread):
                 ats_before=ats_result,
                 optimized=optimized,
                 cover_letter=cover_letter,
+                fact_guard=fact_result,
                 ats_after_score=ats_after.ats_score,
                 duration_seconds=round(duration, 1),
             ))

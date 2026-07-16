@@ -20,6 +20,7 @@ class AppState:
 
         self.ats = None
         self.cover_letter_text = ""
+        self.fact_guard = None
 
         # Missing keywords the user has left checked (selected) for the
         # AI optimizer to try to work in. None means "not customized yet"
