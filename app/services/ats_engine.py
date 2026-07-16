@@ -60,6 +60,42 @@ def extract_keywords(text: str, top_n: int = 25) -> list[str]:
     return (top_bigrams + singles)[:top_n]
 
 
+def extract_required_skills(text: str) -> list[str]:
+    """Extract skill-like terms from a job description.
+
+    Returns unique skill terms (single words and bigrams) that appear in
+    the JD but are not generic stopwords or boilerplate.  This is used to
+    compute a *skills-match* score that answers: "Of the skills the JD
+    asks for, how many does the resume contain?"
+    """
+    tokens = [t.strip(".-/") for t in re.findall(r"[a-z][a-z0-9+#.\-/]*", text.lower())]
+    words = [
+        t for t in tokens
+        if t and t not in STOPWORDS and (len(t) > 2 or t in SHORT_KEEP)
+    ]
+
+    # Collect frequent bigrams first (e.g. "machine learning", "CI/CD")
+    bigram_counts: Counter = Counter()
+    for first, second in zip(words, words[1:]):
+        bigram_counts[f"{first} {second}"] += 1
+    # Keep bigrams that appear at least twice — strong signal of a skill term
+    bigrams = [b for b, c in bigram_counts.most_common(20) if c >= 2]
+
+    # Single-word candidates, excluding words already part of a kept bigram
+    bigram_words = set()
+    for b in bigrams:
+        bigram_words.update(b.split())
+    singles = [w for w, _ in Counter(words).most_common(60) if w not in bigram_words]
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for skill in bigrams + singles:
+        if skill not in seen:
+            seen.add(skill)
+            result.append(skill)
+    return result
+
+
 def _contains(text: str, keyword: str) -> bool:
     pattern = r"(?<![a-z0-9])" + re.escape(keyword) + r"(?![a-z0-9])"
     return re.search(pattern, text) is not None
@@ -77,16 +113,19 @@ def _resume_text(resume: ResumeData) -> str:
 def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
     keywords = extract_keywords(jd_text)
     resume_text = f"{resume.raw_text} {_resume_text(resume)}".lower()
-    jd_lower = jd_text.lower()
 
     matched = [k for k in keywords if _contains(resume_text, k)]
     missing = [k for k in keywords if k not in matched]
     keyword_pct = round(100 * len(matched) / len(keywords), 1) if keywords else 0.0
 
-    skills = [s for s in resume.skills if s.strip()]
-    matched_skills = [s for s in skills if _contains(jd_lower, s.lower())]
-    skills_pct = round(100 * len(matched_skills) / len(skills), 1) if skills else 0.0
-    missing_skills = [k for k in missing if len(k.split()) <= 3][:10]
+    # Skills match: extract required skills from JD, check which appear in resume
+    required_skills = extract_required_skills(jd_text)
+    matched_required = [s for s in required_skills if _contains(resume_text, s)]
+    missing_skills = [s for s in required_skills if s not in matched_required]
+    skills_pct = (
+        round(100 * len(matched_required) / len(required_skills), 1)
+        if required_skills else 0.0
+    )
 
     structure = 0
     structure += 4 if resume.contact.email else 0
