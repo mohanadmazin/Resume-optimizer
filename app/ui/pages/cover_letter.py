@@ -13,7 +13,9 @@ from PySide6.QtWidgets import (
 )
 
 from app.ai.ollama_client import OllamaClient
+from app.database import db
 from app.exports.exporter import export_text_docx
+from app.schemas import ResumeData
 from app.services.cover_letter import generate_cover_letter
 from app.ui.workers import Worker
 
@@ -48,6 +50,21 @@ class CoverLetterPage(QWidget):
             "The generated cover letter appears here. You can edit it before saving."
         )
         layout.addWidget(self.output, 1)
+
+    def on_show(self) -> None:
+        """Load resume and job when page is shown."""
+        state = self.window.state
+        if state.resume is None:
+            row = db.latest_resume()
+            if row:
+                state.resume = ResumeData.model_validate_json(row["data_json"])
+                state.resume_id = row["id"]
+        if not state.job_text:
+            row = db.latest_job()
+            if row:
+                state.job_text = row["content"]
+                state.job_title = row["title"]
+                state.job_id = row["id"]
 
     def _run(self) -> None:
         state = self.window.state

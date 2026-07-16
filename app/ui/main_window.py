@@ -22,7 +22,9 @@ from app.ui.pages.dashboard import DashboardPage
 from app.ui.pages.job_description import JobDescriptionPage
 from app.ui.pages.optimization import OptimizationPage
 from app.ui.pages.resume_upload import ResumeUploadPage
+from app.ui.pages.salary_estimate import SalaryEstimatePage
 from app.ui.pages.settings import SettingsPage
+from app.ui.pages.skill_gap import SkillGapPage
 
 from app.ui.state import AppState
 
@@ -41,6 +43,8 @@ PAGE_NAMES = [
     "ATS Analysis",
     "Optimization",
     "Cover Letter",
+    "Skill Gap",
+    "Salary Estimate",
     "Settings",
 ]
 
@@ -251,15 +255,20 @@ class MainWindow(QMainWindow):
             ATSAnalysisPage,
             OptimizationPage,
             CoverLetterPage,
+            SkillGapPage,
+            SalaryEstimatePage,
             SettingsPage,
         ]
 
+        self.pages = {}
 
-        for page_cls in pages:
+        for idx, page_cls in enumerate(pages):
+            page = page_cls(self)
+            self.stack.addWidget(page)
+            self.pages[PAGE_NAMES[idx]] = page
 
-            self.stack.addWidget(
-                page_cls(self)
-            )
+    def get_page(self, name: str):
+        return self.pages.get(name)
 
 
 

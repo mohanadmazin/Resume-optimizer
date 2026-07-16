@@ -163,17 +163,26 @@ class ATSAnalysisPage(QWidget):
                 state.job_id = row["id"]
 
 
+    def on_show(self):
+        """Load resume and job when page is shown."""
+        self._load_fallbacks()
+
     def _run(self) -> None:
+        self.run_analysis()
+
+    def run_analysis(self, silent: bool = False) -> None:
+        """Run ATS analysis — can be called internally or from another page."""
         state = self.window.state
 
         self._load_fallbacks()
 
         if state.resume is None or not state.job_text.strip():
-            QMessageBox.warning(
-                self,
-                "Missing input",
-                "Import a resume and add a job description first."
-            )
+            if not silent:
+                QMessageBox.warning(
+                    self,
+                    "Missing input",
+                    "Import a resume and add a job description first."
+                )
             return
 
 

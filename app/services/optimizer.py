@@ -1,14 +1,18 @@
 """AI resume optimization via Ollama. Facts are always preserved:
 only the summary and experience bullets are rewritten."""
 import json
+import logging
 
 from app.ai.ollama_client import OllamaClient
 from app.ai.prompts import OPTIMIZE_PROMPT, OPTIMIZE_SYSTEM
 from app.schemas import ResumeData
 from app.services.ats_engine import ATSResult
 
+logger = logging.getLogger(__name__)
+
 
 def optimize_resume(resume: ResumeData, jd_text: str, ats: ATSResult, client: OllamaClient) -> ResumeData:
+    logger.info("Optimizing resume for ATS (missing_keywords=%d)", len(ats.missing_keywords))
     payload = {
         "summary": resume.summary,
         "headline": resume.headline,

@@ -16,11 +16,7 @@ from PySide6.QtWidgets import (
 from app.ai.ollama_client import OllamaClient
 from app.ui.workers import Worker
 
-from app.config.config_manager import (
-    load_config,
-    save_config,
-    DEFAULT_CONFIG,
-)
+from app.core.settings import load_settings, save_settings, AppSettings
 
 
 class SettingsPage(QWidget):
@@ -147,14 +143,11 @@ class SettingsPage(QWidget):
 
     def on_show(self):
 
-        cfg = load_config()
+        settings = load_settings()
 
 
         self.url_edit.setText(
-            cfg.get(
-                "ollama_url",
-                DEFAULT_CONFIG["ollama_url"]
-            )
+            settings.ai.ollama_url
         )
 
 
@@ -162,28 +155,17 @@ class SettingsPage(QWidget):
 
 
         self.model_combo.addItems(
-            cfg.get(
-                "available_models",
-                DEFAULT_CONFIG["available_models"]
-            )
+            settings.ai.available_models
         )
 
 
         self.model_combo.setCurrentText(
-            cfg.get(
-                "model",
-                DEFAULT_CONFIG["model"]
-            )
+            settings.ai.model
         )
 
 
         self.temp_spin.setValue(
-            float(
-                cfg.get(
-                    "temperature",
-                    DEFAULT_CONFIG["temperature"]
-                )
-            )
+            settings.ai.temperature
         )
 
 
@@ -261,7 +243,7 @@ class SettingsPage(QWidget):
 
     def _save(self):
 
-        cfg = load_config()
+        settings = load_settings()
 
 
         models = [
@@ -274,7 +256,7 @@ class SettingsPage(QWidget):
 
         model = (
             self.model_combo.currentText().strip()
-            or DEFAULT_CONFIG["model"]
+            or settings.ai.model
         )
 
 
@@ -283,32 +265,18 @@ class SettingsPage(QWidget):
             models.append(model)
 
 
-
-        cfg.update(
-            {
-                "ollama_url":
-                    self.url_edit.text().strip()
-                    or DEFAULT_CONFIG["ollama_url"],
-
-                "model":
-                    model,
-
-                "available_models":
-                    models
-                    or DEFAULT_CONFIG["available_models"],
-
-                "temperature":
-                    round(
-                        self.temp_spin.value(),
-                        2
-                    ),
-            }
+        settings.ai.ollama_url = (
+            self.url_edit.text().strip()
+            or settings.ai.ollama_url
+        )
+        settings.ai.model = model
+        settings.ai.available_models = models
+        settings.ai.temperature = round(
+            self.temp_spin.value(), 2
         )
 
 
-        save_config(
-            cfg
-        )
+        save_settings(settings)
 
 
         self.window.notify(

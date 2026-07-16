@@ -8,3 +8,37 @@ build/
 .pytest_cache/
 .idea/
 .vscode/
+
+# Database and user data
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# User config and data
+~/
+.resume_optimizer/
+
+# Browser profiles (NEVER commit these)
+*_profile/
+indeed_profile/
+linkedin_profile/
+*.log
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Export artifacts
+exports/
+backups/
+cache/
+logs/
+
+# Resume files
+*.pdf
+*.docx
+*.doc
+*.txt
+!tests/fixtures/*.txt

@@ -1,9 +1,13 @@
 """Cover letter generation via Ollama."""
 import json
+import logging
+import re
 
 from app.ai.ollama_client import OllamaClient
 from app.ai.prompts import COVER_LETTER_PROMPT, COVER_LETTER_SYSTEM
 from app.schemas import ResumeData
+
+logger = logging.getLogger(__name__)
 
 
 def generate_cover_letter(
@@ -11,6 +15,7 @@ def generate_cover_letter(
     jd_text,
     client
 ):
+    logger.info("Generating cover letter for %s", resume.contact.name or "unknown")
     data = resume.model_dump()
     data.pop("raw_text", None)
 
@@ -31,8 +36,6 @@ def generate_cover_letter(
         prompt,
         system=COVER_LETTER_SYSTEM
     )
-
-    import re
 
     letter = re.sub(
         r"Sincerely,.*$",

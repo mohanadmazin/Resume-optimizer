@@ -1,5 +1,5 @@
 {
-    "theme": "light",
+    "theme": "dark",
     "ollama_url": "http://localhost:11434",
     "model": "llama3.1",
     "available_models": [

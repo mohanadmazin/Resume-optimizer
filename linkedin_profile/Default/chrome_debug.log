@@ -1,5 +1,0 @@
-[0715/023500.630:INFO:CONSOLE:1] "Uncaught (in promise) Error: Minified React error #418; visit https://react.dev/errors/418?args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.", source: https://static.licdn.com/aero-v1/sc/h/assets/kuu7tUnu.js (1)
-[0715/023500.655:INFO:CONSOLE:3] "Attribute 'exception.tags' of type 'object' could not be converted to a proto attribute.", source: https://static.licdn.com/aero-v1/sc/h/assets/BXcXkJ28.js (3)
-[0715/023500.655:INFO:CONSOLE:3] "Attribute 'exception.tags' of type 'object' could not be converted to a proto attribute.", source: https://static.licdn.com/aero-v1/sc/h/assets/BXcXkJ28.js (3)
-[0715/023500.940:INFO:CONSOLE:3] "Attribute 'exception.tags' of type 'object' could not be converted to a proto attribute.", source: https://static.licdn.com/aero-v1/sc/h/assets/BXcXkJ28.js (3)
-[0715/023500.942:INFO:CONSOLE:3] "Attribute 'exception.tags' of type 'object' could not be converted to a proto attribute.", source: https://static.licdn.com/aero-v1/sc/h/assets/BXcXkJ28.js (3)

@@ -1,7 +1,7 @@
 """SQLAlchemy database schema."""
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -14,6 +14,10 @@ class Resume(Base):
     name = Column(String(255), nullable=False)
     data_json = Column(Text, nullable=False)
     raw_text = Column(Text, default="")
+    source_type = Column(String(50), default="import")
+    source_filename = Column(String(500), default="")
+    source_hash = Column(String(64), default="")
+    is_original = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

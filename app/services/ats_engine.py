@@ -1,10 +1,13 @@
 """ATS analysis engine: keyword extraction, scoring and suggestions."""
+import logging
 import re
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from typing import List
 
 from app.schemas import ResumeData
+
+logger = logging.getLogger(__name__)
 
 STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "been", "but", "by", "can", "could", "did", "do",
@@ -102,6 +105,11 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
 
     score = int(round(keyword_pct * 0.5 + skills_pct * 0.2 + structure + formatting))
     score = max(0, min(100, score))
+
+    logger.info(
+        "ATS analysis: score=%d keyword_pct=%.1f skills_pct=%.1f missing=%d",
+        score, keyword_pct, skills_pct, len(missing),
+    )
 
     return ATSResult(
         ats_score=score,

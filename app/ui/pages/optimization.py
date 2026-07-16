@@ -1,5 +1,6 @@
 # app/ui/pages/optimization.py
 import re
+from dataclasses import replace
 from datetime import date
 
 from PySide6.QtWidgets import (
@@ -18,6 +19,8 @@ from app.ai.ollama_client import OllamaClient
 from app.database import db
 from app.exports.exporter import export_docx, export_markdown, export_pdf, to_markdown
 from app.services.ats_engine import analyze
+from app.services.diff_highlight import resume_diff_html
+from app.services.optimizer import optimize_resume
 from app.ui.workers import Worker
 
 
@@ -72,6 +75,18 @@ class OptimizationPage(QWidget):
 
     def on_show(self) -> None:
         state = self.window.state
+        if state.resume is None:
+            row = db.latest_resume()
+            if row:
+                from app.schemas import ResumeData
+                state.resume = ResumeData.model_validate_json(row["data_json"])
+                state.resume_id = row["id"]
+        if not state.job_text:
+            row = db.latest_job()
+            if row:
+                state.job_text = row["content"]
+                state.job_title = row["title"]
+                state.job_id = row["id"]
         if state.resume is not None:
             self.before.setPlainText(to_markdown(state.resume))
         if state.optimized is not None and state.resume is not None:

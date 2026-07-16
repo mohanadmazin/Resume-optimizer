@@ -1,4 +1,4 @@
-"""Job Description page: paste, upload, or fetch the target job posting from a URL."""
+"""Job Description page: paste or upload the target job posting."""
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -13,15 +13,12 @@ from PySide6.QtWidgets import (
 
 from app.database import db
 from app.services.document_reader import extract_text
-from app.services.job_scraper import fetch_job_from_url
-from app.ui.workers import Worker
 
 
 class JobDescriptionPage(QWidget):
     def __init__(self, window):
         super().__init__()
         self.window = window
-        self._fetch_worker = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -39,15 +36,9 @@ class JobDescriptionPage(QWidget):
         self.company_edit.setPlaceholderText("Company (e.g. Acme Corp)")
         layout.addWidget(self.company_edit)
 
-        url_row = QHBoxLayout()
-        self.url_edit = QLineEdit()
-        self.url_edit.setPlaceholderText("Paste a LinkedIn (or other) job posting URL...")
-        self.url_edit.returnPressed.connect(self._fetch_url)
-        url_row.addWidget(self.url_edit, 1)
-        self.fetch_btn = QPushButton("Fetch from URL")
-        self.fetch_btn.clicked.connect(self._fetch_url)
-        url_row.addWidget(self.fetch_btn)
-        layout.addLayout(url_row)
+        self.location_edit = QLineEdit()
+        self.location_edit.setPlaceholderText("Location (e.g. Kuala Lumpur, Malaysia)")
+        layout.addWidget(self.location_edit)
 
         row = QHBoxLayout()
         upload_btn = QPushButton("Upload PDF / DOCX")
@@ -76,31 +67,6 @@ class JobDescriptionPage(QWidget):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Upload failed", str(exc))
 
-    def _fetch_url(self) -> None:
-        url = self.url_edit.text().strip()
-        if not url:
-            QMessageBox.warning(self, "Missing URL", "Paste a job posting URL first.")
-            return
-        self.fetch_btn.setEnabled(False)
-        self.window.notify("Fetching job posting...")
-        self._fetch_worker = Worker(fetch_job_from_url, url)
-        self._fetch_worker.result.connect(self._on_fetch_done)
-        self._fetch_worker.error.connect(self._on_fetch_error)
-        self._fetch_worker.start()
-
-    def _on_fetch_done(self, job: dict) -> None:
-        self.fetch_btn.setEnabled(True)
-        self.content.setPlainText(job["description"])
-        if job.get("title"):
-            self.title_edit.setText(job["title"])
-        if job.get("company"):
-            self.company_edit.setText(job["company"])
-        self.window.notify("Job description fetched from URL.")
-
-    def _on_fetch_error(self, message: str) -> None:
-        self.fetch_btn.setEnabled(True)
-        QMessageBox.critical(self, "Fetch failed", message)
-
     def _save(self) -> None:
         text = self.content.toPlainText().strip()
         if not text:
@@ -112,6 +78,38 @@ class JobDescriptionPage(QWidget):
         state.job_text = text
         state.job_title = title
         state.job_company = self.company_edit.text().strip()
+        state.job_location = self.location_edit.text().strip()
         state.job_id = job_id
         state.ats = None
-        self.window.notify(f"Job description '{title}' saved.")
+        self.window.notify(f"Job description '{title}' saved — running analyses...")
+        self._trigger_analyses()
+
+    def _trigger_analyses(self) -> None:
+        """Auto-fill role/location and run ATS, Skill Gap, and Salary analyses."""
+        state = self.window.state
+
+        # Auto-fill Skill Gap role input
+        skill_gap_page = self.window.get_page("Skill Gap")
+        if skill_gap_page and state.job_title:
+            skill_gap_page.role_input.setText(state.job_title)
+
+        # Auto-fill Salary Estimate inputs
+        salary_page = self.window.get_page("Salary Estimate")
+        if salary_page:
+            if state.job_title:
+                salary_page.role_input.setText(state.job_title)
+            if state.job_location:
+                salary_page.location_input.setText(state.job_location)
+
+        # Run ATS analysis (synchronous, fast)
+        ats_page = self.window.get_page("ATS Analysis")
+        if ats_page:
+            ats_page.run_analysis(silent=True)
+
+        # Run Skill Gap analysis (async, Ollama)
+        if skill_gap_page:
+            skill_gap_page.run_analysis(silent=True)
+
+        # Run Salary Estimate (async, Ollama)
+        if salary_page:
+            salary_page.run_analysis(silent=True)

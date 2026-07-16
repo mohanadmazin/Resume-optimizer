@@ -24,8 +24,8 @@ def _resume() -> ResumeData:
 def test_markdown_structure():
     md = to_markdown(_resume())
     assert "# Jane Doe" in md
-    assert "## Summary" in md
-    assert "## Skills" in md
+    assert "## Professional Summary" in md
+    assert "## Technical Skills" in md
     assert "Python, SQL" in md
     assert "### Developer - Acme (2020 - Present)" in md
     assert "- Built things" in md

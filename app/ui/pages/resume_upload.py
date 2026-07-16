@@ -28,6 +28,7 @@ class ResumeUploadPage(QWidget):
         self.window = window
         self._parsed = None
         self._raw_text = ""
+        self._source_filename = ""
         self._worker = None
 
         layout = QVBoxLayout(self)
@@ -76,6 +77,7 @@ class ResumeUploadPage(QWidget):
             QMessageBox.warning(self, "Empty document", "No text could be extracted from the file.")
             return
         self._raw_text = text
+        self._source_filename = Path(path).name
         if not self.name_edit.text():
             self.name_edit.setText(Path(path).stem)
         if self.ai_check.isChecked():
@@ -106,7 +108,13 @@ class ResumeUploadPage(QWidget):
         if self._parsed is None:
             return
         name = self.name_edit.text().strip() or self._parsed.contact.name or "Resume"
-        resume_id = db.save_resume(name, self._parsed.model_dump_json(), self._raw_text)
+        resume_id = db.save_resume(
+            name,
+            self._parsed.model_dump_json(),
+            self._raw_text,
+            source_type="import",
+            source_filename=self._source_filename,
+        )
         state = self.window.state
         state.resume = self._parsed
         state.resume_id = resume_id

@@ -1,10 +1,18 @@
 """Thin client for the local Ollama HTTP API."""
 import json
+import logging
 import re
+from typing import TypeVar
 
 import requests
+from pydantic import BaseModel, ValidationError
 
-from app import config
+from app.core.settings import load_settings
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
+
 
 def clean_ai_text(text: str) -> str:
     """
@@ -30,15 +38,18 @@ class OllamaError(Exception):
 
 class OllamaClient:
     def __init__(self, base_url: str | None = None, model: str | None = None):
-        cfg = config.load_config()
-        self.base_url = (base_url or cfg["ollama_url"]).rstrip("/")
-        self.model = model or cfg["model"]
-        self.temperature = float(cfg.get("temperature", 0.3))
+        settings = load_settings()
+        self.base_url = (base_url or settings.ai.ollama_url).rstrip("/")
+        self.model = model or settings.ai.model
+        self.temperature = settings.ai.temperature
 
     def is_available(self) -> bool:
         try:
-            return requests.get(f"{self.base_url}/api/tags", timeout=3).ok
+            available = requests.get(f"{self.base_url}/api/tags", timeout=3).ok
+            logger.debug("Ollama availability check: %s", available)
+            return available
         except requests.RequestException:
+            logger.debug("Ollama not reachable at %s", self.base_url)
             return False
 
     def list_models(self) -> list[str]:
@@ -61,14 +72,21 @@ class OllamaClient:
         if json_mode:
             payload["format"] = "json"
         try:
+            logger.info("Ollama request: model=%s json_mode=%s", self.model, json_mode)
             resp = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=600)
             resp.raise_for_status()
         except requests.RequestException as exc:
+            logger.error("Ollama request failed: %s", exc)
             raise OllamaError(
                 f"Ollama request failed: {exc}. Is Ollama running at {self.base_url}? "
                 f"Start it with 'ollama serve' and pull the model with 'ollama pull {self.model}'."
             ) from exc
-        text = resp.json().get("response", "")
+        data = resp.json()
+        text = data.get("response", "")
+        done = data.get("done", False)
+        if not done:
+            logger.warning("Ollama response marked as not done")
+        logger.debug("Ollama raw response (first 500 chars): %s", text[:500])
 
         text = clean_ai_text(text)
         # Strip reasoning blocks emitted by thinking models such as qwen3.
@@ -76,11 +94,19 @@ class OllamaClient:
         return text.strip()
 
     def generate_json(self, prompt: str, system: str | None = None) -> dict:
-        text = self.generate(
-            prompt,
-            system=system,
-            json_mode=True
-        )
+        try:
+            text = self.generate(
+                prompt,
+                system=system,
+                json_mode=True
+            )
+        except OllamaError:
+            logger.warning("JSON mode failed, retrying without format constraint")
+            text = self.generate(
+                prompt,
+                system=system,
+                json_mode=False
+            )
 
         text = clean_ai_text(text)
         try:
@@ -93,3 +119,34 @@ class OllamaClient:
                 except json.JSONDecodeError:
                     pass
             raise OllamaError("The model did not return valid JSON. Try again or switch models.")
+
+    def generate_structured(
+        self,
+        prompt: str,
+        schema: type[T],
+        system: str | None = None,
+        max_retries: int = 2,
+    ) -> T:
+        """Generate JSON and validate against a Pydantic model with retry."""
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                data = self.generate_json(prompt, system=system)
+                return schema.model_validate(data)
+            except (ValidationError, OllamaError) as exc:
+                last_error = exc
+                logger.warning(
+                    "Validation attempt %d/%d failed: %s",
+                    attempt + 1,
+                    max_retries + 1,
+                    exc,
+                )
+                if attempt < max_retries:
+                    prompt = (
+                        f"{prompt}\n\n"
+                        f"Previous response was invalid: {exc}\n"
+                        "Please return a valid JSON response matching the required schema."
+                    )
+        raise OllamaError(
+            f"AI response validation failed after {max_retries + 1} attempts: {last_error}"
+        )

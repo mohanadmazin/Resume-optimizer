@@ -3,12 +3,15 @@
 A fast heuristic parser is the default; an optional AI parser (Ollama)
 gives better results for unusual layouts.
 """
+import logging
 import re
 
 from pydantic import ValidationError
 from app.ai.ollama_client import OllamaClient
 from app.ai.prompts import PARSE_PROMPT, PARSE_SYSTEM
 from app.schemas import ContactInfo, EducationItem, ExperienceItem, ProjectItem, ResumeData
+
+logger = logging.getLogger(__name__)
 
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 PHONE_RE = re.compile(r"(\+?\d[\d\s().-]{7,}\d)")
@@ -56,9 +59,13 @@ SECTION_ALIASES = {
         "certifications",
         "certificates",
         "certifications and licenses",
+        "certifications and training",
+        "certifications training",
+        "professional certifications",
         "licenses",
         "licenses and certifications",
         "courses and certifications",
+        "professional certifications and training",
     },
     "projects": {
         "projects",
@@ -94,6 +101,7 @@ def _extract_headline(header_lines: list[str], name: str) -> str:
 
 def parse_resume(text: str) -> ResumeData:
     """Heuristic section-based parser."""
+    logger.info("Parsing resume with heuristic parser (%d chars)", len(text))
     lines = [line.rstrip() for line in text.splitlines()]
 
     sections: dict[str, list[str]] = {"header": []}
@@ -126,6 +134,7 @@ def parse_resume(text: str) -> ResumeData:
 
 def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
     """AI-based parser using Ollama; falls back to the heuristic parser."""
+    logger.info("Parsing resume with AI parser (%d chars)", len(text))
     data = client.generate_json(PARSE_PROMPT.format(text=text[:8000]), system=PARSE_SYSTEM)
 
     if "contact" not in data:
@@ -168,6 +177,7 @@ def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
 
 def _match_section(line: str) -> str | None:
     clean = re.sub(r"[^a-z ]", "", line.lower()).strip()
+    clean = re.sub(r"\s+", " ", clean)
     if not clean or len(clean) > 40:
         return None
     for key, aliases in SECTION_ALIASES.items():
@@ -227,8 +237,9 @@ def _parse_skills(lines: list[str]) -> list[str]:
         line = BULLET_RE.sub("", raw).strip()
         if not line:
             continue
-        if ":" in line and len(line.split(":", 1)[0]) < 30:
-            line = line.split(":", 1)[1]
+        # Strip known category prefixes like "Networking: ", "Security: "
+        while ":" in line and len(line.split(":", 1)[0].strip()) < 15:
+            line = line.split(":", 1)[1].strip()
         for part in re.split(r"[,\u2022|;]|\s{2,}", line):
             skill = part.strip(" .")
             if skill and len(skill) < 40 and skill.lower() not in seen:
@@ -250,7 +261,9 @@ def _parse_experience(lines: list[str]) -> list[ExperienceItem]:
             current.bullets.append(BULLET_RE.sub("", raw).strip())
             continue
         dates = DATE_RANGE_RE.search(line)
-        if current is not None and current.title and not current.bullets and not current.company:
+        # Check if line looks like a new job title (contains · or multiple parts)
+        is_title_line = bool(re.search(r"\u00b7| at | @ ", line)) or (len(line.split()) > 3 and dates)
+        if current is not None and current.title and not current.bullets and not current.company and not is_title_line:
             # Likely a company / date line belonging to the previous header line.
             if dates:
                 current.start_date = dates.group(1).strip()
@@ -258,6 +271,10 @@ def _parse_experience(lines: list[str]) -> list[ExperienceItem]:
                 line = DATE_RANGE_RE.sub("", line).strip(" ,|\u2013\u2014-")
             if line:
                 current.company = line
+            continue
+        # Continuation line: not a bullet, no dates, but current has bullets already
+        if current is not None and current.bullets and not dates:
+            current.bullets[-1] += " " + line
             continue
         if current is not None:
             items.append(current)
@@ -331,6 +348,11 @@ def _parse_projects(lines: list[str]) -> list[ProjectItem]:
             # Likely a context/date line belonging to the previous title line.
             current.meta = line
             continue
+        # Continuation line: not a bullet, no meta yet, current has bullets
+        # But only if it doesn't look like a new project title (has dates)
+        if current is not None and current.bullets and not current.meta and not DATE_RANGE_RE.search(line):
+            current.bullets[-1] += " " + line
+            continue
         if current is not None:
             items.append(current)
         current = ProjectItem(title=line)
@@ -345,7 +367,7 @@ def _parse_languages(lines: list[str]) -> list[str]:
         line = BULLET_RE.sub("", raw).strip()
         if not line:
             continue
-        for part in re.split(r"[,;\u2022\u00b7]", line):
+        for part in re.split(r"[,;\u2022\u00b7|]", line):
             lang = part.strip(" .")
             if lang:
                 langs.append(lang)

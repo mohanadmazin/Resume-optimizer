@@ -1,14 +1,11 @@
-from app.config.config_manager import (
-    load_config,
-    save_config,
-)
+from app.core.settings import load_settings, save_settings
 
 
 class AppState:
 
     def __init__(self):
 
-        self.config = load_config()
+        self._settings = load_settings()
 
         # Resume workflow data
         self.resume = None
@@ -18,6 +15,7 @@ class AppState:
         self.job_text = ""
         self.job_title = ""
         self.job_company = ""
+        self.job_location = ""
         self.job_id = None
 
         self.ats = None
@@ -27,38 +25,33 @@ class AppState:
         # i.e. use every missing keyword found by the ATS analysis.
         self.selected_keywords = None
 
+        # Skill gap and salary analysis results
+        self.skill_gap = None
+        self.salary_estimate = None
+
 
     @property
     def theme(self):
 
-        return self.config.get(
-            "theme",
-            "light"
-        )
+        return self._settings.appearance.theme
 
 
     def set_theme(self, theme):
 
-        self.config["theme"] = theme
+        self._settings.appearance.theme = theme
 
-        save_config(
-            self.config
+        save_settings(
+            self._settings
         )
 
 
     @property
     def model(self):
 
-        return self.config.get(
-            "model",
-            "qwen-coder-dev:latest"
-        )
+        return self._settings.ai.model
 
 
     @property
     def ollama_url(self):
 
-        return self.config.get(
-            "ollama_url",
-            "http://localhost:11434"
-        )
+        return self._settings.ai.ollama_url
