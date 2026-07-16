@@ -31,15 +31,22 @@ Legend:
 | Feature                             | Status |
 | ----------------------------------- | ------ |
 | Resume PDF/DOCX/TXT import          | ✅      |
-| Resume parsing                      | ✅      |
-| Job-description import              | ✅      |
+| Resume parsing (heuristic + AI)     | ✅      |
+| Job-description import (paste/file) | ✅      |
+| Job-description URL fetch           | ✅      |
 | Deterministic ATS analysis          | ✅      |
+| ATS score before/after comparison   | ✅      |
+| Keyword heatmap visualization       | ✅      |
 | AI resume optimization              | ✅      |
 | Resume comparison and diff          | ✅      |
 | Cover-letter generation             | ✅      |
 | Skill-gap analysis                  | ✅      |
 | Salary estimation                   | ⚠️     |
 | DOCX/PDF/Markdown export            | ✅      |
+| One-click optimization pipeline     | ✅      |
+| Ollama connection status indicator  | ✅      |
+| Loading overlays for async ops      | ✅      |
+| Model pre-warming on startup        | ✅      |
 | Resume library and version history  | 🚧     |
 | Job library                         | 🚧     |
 | Application tracker                 | 🚧     |
@@ -69,13 +76,14 @@ Legend:
 | PyMuPDF     | Compatible 1.x release | PDF extraction, rendering, and export |
 | python-docx | Compatible 1.x release | DOCX import and export                |
 | requests    | Compatible 2.x release | Ollama HTTP communication             |
+| beautifulsoup4 | Compatible 4.x release | HTML parsing for URL job fetch     |
+| Alembic     | Compatible 1.x release | Database schema migrations            |
 | pytest      | Compatible 9.x release | Automated testing                     |
 
 ### Recommended Additions
 
 | Package      | Purpose                                   | Status |
 | ------------ | ----------------------------------------- | ------ |
-| Alembic      | Database schema migrations                | ✅      |
 | platformdirs | Cross-platform application directories    | 🚧     |
 | keyring      | Secure storage for future API credentials | 🔭     |
 | RapidFuzz    | Skill and keyword normalization           | 🚧     |
@@ -315,206 +323,143 @@ Rules:
 
 | Module          | Responsibility                                                 |
 | --------------- | -------------------------------------------------------------- |
-| `app/core/`     | Paths, settings, logging, errors, app metadata                 |
-| `app/domain/`   | Schemas, enums, normalization, ATS rules, validation           |
-| `app/ai/`       | AI provider interface, Ollama client, prompts, JSON validation |
-| `app/database/` | ORM models, migrations, repositories, session management       |
-| `app/services/` | Application use cases and orchestration                        |
-| `app/readers/`  | PDF, DOCX, TXT extraction                                      |
-| `app/exports/`  | Document renderers and export templates                        |
-| `app/ui/`       | Main window, routing, components, pages, workers               |
-| `app/utils/`    | Generic utilities without business logic                       |
-| `tests/`        | Unit, integration, regression, and UI tests                    |
+| `app/core/`     | Paths, settings (Pydantic), app constants                      |
+| `app/domain/`   | Pydantic schemas (resume, salary, skill gap, pipeline)         |
+| `app/ai/`       | Ollama HTTP client, prompt templates, JSON validation          |
+| `app/database/` | ORM models, engine, session, repositories, legacy CRUD facade  |
+| `app/services/` | ATS engine, optimizer, cover letter, parser, job fetcher, etc. |
+| `app/config/`   | Legacy config compatibility shim (delegates to `app/core/`)    |
+| `app/ui/`       | Main window, state, workers, theme, components, pages          |
+| `app/exports/`  | DOCX/PDF/Markdown export (via `app/services/exporter.py`)      |
+| `tests/`        | Unit tests for ATS, parser, exporter, schemas                  |
 
 ---
 
-## 8. TARGET_FILE_MAP
+## 8. ACTUAL_FILE_MAP
 
 ```text
-resume-optimizer/
+resume-optimizer-main/
+├── main.py
 ├── pyproject.toml
+├── requirements.txt
 ├── README.md
 ├── PROJECT_MAP.md
-├── CHANGELOG.md
-├── LICENSE
 ├── .gitignore
 ├── alembic.ini
 │
 ├── migrations/
 │   ├── env.py
 │   └── versions/
+│       └── 0001_initial_schema.py
 │
 ├── app/
 │   ├── __init__.py
-│   ├── __main__.py
-│   ├── bootstrap.py
+│   ├── schemas.py                     # Backward-compatible re-exports from app/domain/
+│   ├── validators.py                  # ResumeData validation helpers
+│   ├── logging_config.py              # Rotating file + console logging
 │   │
 │   ├── core/
 │   │   ├── __init__.py
-│   │   ├── settings.py
-│   │   ├── paths.py
-│   │   ├── logging.py
-│   │   ├── exceptions.py
-│   │   ├── constants.py
-│   │   └── version.py
+│   │   ├── settings.py                # Pydantic AppSettings (AI, Appearance)
+│   │   └── paths.py                   # DB_PATH, CONFIG_PATH, LOG_DIR, etc.
 │   │
 │   ├── domain/
 │   │   ├── __init__.py
-│   │   ├── enums.py
-│   │   ├── resume.py
-│   │   ├── job.py
-│   │   ├── analysis.py
-│   │   ├── application.py
-│   │   ├── letter.py
-│   │   ├── interview.py
-│   │   ├── salary.py
-│   │   ├── validators.py
-│   │   ├── skill_normalizer.py
-│   │   ├── keyword_extractor.py
-│   │   ├── ats_engine.py
-│   │   ├── quality_engine.py
-│   │   └── fact_guard.py
+│   │   ├── resume.py                  # ContactInfo, ExperienceItem, EducationItem, ProjectItem, ResumeData
+│   │   ├── skill_gap.py               # SkillGapItem, SkillGapResult
+│   │   ├── salary.py                  # SalaryEstimate (Decimal fields)
+│   │   └── pipeline.py                # PipelineResult dataclass
 │   │
 │   ├── ai/
 │   │   ├── __init__.py
-│   │   ├── provider.py
-│   │   ├── ollama_client.py
-│   │   ├── model_registry.py
-│   │   ├── prompt_registry.py
-│   │   ├── response_parser.py
-│   │   ├── health_check.py
-│   │   └── prompts/
-│   │       ├── parse_resume.md
-│   │       ├── optimize_resume.md
-│   │       ├── cover_letter.md
-│   │       ├── skill_gap.md
-│   │       ├── interview_questions.md
-│   │       ├── achievement_bullets.md
-│   │       └── salary_explanation.md
+│   │   ├── ollama_client.py           # OllamaClient: generate(), generate_json(), generate_structured(), pre_warm()
+│   │   └── prompts.py                 # All prompt templates (471 lines)
 │   │
 │   ├── database/
 │   │   ├── __init__.py
-│   │   ├── engine.py
-│   │   ├── session.py
-│   │   ├── models.py
-│   │   ├── converters.py
+│   │   ├── engine.py                  # SQLAlchemy SQLite engine
+│   │   ├── session.py                 # SessionLocal, get_session() context manager
+│   │   ├── models.py                  # Resume, JobDescription, Analysis, Optimization ORM
+│   │   ├── db.py                      # Backward-compatible CRUD facade
 │   │   └── repositories/
-│   │       ├── base.py
-│   │       ├── resume_repository.py
-│   │       ├── job_repository.py
-│   │       ├── analysis_repository.py
-│   │       ├── application_repository.py
-│   │       └── settings_repository.py
+│   │       ├── __init__.py
+│   │       ├── base.py                # Abstract base repository
+│   │       ├── resume_repository.py   # Resume CRUD + SHA-256 content hash
+│   │       ├── job_repository.py      # JobDescription CRUD
+│   │       └── analysis_repository.py # Analysis CRUD with JOIN queries
 │   │
-│   ├── readers/
-│   │   ├── __init__.py
-│   │   ├── base.py
-│   │   ├── pdf_reader.py
-│   │   ├── docx_reader.py
-│   │   ├── text_reader.py
-│   │   └── document_reader.py
+│   ├── config/                        # Legacy compatibility layer
+│   │   ├── __init__.py                # Re-exports from app.core.*
+│   │   └── config_manager.py          # Old JSON config (superseded)
 │   │
 │   ├── services/
 │   │   ├── __init__.py
-│   │   ├── resume_service.py
-│   │   ├── job_service.py
-│   │   ├── parsing_service.py
-│   │   ├── analysis_service.py
-│   │   ├── optimization_service.py
-│   │   ├── cover_letter_service.py
-│   │   ├── skill_gap_service.py
-│   │   ├── salary_service.py
-│   │   ├── interview_service.py
-│   │   ├── application_service.py
-│   │   ├── analytics_service.py
-│   │   ├── export_service.py
-│   │   └── backup_service.py
+│   │   ├── ats_engine.py              # ATS keyword analysis + scoring
+│   │   ├── optimizer.py               # AI resume optimization
+│   │   ├── cover_letter.py            # AI cover letter generation
+│   │   ├── resume_parser.py           # Heuristic + AI resume parsing (374 lines)
+│   │   ├── document_reader.py         # PDF/DOCX/TXT text extraction
+│   │   ├── job_fetcher.py             # URL-based job description fetching
+│   │   ├── salary_estimator.py        # AI salary estimation
+│   │   ├── skill_gap.py               # AI skill gap analysis
+│   │   ├── diff_highlight.py          # HTML diff between original and optimized
+│   │   └── exporter.py                # DOCX/PDF/Markdown export
 │   │
-│   ├── exports/
-│   │   ├── __init__.py
-│   │   ├── base.py
-│   │   ├── export_options.py
-│   │   ├── markdown_exporter.py
-│   │   ├── docx_exporter.py
-│   │   ├── pdf_exporter.py
-│   │   ├── json_exporter.py
-│   │   ├── text_metrics.py
-│   │   └── templates/
-│   │       ├── classic.py
-│   │       ├── modern.py
-│   │       └── compact.py
-│   │
-│   ├── ui/
-│   │   ├── __init__.py
-│   │   ├── main_window.py
-│   │   ├── router.py
-│   │   ├── state.py
-│   │   ├── workers.py
-│   │   ├── notifications.py
-│   │   ├── theme.py
-│   │   ├── icons.py
-│   │   │
-│   │   ├── components/
-│   │   │   ├── empty_state.py
-│   │   │   ├── score_card.py
-│   │   │   ├── keyword_chip.py
-│   │   │   ├── progress_overlay.py
-│   │   │   ├── error_panel.py
-│   │   │   ├── resume_selector.py
-│   │   │   ├── job_selector.py
-│   │   │   ├── diff_viewer.py
-│   │   │   └── confirmation_dialog.py
-│   │   │
-│   │   └── pages/
-│   │       ├── dashboard.py
-│   │       ├── resume_library.py
-│   │       ├── resume_editor.py
-│   │       ├── job_library.py
-│   │       ├── job_editor.py
-│   │       ├── ats_analysis.py
-│   │       ├── optimization.py
-│   │       ├── cover_letters.py
-│   │       ├── skill_gap.py
-│   │       ├── interview_prep.py
-│   │       ├── applications.py
-│   │       ├── analytics.py
-│   │       └── settings.py
-│   │
-│   └── utils/
-│       ├── dates.py
-│       ├── text.py
-│       ├── hashing.py
-│       └── file_validation.py
-│
-├── tests/
-│   ├── conftest.py
-│   ├── fixtures/
-│   ├── unit/
-│   │   ├── test_ats_engine.py
-│   │   ├── test_keyword_extractor.py
-│   │   ├── test_skill_normalizer.py
-│   │   ├── test_fact_guard.py
-│   │   ├── test_validators.py
-│   │   └── test_salary_validation.py
-│   ├── integration/
-│   │   ├── test_resume_import.py
-│   │   ├── test_analysis_workflow.py
-│   │   ├── test_optimization_workflow.py
-│   │   ├── test_database_migrations.py
-│   │   └── test_exports.py
-│   ├── regression/
-│   │   ├── test_resume_samples.py
-│   │   └── test_ats_score_stability.py
 │   └── ui/
-│       ├── test_navigation.py
-│       ├── test_resume_page.py
-│       └── test_worker_errors.py
+│       ├── __init__.py
+│       ├── main_window.py             # QMainWindow with sidebar nav + stack
+│       ├── state.py                   # AppState (resume, job, ats, pipeline, etc.)
+│       ├── workers.py                 # Worker + PipelineWorker (QThread)
+│       ├── theme.py                   # DARK_STYLESHEET + LIGHT_STYLESHEET
+│       │
+│       ├── components/
+│       │   ├── __init__.py
+│       │   ├── ollama_status.py       # OllamaCheckerThread + OllamaStatusLabel
+│       │   └── loading_overlay.py     # LoadingOverlay + LoadingOverlayManager
+│       │
+│       └── pages/
+│           ├── __init__.py
+│           ├── dashboard.py           # One-click pipeline, score cards, recent table
+│           ├── resume_upload.py       # PDF/DOCX import + parse + save
+│           ├── job_description.py     # Paste/upload/URL fetch + save
+│           ├── ats_analysis.py        # Score cards, keyword heatmap, suggestions
+│           ├── optimization.py        # Before/after ATS comparison, diff preview
+│           ├── cover_letter.py        # AI cover letter generation
+│           ├── skill_gap.py           # Skill gap analysis
+│           ├── salary_estimate.py     # Salary estimation
+│           └── settings.py            # Ollama URL, model, temperature, theme
 │
-└── scripts/
-    ├── seed_demo_data.py
-    ├── migrate_database.py
-    ├── build_app.py
-    └── verify_release.py
+└── tests/
+    ├── __init__.py
+    ├── test_ats_engine.py             # 4 tests
+    ├── test_exporter.py               # 2 tests
+    ├── test_parser.py                 # 4 tests
+    └── test_skill_gap_salary.py       # 5 tests
+```
+
+### Planned (not yet implemented)
+
+```text
+app/domain/
+├── job.py                   # Job description domain model
+├── analysis.py              # Analysis run domain model
+├── application.py           # Application tracker domain model
+├── letter.py                # Cover letter version domain model
+├── interview.py             # Interview session domain model
+├── enums.py                 # Shared enums
+├── validators.py            # Domain validation rules
+├── skill_normalizer.py      # Skill alias normalization
+├── keyword_extractor.py     # Advanced keyword extraction
+├── ats_engine.py            # ATS Engine V2 (moved from services/)
+├── quality_engine.py        # Resume quality scoring
+└── fact_guard.py            # AI fact-checking
+
+app/ui/components/
+├── empty_state.py           # Reusable empty-state widget
+├── score_card.py            # Reusable score card widget
+├── keyword_chip.py          # Keyword chip with selection
+├── diff_viewer.py           # Side-by-side diff viewer
+└── confirmation_dialog.py   # Confirmation dialog
 ```
 
 ---
@@ -961,24 +906,30 @@ JobDescription
 
 ## 12. NAVIGATION
 
-Recommended navigation contains 12 primary pages.
+Current navigation contains 9 pages.
 
-| Index | Page           | Class               | Responsibility                                           |
-| ----: | -------------- | ------------------- | -------------------------------------------------------- |
-|     0 | Dashboard      | `DashboardPage`     | Recent activity, ATS trends, application summary         |
-|     1 | Resumes        | `ResumeLibraryPage` | Resume list, import, duplicate, archive, version history |
-|     2 | Jobs           | `JobLibraryPage`    | Job descriptions, statuses, requirements                 |
-|     3 | ATS Analysis   | `ATSAnalysisPage`   | Explainable resume-to-job scoring                        |
-|     4 | Optimization   | `OptimizationPage`  | AI suggestions, fact checks, selective acceptance        |
-|     5 | Cover Letters  | `CoverLettersPage`  | Generate and manage letter versions                      |
-|     6 | Skill Gap      | `SkillGapPage`      | Match skills and create learning plans                   |
-|     7 | Interview Prep | `InterviewPrepPage` | Questions, STAR drafts, practice sessions                |
-|     8 | Applications   | `ApplicationsPage`  | Pipeline, notes, stages, follow-ups                      |
-|     9 | Analytics      | `AnalyticsPage`     | Scores, application outcomes, conversion metrics         |
-|    10 | Export Center  | `ExportCenterPage`  | Batch and template-based exports                         |
-|    11 | Settings       | `SettingsPage`      | Models, storage, appearance, privacy, backup             |
+| Index | Page             | Class                | Responsibility                                              |
+| ----: | ---------------- | -------------------- | ----------------------------------------------------------- |
+|     0 | Dashboard        | `DashboardPage`      | One-click pipeline, score cards, recent analyses            |
+|     1 | Resume Upload    | `ResumeUploadPage`   | Import PDF/DOCX, parse, save                                |
+|     2 | Job Description  | `JobDescriptionPage` | Paste, upload, or fetch job description from URL            |
+|     3 | ATS Analysis     | `ATSAnalysisPage`    | Keyword heatmap, score cards, suggestions                   |
+|     4 | Optimization     | `OptimizationPage`   | Before/after ATS comparison, AI diff preview                |
+|     5 | Cover Letter     | `CoverLetterPage`    | Generate tailored cover letter via AI                       |
+|     6 | Skill Gap        | `SkillGapPage`       | Match skills vs market demand, learning recommendations     |
+|     7 | Salary Estimate  | `SalaryEstimatePage` | Salary range estimation via AI                              |
+|     8 | Settings         | `SettingsPage`       | Ollama URL, model, temperature, theme                       |
 
-Salary guidance can be a tab inside Skill Gap or Job Analysis rather than a permanent sidebar page.
+### Planned pages (future)
+
+| Page             | Class                | Responsibility                                   |
+| ---------------- | -------------------- | ------------------------------------------------ |
+| Resume Library   | `ResumeLibraryPage`  | Resume list, version history, archive            |
+| Job Library      | `JobLibraryPage`     | Saved jobs, statuses, requirements               |
+| Interview Prep   | `InterviewPrepPage`  | Questions, STAR drafts, practice sessions        |
+| Applications     | `ApplicationsPage`   | Pipeline, notes, stages, follow-ups              |
+| Analytics        | `AnalyticsPage`      | Scores, outcomes, conversion metrics             |
+| Export Center    | `ExportCenterPage`   | Batch and template-based exports                 |
 
 ---
 
@@ -2014,10 +1965,10 @@ AI generation time depends on the selected model and hardware and should not blo
 * [x] Split `schemas.py` (2026-07-16)
 * [x] Split `database/db.py` (2026-07-16)
 * [x] Add repository interfaces (2026-07-16)
+* [x] Add reusable UI components (2026-07-17) — LoadingOverlay, OllamaStatusLabel
 * [ ] Add provider-neutral AI interface
 * [ ] Move prompts to versioned template files
 * [ ] Add centralized exception handling
-* [ ] Add reusable UI components
 * [ ] Add typed AppState IDs
 * [ ] Add prompt and engine version tracking
 
@@ -2103,6 +2054,21 @@ A feature is complete only when:
 * [x] Added transaction-safe saves with rollback
 
 The salary feature remains a prototype until it uses a dated and identified salary-data source.
+
+### Features Completed — 2026-07-17
+
+* [x] Ollama connection status indicator (OllamaCheckerThread + OllamaStatusLabel)
+* [x] Loading overlays for all async AI operations (LoadingOverlay + LoadingOverlayManager)
+* [x] Job description URL fetcher (JobFetcher service + _FetchWorker thread)
+* [x] ATS score before/after comparison on optimization page
+* [x] Keyword heatmap visualization (matched=green, missing=red) on ATS analysis page
+* [x] One-click optimization pipeline (ATS → Optimize → Cover Letter with progress bar)
+* [x] Model pre-warming on app startup (background OllamaClient.pre_warm())
+* [x] Pipeline state fields in AppState
+* [x] Pipeline button + cancel + progress UI on Dashboard page
+* [x] Theme styles for pipeline button, cancel button, step label
+* [x] Added beautifulsoup4 dependency
+* [x] Synced requirements.txt with pyproject.toml
 
 ---
 
