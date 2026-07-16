@@ -135,40 +135,43 @@ def parse_resume(text: str) -> ResumeData:
 def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
     """AI-based parser using Ollama; falls back to the heuristic parser."""
     logger.info("Parsing resume with AI parser (%d chars)", len(text))
-    data = client.generate_json(PARSE_PROMPT.format(text=text[:8000]), system=PARSE_SYSTEM)
-
-    if "contact" not in data:
-        data["contact"] = {
-            "name": data.get("name", ""),
-            "email": data.get("email", ""),
-            "phone": data.get("phone", ""),
-            "location": data.get("location", ""),
-            "linkedin": data.get("linkedin", ""),
-            "website": data.get("website", ""),
-        }
-
-    fields = {k: v for k, v in data.items() if k in ResumeData.model_fields}
-
-    projects = fields.get("projects")
-    if isinstance(projects, list):
-        fields["projects"] = [
-            {
-                "title": p.get("title") or p.get("name") or "",
-                "meta": p.get("meta") or " - ".join(
-                    d for d in (p.get("start_date", ""), p.get("end_date", "")) if d
-                ),
-                "start_date": p.get("start_date", ""),
-                "end_date": p.get("end_date", ""),
-                "description": p.get("description", ""),
-                "bullets": p.get("bullets") or ([p["description"]] if p.get("description") else []),
-            }
-            for p in projects
-            if isinstance(p, dict)
-        ]
 
     try:
+        data = client.generate_json(PARSE_PROMPT.format(text=text), system=PARSE_SYSTEM)
+
+        if "contact" not in data:
+            data["contact"] = {
+                "name": data.get("name", ""),
+                "email": data.get("email", ""),
+                "phone": data.get("phone", ""),
+                "location": data.get("location", ""),
+                "linkedin": data.get("linkedin", ""),
+                "website": data.get("website", ""),
+            }
+
+        fields = {k: v for k, v in data.items() if k in ResumeData.model_fields}
+
+        projects = fields.get("projects")
+        if isinstance(projects, list):
+            fields["projects"] = [
+                {
+                    "title": p.get("title") or p.get("name") or "",
+                    "meta": p.get("meta") or " - ".join(
+                        d for d in (p.get("start_date", ""), p.get("end_date", "")) if d
+                    ),
+                    "start_date": p.get("start_date", ""),
+                    "end_date": p.get("end_date", ""),
+                    "description": p.get("description", ""),
+                    "bullets": p.get("bullets") or ([p["description"]] if p.get("description") else []),
+                }
+                for p in projects
+                if isinstance(p, dict)
+            ]
+
         resume = ResumeData.model_validate(fields)
-    except ValidationError:
+
+    except (OllamaError, ValidationError, ValueError, TypeError) as exc:
+        logger.warning("AI parsing failed; using heuristic parser: %s", exc)
         resume = parse_resume(text)
 
     resume.raw_text = text
