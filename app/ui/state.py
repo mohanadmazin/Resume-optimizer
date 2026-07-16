@@ -19,6 +19,7 @@ class AppState:
         self.job_id = None
 
         self.ats = None
+        self.cover_letter_text = ""
 
         # Missing keywords the user has left checked (selected) for the
         # AI optimizer to try to work in. None means "not customized yet"
@@ -28,6 +29,10 @@ class AppState:
         # Skill gap and salary analysis results
         self.skill_gap = None
         self.salary_estimate = None
+
+        # Pipeline state
+        self.pipeline_running = False
+        self.pipeline_result = None
 
 
     @property

@@ -150,3 +150,13 @@ class OllamaClient:
         raise OllamaError(
             f"AI response validation failed after {max_retries + 1} attempts: {last_error}"
         )
+
+    def pre_warm(self) -> bool:
+        """Send a minimal prompt to load the model into VRAM."""
+        try:
+            self.generate("hello", system="Reply with one word.")
+            logger.info("Model pre-warmed successfully")
+            return True
+        except OllamaError:
+            logger.debug("Model pre-warm skipped (Ollama not reachable)")
+            return False

@@ -156,6 +156,57 @@ QStatusBar {
     color: #94A3B8;
 }
 
+/* Loading overlay */
+LoadingOverlay {
+    background-color: rgba(0, 0, 0, 150);
+}
+
+LoadingOverlay QLabel {
+    color: white;
+    background: transparent;
+}
+
+/* Pipeline button */
+#pipelineBtn {
+    background-color: #2563EB;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+#pipelineBtn:hover {
+    background-color: #1D4ED8;
+}
+
+#pipelineBtn:disabled {
+    background-color: #334155;
+    color: #94A3B8;
+}
+
+#cancelBtn {
+    background-color: #EF4444;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+}
+
+#cancelBtn:hover {
+    background-color: #DC2626;
+}
+
+#pipelineDesc {
+    color: #94A3B8;
+    font-size: 13px;
+}
+
+#stepLabel {
+    color: #94A3B8;
+    font-size: 13px;
+}
+
 """
 LIGHT_STYLESHEET = """
 
@@ -243,6 +294,57 @@ QStatusBar {
 
     background-color: #FFFFFF;
     color: #64748B;
+}
+
+/* Loading overlay */
+LoadingOverlay {
+    background-color: rgba(0, 0, 0, 100);
+}
+
+LoadingOverlay QLabel {
+    color: white;
+    background: transparent;
+}
+
+/* Pipeline button */
+#pipelineBtn {
+    background-color: #2563EB;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+#pipelineBtn:hover {
+    background-color: #1D4ED8;
+}
+
+#pipelineBtn:disabled {
+    background-color: #CBD5E1;
+    color: #94A3B8;
+}
+
+#cancelBtn {
+    background-color: #EF4444;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+}
+
+#cancelBtn:hover {
+    background-color: #DC2626;
+}
+
+#pipelineDesc {
+    color: #64748B;
+    font-size: 13px;
+}
+
+#stepLabel {
+    color: #64748B;
+    font-size: 13px;
 }
 
 """

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from app.schemas import ResumeData, SkillGapResult
 from app.services.skill_gap import analyze_skill_gap
+from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 
 
@@ -40,6 +41,7 @@ class SkillGapPage(QWidget):
         self.window = window
         self._worker = None
         self._result = None
+        self._overlay = LoadingOverlayManager()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -142,12 +144,14 @@ class SkillGapPage(QWidget):
 
         self.analyze_btn.setEnabled(False)
         self.window.notify("Analyzing skill gap — this may take a minute...")
+        self._overlay.show(self, "Analyzing skill gap...")
         self._worker = Worker(analyze_skill_gap, resume, role)
         self._worker.result.connect(self._on_done)
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
     def _on_done(self, result: SkillGapResult) -> None:
+        self._overlay.hide(self)
         self._result = result
         self.analyze_btn.setEnabled(True)
 
@@ -173,5 +177,6 @@ class SkillGapPage(QWidget):
         )
 
     def _on_error(self, message: str) -> None:
+        self._overlay.hide(self)
         self.analyze_btn.setEnabled(True)
         QMessageBox.critical(self, "Analysis failed", message)

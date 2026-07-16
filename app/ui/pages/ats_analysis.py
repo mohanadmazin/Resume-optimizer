@@ -1,3 +1,9 @@
+# app/ui/pages/ats_analysis.py
+
+"""ATS Analysis page with keyword heatmap visualization."""
+
+import re
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -35,6 +41,32 @@ def _card(title: str) -> tuple[QFrame, QLabel]:
     layout.addWidget(value)
 
     return frame, value
+
+
+def _highlight_keywords(text: str, matched: list[str], missing: list[str]) -> str:
+    """Convert text to HTML with highlighted keywords."""
+    html_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    html_text = html_text.replace("\n", "<br>")
+
+    # Highlight matched keywords (green)
+    for word in matched:
+        pattern = r'(?i)\b(' + re.escape(word) + r')\b'
+        replacement = (
+            r'<span style="background-color: #22C55E; color: white; '
+            r'font-weight: bold; padding: 2px 4px; border-radius: 3px;">\1</span>'
+        )
+        html_text = re.sub(pattern, replacement, html_text)
+
+    # Highlight missing keywords (red)
+    for word in missing:
+        pattern = r'(?i)\b(' + re.escape(word) + r')\b'
+        replacement = (
+            r'<span style="background-color: #EF4444; color: white; '
+            r'font-weight: bold; padding: 2px 4px; border-radius: 3px;">\1</span>'
+        )
+        html_text = re.sub(pattern, replacement, html_text)
+
+    return f"<div style='font-family: Segoe UI; font-size: 13px; line-height: 1.6;'>{html_text}</div>"
 
 
 class ATSAnalysisPage(QWidget):
@@ -107,6 +139,30 @@ class ATSAnalysisPage(QWidget):
 
         layout.addLayout(columns, 1)
 
+        # Keyword Heatmap section
+        heatmap_label = QLabel("Keyword Heatmap (Green = Matched, Red = Missing)")
+        heatmap_label.setStyleSheet("font-weight: bold; margin-top: 12px;")
+        layout.addWidget(heatmap_label)
+
+        heatmap_columns = QHBoxLayout()
+
+        # Resume side
+        resume_col = QVBoxLayout()
+        resume_col.addWidget(QLabel("Your Resume:"))
+        self.resume_heatmap = QTextEdit()
+        self.resume_heatmap.setReadOnly(True)
+        resume_col.addWidget(self.resume_heatmap)
+        heatmap_columns.addLayout(resume_col, 1)
+
+        # Job description side
+        jd_col = QVBoxLayout()
+        jd_col.addWidget(QLabel("Job Description:"))
+        self.jd_heatmap = QTextEdit()
+        self.jd_heatmap.setReadOnly(True)
+        jd_col.addWidget(self.jd_heatmap)
+        heatmap_columns.addLayout(jd_col, 1)
+
+        layout.addLayout(heatmap_columns, 1)
 
     def _update_select_all_checkbox(self):
         if self.keywords_list.count() == 0:
@@ -121,7 +177,6 @@ class ATSAnalysisPage(QWidget):
         self.select_all_checkbox.blockSignals(True)
         self.select_all_checkbox.setChecked(all_checked)
         self.select_all_checkbox.blockSignals(False)
-
 
     def _toggle_all_keywords(self, state):
         checked = (
@@ -140,7 +195,6 @@ class ATSAnalysisPage(QWidget):
             )
 
         self.keywords_list.blockSignals(False)
-
 
     def _load_fallbacks(self) -> None:
         state = self.window.state
@@ -162,10 +216,10 @@ class ATSAnalysisPage(QWidget):
                 state.job_title = row["title"]
                 state.job_id = row["id"]
 
-
     def on_show(self):
         """Load resume and job when page is shown."""
         self._load_fallbacks()
+        self._update_heatmaps()
 
     def _run(self) -> None:
         self.run_analysis()
@@ -185,14 +239,12 @@ class ATSAnalysisPage(QWidget):
                 )
             return
 
-
         result = analyze(
             state.resume,
             state.job_text
         )
 
         state.ats = result
-
 
         # Update scores
         self.score_value.setText(
@@ -207,12 +259,10 @@ class ATSAnalysisPage(QWidget):
             f"{result.skills_match_pct}%"
         )
 
-
         # Load keywords
         self.keywords_list.blockSignals(True)
 
         self.keywords_list.clear()
-
 
         for keyword in result.missing_keywords:
 
@@ -230,9 +280,7 @@ class ATSAnalysisPage(QWidget):
 
             self.keywords_list.addItem(item)
 
-
         self.keywords_list.blockSignals(False)
-
 
         # Master checkbox selected
         self.select_all_checkbox.blockSignals(True)
@@ -240,7 +288,6 @@ class ATSAnalysisPage(QWidget):
         self.select_all_checkbox.setChecked(True)
 
         self.select_all_checkbox.blockSignals(False)
-
 
         # Show suggestions
         self.suggestions.clear()
@@ -260,6 +307,8 @@ class ATSAnalysisPage(QWidget):
                 "No improvement suggestions available."
             )
 
+        # Update keyword heatmaps
+        self._update_heatmaps()
 
         # Save analysis
         if state.resume_id is None:
@@ -273,7 +322,6 @@ class ATSAnalysisPage(QWidget):
                 state.resume.raw_text,
             )
 
-
         if state.job_id is None:
 
             state.job_id = db.save_job(
@@ -283,14 +331,35 @@ class ATSAnalysisPage(QWidget):
                 state.job_text,
             )
 
-
         db.save_analysis(
             state.resume_id,
             state.job_id,
             result.to_dict()
         )
 
-
         self.window.notify(
             f"ATS analysis complete - score {result.ats_score}/100."
+        )
+
+    def _update_heatmaps(self) -> None:
+        """Update the keyword heatmap displays with current analysis results."""
+        state = self.window.state
+        if state.ats is None or not state.resume or not state.job_text:
+            self.resume_heatmap.clear()
+            self.jd_heatmap.clear()
+            return
+
+        matched = state.ats.matched_keywords
+        missing = state.ats.missing_keywords
+
+        # Resume heatmap
+        from app.exports.exporter import to_markdown
+        resume_text = to_markdown(state.resume)
+        self.resume_heatmap.setHtml(
+            _highlight_keywords(resume_text, matched, missing)
+        )
+
+        # Job description heatmap
+        self.jd_heatmap.setHtml(
+            _highlight_keywords(state.job_text, matched, missing)
         )

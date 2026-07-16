@@ -1,4 +1,8 @@
-"""Job Description page: paste or upload the target job posting."""
+# app/ui/pages/job_description.py
+
+"""Job Description page: paste, upload, or fetch from URL."""
+
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -13,12 +17,32 @@ from PySide6.QtWidgets import (
 
 from app.database import db
 from app.services.document_reader import extract_text
+from app.services.job_fetcher import JobFetcher, JobFetcherError
+
+
+class _FetchWorker(QThread):
+    """Background thread for fetching job descriptions from URLs."""
+
+    finished = Signal(str)
+    error = Signal(str)
+
+    def __init__(self, url: str, parent=None):
+        super().__init__(parent)
+        self.url = url
+
+    def run(self):
+        try:
+            text = JobFetcher.fetch_from_url(self.url)
+            self.finished.emit(text)
+        except JobFetcherError as exc:
+            self.error.emit(str(exc))
 
 
 class JobDescriptionPage(QWidget):
     def __init__(self, window):
         super().__init__()
         self.window = window
+        self._fetch_worker = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -40,6 +64,17 @@ class JobDescriptionPage(QWidget):
         self.location_edit.setPlaceholderText("Location (e.g. Kuala Lumpur, Malaysia)")
         layout.addWidget(self.location_edit)
 
+        # URL fetch row
+        url_row = QHBoxLayout()
+        self.url_edit = QLineEdit()
+        self.url_edit.setPlaceholderText("Enter job posting URL (e.g. https://linkedin.com/jobs/...)")
+        url_row.addWidget(self.url_edit, 1)
+        self.fetch_btn = QPushButton("Fetch from URL")
+        self.fetch_btn.clicked.connect(self._fetch_from_url)
+        url_row.addWidget(self.fetch_btn)
+        layout.addLayout(url_row)
+
+        # Upload button row
         row = QHBoxLayout()
         upload_btn = QPushButton("Upload PDF / DOCX")
         upload_btn.clicked.connect(self._upload)
@@ -55,6 +90,32 @@ class JobDescriptionPage(QWidget):
         save_btn = QPushButton("Use This Job Description")
         save_btn.clicked.connect(self._save)
         layout.addWidget(save_btn)
+
+    def _fetch_from_url(self) -> None:
+        url = self.url_edit.text().strip()
+        if not url:
+            QMessageBox.warning(self, "Missing URL", "Enter a job posting URL first.")
+            return
+
+        self.fetch_btn.setEnabled(False)
+        self.fetch_btn.setText("Fetching...")
+        self.window.notify("Fetching job description from URL...")
+
+        self._fetch_worker = _FetchWorker(url)
+        self._fetch_worker.finished.connect(self._on_fetch_done)
+        self._fetch_worker.error.connect(self._on_fetch_error)
+        self._fetch_worker.start()
+
+    def _on_fetch_done(self, text: str) -> None:
+        self.fetch_btn.setEnabled(True)
+        self.fetch_btn.setText("Fetch from URL")
+        self.content.setPlainText(text)
+        self.window.notify("Job description fetched successfully.")
+
+    def _on_fetch_error(self, message: str) -> None:
+        self.fetch_btn.setEnabled(True)
+        self.fetch_btn.setText("Fetch from URL")
+        QMessageBox.critical(self, "Fetch failed", message)
 
     def _upload(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -88,12 +149,10 @@ class JobDescriptionPage(QWidget):
         """Auto-fill role/location and run ATS, Skill Gap, and Salary analyses."""
         state = self.window.state
 
-        # Auto-fill Skill Gap role input
         skill_gap_page = self.window.get_page("Skill Gap")
         if skill_gap_page and state.job_title:
             skill_gap_page.role_input.setText(state.job_title)
 
-        # Auto-fill Salary Estimate inputs
         salary_page = self.window.get_page("Salary Estimate")
         if salary_page:
             if state.job_title:
@@ -101,15 +160,12 @@ class JobDescriptionPage(QWidget):
             if state.job_location:
                 salary_page.location_input.setText(state.job_location)
 
-        # Run ATS analysis (synchronous, fast)
         ats_page = self.window.get_page("ATS Analysis")
         if ats_page:
             ats_page.run_analysis(silent=True)
 
-        # Run Skill Gap analysis (async, Ollama)
         if skill_gap_page:
             skill_gap_page.run_analysis(silent=True)
 
-        # Run Salary Estimate (async, Ollama)
         if salary_page:
             salary_page.run_analysis(silent=True)

@@ -2,6 +2,7 @@
 
 import sys
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 
+from app.ui.components.ollama_status import OllamaStatusLabel
 from app.ui.pages.ats_analysis import ATSAnalysisPage
 from app.ui.pages.cover_letter import CoverLetterPage
 from app.ui.pages.dashboard import DashboardPage
@@ -65,6 +67,9 @@ class MainWindow(QMainWindow):
         self.apply_theme(
             self.state.theme    
         )
+
+        # Pre-warm Ollama model in background after 1 second
+        QTimer.singleShot(1000, self._prewarm_model)
 
     def apply_theme(self, theme):
 
@@ -182,6 +187,10 @@ class MainWindow(QMainWindow):
             lambda x: self.apply_theme(x.lower())
         )
 
+        # Ollama status indicator in the status bar
+        self.ollama_status = OllamaStatusLabel(self.state.ollama_url)
+        self.statusBar().addPermanentWidget(self.ollama_status)
+
 
 
     def apply_theme(self, theme):
@@ -290,6 +299,20 @@ class MainWindow(QMainWindow):
             message,
             8000
         )
+
+    def _prewarm_model(self) -> None:
+        """Pre-warm Ollama model in background to reduce first-request latency."""
+        from app.ui.workers import Worker
+
+        def _do_warm():
+            from app.ai.ollama_client import OllamaClient
+            return OllamaClient().pre_warm()
+
+        self._warm_worker = Worker(_do_warm)
+        self._warm_worker.result.connect(
+            lambda ok: None  # silently succeed or skip
+        )
+        self._warm_worker.start()
 
 
 

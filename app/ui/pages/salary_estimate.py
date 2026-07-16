@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from app.schemas import ResumeData, SalaryEstimate
 from app.services.salary_estimator import estimate_salary
+from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 
 
@@ -38,6 +39,7 @@ class SalaryEstimatePage(QWidget):
         self.window = window
         self._worker = None
         self._result = None
+        self._overlay = LoadingOverlayManager()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -145,12 +147,14 @@ class SalaryEstimatePage(QWidget):
 
         self.estimate_btn.setEnabled(False)
         self.window.notify("Estimating salary — this may take a minute...")
+        self._overlay.show(self, "Estimating salary...")
         self._worker = Worker(estimate_salary, resume, role, location)
         self._worker.result.connect(self._on_done)
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
     def _on_done(self, result: SalaryEstimate) -> None:
+        self._overlay.hide(self)
         self._result = result
         self.estimate_btn.setEnabled(True)
 
@@ -174,6 +178,7 @@ class SalaryEstimatePage(QWidget):
         )
 
     def _on_error(self, message: str) -> None:
+        self._overlay.hide(self)
         self.estimate_btn.setEnabled(True)
         QMessageBox.critical(
             self,

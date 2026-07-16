@@ -17,6 +17,7 @@ from app.database import db
 from app.exports.exporter import export_text_docx
 from app.schemas import ResumeData
 from app.services.cover_letter import generate_cover_letter
+from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 
 
@@ -25,6 +26,7 @@ class CoverLetterPage(QWidget):
         super().__init__()
         self.window = window
         self._worker = None
+        self._overlay = LoadingOverlayManager()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -76,18 +78,21 @@ class CoverLetterPage(QWidget):
             return
         self.generate_btn.setEnabled(False)
         self.window.notify("Generating cover letter - this may take a minute...")
+        self._overlay.show(self, "Generating cover letter...")
         self._worker = Worker(generate_cover_letter, resume, state.job_text, OllamaClient())
         self._worker.result.connect(self._on_done)
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
     def _on_done(self, text: str) -> None:
+        self._overlay.hide(self)
         self.output.setPlainText(text)
         self.generate_btn.setEnabled(True)
         self.save_btn.setEnabled(True)
         self.window.notify("Cover letter generated.")
 
     def _on_error(self, message: str) -> None:
+        self._overlay.hide(self)
         self.generate_btn.setEnabled(True)
         QMessageBox.critical(self, "Generation failed", message)
 

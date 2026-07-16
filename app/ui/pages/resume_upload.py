@@ -19,6 +19,7 @@ from app.ai.ollama_client import OllamaClient
 from app.database import db
 from app.services.document_reader import extract_text
 from app.services.resume_parser import parse_resume, parse_resume_ai
+from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 
 
@@ -30,6 +31,7 @@ class ResumeUploadPage(QWidget):
         self._raw_text = ""
         self._source_filename = ""
         self._worker = None
+        self._overlay = LoadingOverlayManager()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -83,6 +85,7 @@ class ResumeUploadPage(QWidget):
         if self.ai_check.isChecked():
             self.window.notify("Parsing resume with AI - this may take a moment...")
             self.import_btn.setEnabled(False)
+            self._overlay.show(self, "Parsing resume with AI...")
             self._worker = Worker(parse_resume_ai, text, OllamaClient())
             self._worker.result.connect(self._on_parsed)
             self._worker.error.connect(self._on_error)
@@ -91,6 +94,7 @@ class ResumeUploadPage(QWidget):
             self._on_parsed(parse_resume(text))
 
     def _on_parsed(self, resume) -> None:
+        self._overlay.hide(self)
         resume.raw_text = self._raw_text
         self._parsed = resume
         data = resume.model_dump()
@@ -101,6 +105,7 @@ class ResumeUploadPage(QWidget):
         self.window.notify("Resume parsed. Review the JSON, then save it.")
 
     def _on_error(self, message: str) -> None:
+        self._overlay.hide(self)
         self.import_btn.setEnabled(True)
         QMessageBox.critical(self, "AI parsing failed", message)
 

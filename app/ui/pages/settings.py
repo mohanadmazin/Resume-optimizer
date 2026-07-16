@@ -278,6 +278,9 @@ class SettingsPage(QWidget):
 
         save_settings(settings)
 
+        # Update the Ollama status indicator in MainWindow
+        if hasattr(self.window, 'ollama_status'):
+            self.window.ollama_status.set_base_url(settings.ai.ollama_url)
 
         self.window.notify(
             "Settings saved."
