@@ -8,8 +8,9 @@ from app.services.job_fetcher import (
     FetchResult,
     JobFetcher,
     JobFetcherError,
-    _is_safe_ip,
+    _connect_to_ip,
     _parse_title_string,
+    _resolve_and_validate,
     _safe_url_for_log,
     _validate_url,
 )
@@ -33,116 +34,123 @@ def test_safe_url_preserves_clean_url():
     assert _safe_url_for_log(url) == "https://example.com/jobs/123"
 
 
-# ── _is_safe_ip ──────────────────────────────────────────────────────────────
+# ── _resolve_and_validate ────────────────────────────────────────────────────
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_localhost(mock_dns):
-    mock_dns.return_value = [
-        (2, 1, 6, "", ("127.0.0.1", 0)),
-    ]
-    assert _is_safe_ip("localhost") is False
+def test_resolve_rejects_localhost(mock_dns):
+    mock_dns.return_value = [(2, 1, 6, "", ("127.0.0.1", 0))]
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("localhost")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_loopback(mock_dns):
-    mock_dns.return_value = [
-        (2, 1, 6, "", ("127.0.0.1", 0)),
-    ]
-    assert _is_safe_ip("some-host") is False
+def test_resolve_rejects_loopback(mock_dns):
+    mock_dns.return_value = [(2, 1, 6, "", ("127.0.0.1", 0))]
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("some-host")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_private_10(mock_dns):
-    mock_dns.return_value = [
-        (2, 1, 6, "", ("10.0.0.1", 0)),
-    ]
-    assert _is_safe_ip("internal-host") is False
+def test_resolve_rejects_private_10(mock_dns):
+    mock_dns.return_value = [(2, 1, 6, "", ("10.0.0.1", 0))]
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("internal-host")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_private_192(mock_dns):
-    mock_dns.return_value = [
-        (2, 1, 6, "", ("192.168.1.1", 0)),
-    ]
-    assert _is_safe_ip("router") is False
+def test_resolve_rejects_private_192(mock_dns):
+    mock_dns.return_value = [(2, 1, 6, "", ("192.168.1.1", 0))]
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("router")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_private_172(mock_dns):
-    mock_dns.return_value = [
-        (2, 1, 6, "", ("172.16.0.1", 0)),
-    ]
-    assert _is_safe_ip("container-host") is False
+def test_resolve_rejects_private_172(mock_dns):
+    mock_dns.return_value = [(2, 1, 6, "", ("172.16.0.1", 0))]
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("container-host")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_link_local(mock_dns):
-    mock_dns.return_value = [
-        (2, 1, 6, "", ("169.254.1.1", 0)),
-    ]
-    assert _is_safe_ip("link-local-host") is False
+def test_resolve_rejects_link_local(mock_dns):
+    mock_dns.return_value = [(2, 1, 6, "", ("169.254.1.1", 0))]
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("link-local-host")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_multicast(mock_dns):
-    mock_dns.return_value = [
-        (2, 1, 6, "", ("224.0.0.1", 0)),
-    ]
-    assert _is_safe_ip("multicast-host") is False
+def test_resolve_rejects_multicast(mock_dns):
+    mock_dns.return_value = [(2, 1, 6, "", ("224.0.0.1", 0))]
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("multicast-host")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_reserved(mock_dns):
-    mock_dns.return_value = [
-        (2, 1, 6, "", ("0.0.0.0", 0)),
-    ]
-    assert _is_safe_ip("zero-host") is False
+def test_resolve_rejects_reserved(mock_dns):
+    mock_dns.return_value = [(2, 1, 6, "", ("0.0.0.0", 0))]
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("zero-host")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_ipv6_loopback(mock_dns):
-    mock_dns.return_value = [
-        (10, 1, 6, "", ("::1", 0, 0, 0)),
-    ]
-    assert _is_safe_ip("ipv6-localhost") is False
+def test_resolve_rejects_ipv6_loopback(mock_dns):
+    mock_dns.return_value = [(10, 1, 6, "", ("::1", 0, 0, 0))]
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("ipv6-localhost")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_ipv6_private(mock_dns):
-    mock_dns.return_value = [
-        (10, 1, 6, "", ("fc00::1", 0, 0, 0)),
-    ]
-    assert _is_safe_ip("ipv6-ula") is False
+def test_resolve_rejects_ipv6_private(mock_dns):
+    mock_dns.return_value = [(10, 1, 6, "", ("fc00::1", 0, 0, 0))]
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("ipv6-ula")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_empty_results(mock_dns):
+def test_resolve_rejects_empty_results(mock_dns):
     mock_dns.return_value = []
-    assert _is_safe_ip("no-dns") is False
+    with pytest.raises(JobFetcherError, match="no results"):
+        _resolve_and_validate("no-dns")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_dns_failure(mock_dns):
+def test_resolve_rejects_dns_failure(mock_dns):
     mock_dns.side_effect = OSError("DNS resolution failed")
-    assert _is_safe_ip("unresolvable.example.com") is False
+    with pytest.raises(JobFetcherError, match="DNS resolution failed"):
+        _resolve_and_validate("unresolvable.example.com")
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_accepts_public(mock_dns):
-    mock_dns.return_value = [
-        (2, 1, 6, "", ("93.184.216.34", 0)),
-    ]
-    assert _is_safe_ip("example.com") is True
+def test_resolve_accepts_public(mock_dns):
+    mock_dns.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
+    ip = _resolve_and_validate("example.com")
+    assert ip == "93.184.216.34"
 
 
 @patch("app.services.job_fetcher.socket.getaddrinfo")
-def test_safe_ip_rejects_if_any_record_is_private(mock_dns):
+def test_resolve_rejects_if_any_record_is_private(mock_dns):
     mock_dns.return_value = [
         (2, 1, 6, "", ("93.184.216.34", 0)),
         (2, 1, 6, "", ("10.0.0.1", 0)),
     ]
-    assert _is_safe_ip("dual-homed.example.com") is False
+    with pytest.raises(JobFetcherError, match="private/reserved"):
+        _resolve_and_validate("dual-homed.example.com")
+
+
+@patch("app.services.job_fetcher.socket.getaddrinfo")
+def test_resolve_returns_first_ip(mock_dns):
+    mock_dns.return_value = [
+        (2, 1, 6, "", ("93.184.216.34", 0)),
+        (2, 1, 6, "", ("93.184.216.35", 0)),
+    ]
+    ip = _resolve_and_validate("multi-homed.example.com")
+    assert ip == "93.184.216.34"
+
+
+def test_resolve_rejects_empty_hostname():
+    with pytest.raises(JobFetcherError, match="no hostname"):
+        _resolve_and_validate("")
 
 
 # ── _validate_url ────────────────────────────────────────────────────────────
@@ -158,14 +166,11 @@ def test_validate_url_rejects_file_scheme():
         _validate_url("file:///etc/passwd")
 
 
-@patch("app.services.job_fetcher._is_safe_ip", return_value=False)
-def test_validate_url_rejects_private_host(mock_safe):
-    with pytest.raises(JobFetcherError, match="private or reserved"):
-        _validate_url("http://internal-service.local/data")
+def test_validate_url_accepts_http():
+    _validate_url("http://example.com/jobs")  # no exception
 
 
-@patch("app.services.job_fetcher._is_safe_ip", return_value=True)
-def test_validate_url_accepts_public(mock_safe):
+def test_validate_url_accepts_https():
     _validate_url("https://example.com/jobs")  # no exception
 
 
@@ -182,9 +187,10 @@ def test_fetch_rejects_whitespace_url():
         JobFetcher.fetch_from_url("   ")
 
 
-@patch("app.services.job_fetcher._is_safe_ip", return_value=False)
-def test_fetch_rejects_private_ip(mock_safe):
-    with pytest.raises(JobFetcherError, match="private or reserved"):
+@patch("app.services.job_fetcher._resolve_and_validate")
+def test_fetch_rejects_private_ip(mock_resolve):
+    mock_resolve.side_effect = JobFetcherError("private/reserved IP (169.254.169.254)")
+    with pytest.raises(JobFetcherError, match="private/reserved"):
         JobFetcher.fetch_from_url("http://169.254.169.254/metadata")
 
 
@@ -193,98 +199,126 @@ def test_fetch_rejects_file_url():
         JobFetcher.fetch_from_url("file:///etc/passwd")
 
 
-@patch("app.services.job_fetcher._is_safe_ip", return_value=True)
-def test_fetch_rejects_non_html_content_type(mock_safe):
+@patch("app.services.job_fetcher._resolve_and_validate", return_value="93.184.216.34")
+def test_fetch_rejects_non_html_content_type(mock_resolve):
     mock_response = MagicMock()
     mock_response.headers = {"Content-Type": "application/json"}
     mock_response.status_code = 200
-    mock_response.raise_for_status = MagicMock()
     mock_response.close = MagicMock()
-    mock_response.iter_content = MagicMock(return_value=[])
 
-    with patch("app.services.job_fetcher.requests.Session") as mock_session_cls:
-        session = MagicMock()
-        session.get.return_value = mock_response
-        mock_session_cls.return_value = session
-
+    with patch("app.services.job_fetcher._connect_to_ip", return_value=mock_response):
         with pytest.raises(JobFetcherError, match="content type"):
             JobFetcher.fetch_from_url("https://example.com/api")
 
 
-@patch("app.services.job_fetcher._is_safe_ip", return_value=True)
-def test_fetch_rejects_too_large_response(mock_safe):
+@patch("app.services.job_fetcher._resolve_and_validate", return_value="93.184.216.34")
+def test_fetch_rejects_too_large_response(mock_resolve):
     mock_response = MagicMock()
     mock_response.headers = {"Content-Type": "text/html"}
     mock_response.status_code = 200
-    mock_response.raise_for_status = MagicMock()
     mock_response.close = MagicMock()
-    # Return 6 MB of data to exceed the 5 MB limit
     mock_response.content = b"x" * (6 * 1024 * 1024)
 
-    with patch("app.services.job_fetcher.requests.Session") as mock_session_cls:
-        session = MagicMock()
-        session.get.return_value = mock_response
-        mock_session_cls.return_value = session
-
+    with patch("app.services.job_fetcher._connect_to_ip", return_value=mock_response):
         with pytest.raises(JobFetcherError, match="MB limit"):
             JobFetcher.fetch_from_url("https://example.com/large")
 
 
-def test_fetch_redirect_to_private_rejected():
+@patch("app.services.job_fetcher._resolve_and_validate")
+def test_fetch_redirect_to_private_rejected(mock_resolve):
     """A redirect that lands on a private IP must be rejected."""
-    # First request to public host — returns 302 to private host
     first_response = MagicMock()
     first_response.status_code = 302
     first_response.headers = {"Location": "http://10.0.0.1/secret"}
     first_response.close = MagicMock()
 
-    def _safe_by_host(hostname):
-        return hostname != "10.0.0.1"
+    def resolve_side_effect(hostname):
+        if hostname == "10.0.0.1":
+            raise JobFetcherError("private/reserved IP (10.0.0.1)")
+        return "93.184.216.34"
 
-    with (
-        patch("app.services.job_fetcher._is_safe_ip", side_effect=_safe_by_host),
-        patch("app.services.job_fetcher.requests.Session") as mock_session_cls,
-    ):
-        session = MagicMock()
-        session.get.return_value = first_response
-        mock_session_cls.return_value = session
+    mock_resolve.side_effect = resolve_side_effect
 
-        with pytest.raises(JobFetcherError, match="private or reserved"):
+    with patch("app.services.job_fetcher._connect_to_ip", return_value=first_response):
+        with pytest.raises(JobFetcherError, match="private/reserved"):
             JobFetcher.fetch_from_url("https://example.com/redirect")
 
 
-@patch("app.services.job_fetcher._is_safe_ip", return_value=True)
-def test_fetch_too_many_redirects(mock_safe):
+@patch("app.services.job_fetcher._resolve_and_validate", return_value="93.184.216.34")
+def test_fetch_too_many_redirects(mock_resolve):
     """More than MAX_REDIRECTS must be rejected."""
     redirect_response = MagicMock()
     redirect_response.status_code = 302
     redirect_response.headers = {"Location": "https://example.com/loop"}
     redirect_response.close = MagicMock()
 
-    with patch("app.services.job_fetcher.requests.Session") as mock_session_cls:
-        session = MagicMock()
-        session.get.return_value = redirect_response
-        mock_session_cls.return_value = session
-
+    with patch("app.services.job_fetcher._connect_to_ip", return_value=redirect_response):
         with pytest.raises(JobFetcherError, match="Too many redirects"):
             JobFetcher.fetch_from_url("https://example.com/start")
 
 
-@patch("app.services.job_fetcher._is_safe_ip", return_value=True)
-def test_fetch_redirect_missing_location_rejected(mock_safe):
+@patch("app.services.job_fetcher._resolve_and_validate", return_value="93.184.216.34")
+def test_fetch_redirect_missing_location_rejected(mock_resolve):
     """A redirect without a Location header must be rejected."""
     redirect_response = MagicMock()
     redirect_response.status_code = 301
-    redirect_response.headers = {}  # No Location
+    redirect_response.headers = {}
     redirect_response.close = MagicMock()
 
-    with patch("app.services.job_fetcher.requests.Session") as mock_session_cls:
-        session = MagicMock()
-        session.get.return_value = redirect_response
-        mock_session_cls.return_value = session
-
+    with patch("app.services.job_fetcher._connect_to_ip", return_value=redirect_response):
         with pytest.raises(JobFetcherError, match="missing Location"):
             JobFetcher.fetch_from_url("https://example.com/bad-redirect")
+
+
+@patch("app.services.job_fetcher._resolve_and_validate", return_value="93.184.216.34")
+def test_fetch_success(mock_resolve):
+    """Successful fetch returns FetchResult with extracted content."""
+    html = """
+    <html><head><title>Dev - Acme Corp - Remote</title></head>
+    <body><main>
+    <p>We are looking for a senior developer.</p>
+    <p>Requirements: Python, SQL, 5+ years.</p>
+    </main></body></html>
+    """
+    mock_response = MagicMock()
+    mock_response.headers = {"Content-Type": "text/html"}
+    mock_response.status_code = 200
+    mock_response.content = html.encode("utf-8")
+    mock_response.close = MagicMock()
+
+    with patch("app.services.job_fetcher._connect_to_ip", return_value=mock_response):
+        result = JobFetcher.fetch_from_url("https://example.com/jobs/123")
+
+    assert isinstance(result, FetchResult)
+    assert "senior developer" in result.text.lower()
+    assert result.title == "Dev"
+    assert result.company == "Acme Corp"
+    assert result.location == "Remote"
+
+
+@patch("app.services.job_fetcher._resolve_and_validate", return_value="93.184.216.34")
+def test_fetch_resolves_dns_once_per_redirect(mock_resolve):
+    """Each redirect triggers a fresh DNS resolution and validation."""
+    resp1 = MagicMock()
+    resp1.status_code = 302
+    resp1.headers = {"Location": "https://other-site.com/page"}
+    resp1.close = MagicMock()
+
+    html = "<html><head><title>Page</title></head><body><main>Content here.</main></body></html>"
+    resp2 = MagicMock()
+    resp2.headers = {"Content-Type": "text/html"}
+    resp2.status_code = 200
+    resp2.content = html.encode("utf-8")
+    resp2.close = MagicMock()
+
+    with patch("app.services.job_fetcher._connect_to_ip", side_effect=[resp1, resp2]):
+        result = JobFetcher.fetch_from_url("https://example.com/start")
+
+    assert result.text == "Content here."
+    # DNS was resolved twice: once for example.com, once for other-site.com
+    assert mock_resolve.call_count == 2
+    mock_resolve.assert_any_call("example.com")
+    mock_resolve.assert_any_call("other-site.com")
 
 
 # ── _parse_title_string ──────────────────────────────────────────────────────

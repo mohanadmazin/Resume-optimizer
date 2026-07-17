@@ -89,43 +89,92 @@ class FetchResult:
 
 
 def _validate_url(url: str) -> None:
-    """Raise ``JobFetcherError`` if the URL scheme is not allowed or the
-    hostname resolves to a private / reserved IP."""
+    """Raise ``JobFetcherError`` if the URL scheme is not allowed."""
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise JobFetcherError(f"URL scheme '{parsed.scheme}' is not allowed.")
-    hostname = parsed.hostname
-    if hostname and not _is_safe_ip(hostname):
-        raise JobFetcherError(
-            f"URL hostname '{hostname}' resolves to a private or reserved IP address."
-        )
 
 
-def _is_safe_ip(hostname: str) -> bool:
-    """Return True if *hostname* resolves only to public, non-reserved IPs."""
+def _resolve_and_validate(hostname: str) -> str:
+    """Resolve *hostname* to a single public IP and return it.
+
+    This resolves DNS exactly once and validates the result, preventing
+    DNS rebinding attacks where a hostname could resolve to different IPs
+    on successive lookups.
+    """
+    if not hostname:
+        raise JobFetcherError("URL has no hostname.")
+
     try:
         results = socket.getaddrinfo(hostname, None)
-    except OSError:
-        return False
+    except OSError as exc:
+        raise JobFetcherError(f"DNS resolution failed for '{hostname}': {exc}")
 
     if not results:
-        return False
+        raise JobFetcherError(f"DNS resolution returned no results for '{hostname}'.")
 
+    # Validate ALL resolved IPs — reject if ANY is unsafe (防御性)
     for family, _type, _proto, _canonname, sockaddr in results:
         ip_str = sockaddr[0]
         try:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
-            return False
+            raise JobFetcherError(f"Resolved address '{ip_str}' is not a valid IP.")
         if ip.is_private or ip.is_reserved or ip.is_loopback or ip.is_link_local or ip.is_multicast:
-            return False
-    return True
+            raise JobFetcherError(
+                f"URL hostname '{hostname}' resolves to a private/reserved IP ({ip_str})."
+            )
+
+    # Return the first resolved IP for connecting
+    first_ip = results[0][4][0]
+    return first_ip
 
 
 def _safe_url_for_log(url: str) -> str:
     """Strip query params and fragments from a URL for safe logging."""
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+
+
+def _connect_to_ip(
+    resolved_ip: str,
+    parsed_url: "urllib.parse.ParseResult",
+    timeout: int,
+    headers: dict[str, str],
+) -> requests.Response:
+    """Connect to *resolved_ip* while preserving the original Host header.
+
+    This ensures we only connect to IPs we resolved and validated ourselves,
+    preventing DNS rebinding attacks.
+    """
+    hostname = parsed_url.hostname
+    port = parsed_url.port
+    scheme = parsed_url.scheme
+
+    # Build the direct URL using the resolved IP
+    if port and ((scheme == "https" and port != 443) or (scheme == "http" and port != 80)):
+        direct_url = f"{scheme}://{resolved_ip}:{port}{parsed_url.path}"
+        if parsed_url.query:
+            direct_url += f"?{parsed_url.query}"
+        if parsed_url.fragment:
+            direct_url += f"#{parsed_url.fragment}"
+    else:
+        direct_url = f"{scheme}://{resolved_ip}{parsed_url.path}"
+        if parsed_url.query:
+            direct_url += f"?{parsed_url.query}"
+        if parsed_url.fragment:
+            direct_url += f"#{parsed_url.fragment}"
+
+    # Set Host header so the server routes correctly
+    request_headers = dict(headers)
+    if port and port not in (80, 443):
+        request_headers["Host"] = f"{hostname}:{port}"
+    else:
+        request_headers["Host"] = hostname
+
+    session = requests.Session()
+    session.headers.update(request_headers)
+    return session.get(direct_url, timeout=timeout, allow_redirects=False)
 
 
 class JobFetcher:
@@ -184,6 +233,9 @@ class JobFetcher:
         """
         Fetch a webpage and extract the main text content plus metadata.
 
+        Resolves DNS once per hostname and connects directly to the resolved
+        IP to prevent DNS rebinding attacks.
+
         Args:
             url: The URL of the job posting.
             timeout: Request timeout in seconds.
@@ -194,6 +246,8 @@ class JobFetcher:
         Raises:
             JobFetcherError: If fetching or parsing fails.
         """
+        import urllib.parse as _urlparse
+
         if not url or not url.strip():
             raise JobFetcherError("URL cannot be empty.")
 
@@ -205,16 +259,30 @@ class JobFetcher:
 
         logger.info("Fetching job description from: %s", _safe_url_for_log(url))
 
-        session = requests.Session()
-        session.headers.update(JobFetcher.HEADERS)
-
-        response = None
         current_url = url
         redirects_followed = 0
 
-        try:
-            while True:
-                response = session.get(current_url, timeout=timeout, allow_redirects=False)
+        while True:
+            parsed = _urlparse.urlparse(current_url)
+            hostname = parsed.hostname
+            if not hostname:
+                raise JobFetcherError(f"URL has no hostname: {current_url}")
+
+            # Resolve DNS once and validate — prevents DNS rebinding
+            resolved_ip = _resolve_and_validate(hostname)
+
+            try:
+                response = _connect_to_ip(resolved_ip, parsed, timeout, JobFetcher.HEADERS)
+            except requests.exceptions.Timeout:
+                raise JobFetcherError(f"Request timed out after {timeout} seconds.")
+            except requests.exceptions.ConnectionError:
+                raise JobFetcherError(
+                    f"Could not connect to {hostname}. Check the URL and your network."
+                )
+            except requests.exceptions.RequestException as exc:
+                raise JobFetcherError(f"Failed to fetch URL: {exc}")
+
+            try:
                 if response.status_code in (301, 302, 303, 307, 308):
                     redirects_followed += 1
                     if redirects_followed > MAX_REDIRECTS:
@@ -222,52 +290,34 @@ class JobFetcher:
                     location = response.headers.get("Location")
                     if not location:
                         raise JobFetcherError("Redirect with missing Location header.")
-                    response.close()
                     if location.startswith(("http://", "https://")):
                         current_url = location
                     else:
-                        parsed = urlparse(current_url)
                         current_url = f"{parsed.scheme}://{parsed.netloc}{location}"
                     _validate_url(current_url)
                     continue
-                response.raise_for_status()
-                break
-        except requests.exceptions.Timeout:
-            raise JobFetcherError(f"Request timed out after {timeout} seconds.")
-        except requests.exceptions.ConnectionError:
-            raise JobFetcherError(f"Could not connect to {url}. Check the URL and your network.")
-        except requests.exceptions.HTTPError as exc:
-            status = exc.response.status_code if exc.response else "unknown"
-            raise JobFetcherError(f"HTTP error {status} when fetching {url}.")
-        except requests.exceptions.RequestException as exc:
-            raise JobFetcherError(f"Failed to fetch URL: {exc}")
 
-        try:
-            content_type = response.headers.get("Content-Type", "")
-            if "text/html" not in content_type and "text/plain" not in content_type:
-                raise JobFetcherError(
-                    f"Unsupported content type: {content_type}. Only HTML pages are supported."
-                )
+                if response.status_code >= 400:
+                    raise JobFetcherError(f"HTTP error {response.status_code} when fetching {url}.")
 
-            content = response.content
-            if len(content) > MAX_RESPONSE_BYTES:
-                raise JobFetcherError(
-                    f"Response exceeds the {MAX_RESPONSE_BYTES // (1024 * 1024)} MB limit."
-                )
+                content_type = response.headers.get("Content-Type", "")
+                if "text/html" not in content_type and "text/plain" not in content_type:
+                    raise JobFetcherError(
+                        f"Unsupported content type: {content_type}. Only HTML pages are supported."
+                    )
 
-            html_str = content.decode("utf-8", errors="replace")
-            text = JobFetcher._extract_clean_text(html_str)
-            title, company, location = JobFetcher._extract_metadata(html_str)
-        finally:
-            response.close()
+                content = response.content
+                if len(content) > MAX_RESPONSE_BYTES:
+                    raise JobFetcherError(
+                        f"Response exceeds the {MAX_RESPONSE_BYTES // (1024 * 1024)} MB limit."
+                    )
 
-        if not text or len(text.strip()) < 20:
-            raise JobFetcherError(
-                "Could not extract meaningful text from this page. "
-                "Try pasting the job description manually."
-            )
-
-        return FetchResult(text=text, title=title, company=company, location=location)
+                html_str = content.decode("utf-8", errors="replace")
+                text = JobFetcher._extract_clean_text(html_str)
+                title, company, location = JobFetcher._extract_metadata(html_str)
+                return FetchResult(text=text, title=title, company=company, location=location)
+            finally:
+                response.close()
 
     @staticmethod
     def _extract_clean_text(html_content: str) -> str:
