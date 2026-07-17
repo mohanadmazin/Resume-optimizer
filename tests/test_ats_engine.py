@@ -363,3 +363,15 @@ def test_analyze_score_uses_skills_weight_0_25():
     assert 0 <= result.ats_score <= 100
     # With 3 known skills matched, skills_pct should be > 0
     assert result.skills_match_pct > 0
+
+
+def test_bigram_requires_frequency_before_known_skill():
+    """Bigram in _KNOWN_SKILLS appearing only once must NOT be extracted.
+
+    Regression: operator precedence bug caused `b in _KNOWN_SKILLS` to
+    bypass the frequency check (c >= 2).
+    """
+    jd = "We need someone with machine learning experience. Python is a must."
+    skills = extract_required_skills(jd)
+    # "machine learning" appears only once — should be excluded
+    assert "machine learning" not in skills

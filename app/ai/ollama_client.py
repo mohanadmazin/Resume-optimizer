@@ -41,6 +41,10 @@ class OllamaCancelledError(OllamaError):
     """Raised when a request is cancelled by the user."""
 
 
+class AIBusyError(OllamaError):
+    """Raised when another AI generation is already in progress."""
+
+
 class OllamaClient:
     def __init__(self, base_url: str | None = None, model: str | None = None):
         settings = load_settings()
@@ -48,6 +52,7 @@ class OllamaClient:
         self.model = model or settings.ai.model
         self.temperature = settings.ai.temperature
         self._cancel_event: threading.Event | None = None
+        self._generation_lock = threading.Lock()
 
     def set_cancel_event(self, event: threading.Event | None) -> None:
         """Set a threading.Event to check for cancellation."""
@@ -75,6 +80,14 @@ class OllamaClient:
         return [m["name"] for m in resp.json().get("models", [])]
 
     def generate(self, prompt: str, system: str | None = None, json_mode: bool = False) -> str:
+        if not self._generation_lock.acquire(blocking=False):
+            raise AIBusyError("Another AI generation is already in progress. Please wait.")
+        try:
+            return self._generate_impl(prompt, system=system, json_mode=json_mode)
+        finally:
+            self._generation_lock.release()
+
+    def _generate_impl(self, prompt: str, system: str | None = None, json_mode: bool = False) -> str:
         self._check_cancelled()
         payload = {
             "model": self.model,

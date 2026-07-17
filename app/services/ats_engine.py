@@ -314,7 +314,7 @@ def extract_required_skills(text: str) -> list[str]:
     # Keep bigrams that appear at least twice AND match a known skill
     bigrams = [
         b for b, c in bigram_counts.most_common(20)
-        if c >= 2 and _canonicalize(b) in SKILL_ALIASES or b in _KNOWN_SKILLS
+        if c >= 2 and (_canonicalize(b) in SKILL_ALIASES or b in _KNOWN_SKILLS)
     ]
 
     # Single-word candidates — must be known skills
