@@ -1,13 +1,15 @@
-"""Tests for JobFetcher SSRF protections."""
+"""Tests for JobFetcher SSRF protections and metadata extraction."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.services.job_fetcher import (
+    FetchResult,
     JobFetcher,
     JobFetcherError,
     _is_safe_ip,
+    _parse_title_string,
     _safe_url_for_log,
     _validate_url,
 )
@@ -283,3 +285,136 @@ def test_fetch_redirect_missing_location_rejected(mock_safe):
 
         with pytest.raises(JobFetcherError, match="missing Location"):
             JobFetcher.fetch_from_url("https://example.com/bad-redirect")
+
+
+# ── _parse_title_string ──────────────────────────────────────────────────────
+
+
+class TestParseTitleString:
+    def test_dash_delimited_three_parts(self):
+        t, c, l = _parse_title_string("Senior Dev - Acme Corp - Kuala Lumpur, Malaysia")
+        assert t == "Senior Dev"
+        assert c == "Acme Corp"
+        assert l == "Kuala Lumpur, Malaysia"
+
+    def test_pipe_delimited_three_parts(self):
+        t, c, l = _parse_title_string("Backend Engineer | Google | Mountain View, CA")
+        assert t == "Backend Engineer"
+        assert c == "Google"
+        assert l == "Mountain View, CA"
+
+    def test_dash_delimited_two_parts(self):
+        t, c, l = _parse_title_string("ML Engineer - OpenAI")
+        assert t == "ML Engineer"
+        assert c == "OpenAI"
+        assert l == ""
+
+    def test_at_pattern(self):
+        t, c, l = _parse_title_string("DevOps Engineer at Amazon in Seattle")
+        assert t == "DevOps Engineer"
+        assert c == "Amazon"
+        assert l == "Seattle"
+
+    def test_at_pattern_no_location(self):
+        t, c, l = _parse_title_string("Data Scientist at Meta")
+        assert t == "Data Scientist"
+        assert c == "Meta"
+        assert l == ""
+
+    def test_hiring_pattern(self):
+        t, c, l = _parse_title_string("Acme Corp is hiring a Senior Engineer in London")
+        assert t == "Senior Engineer"
+        assert c == "Acme Corp"
+        assert l == "London"
+
+    def test_no_delimiter_returns_title_only(self):
+        t, c, l = _parse_title_string("Just a job title")
+        assert t == "Just a job title"
+        assert c == ""
+        assert l == ""
+
+    def test_empty_string(self):
+        t, c, l = _parse_title_string("")
+        assert t == "" and c == "" and l == ""
+
+    def test_em_dash_delimited(self):
+        t, c, l = _parse_title_string("Frontend Dev — Shopify — Toronto, ON")
+        assert t == "Frontend Dev"
+        assert c == "Shopify"
+        assert l == "Toronto, ON"
+
+
+# ── _extract_metadata ────────────────────────────────────────────────────────
+
+
+class TestExtractMetadata:
+    def test_extracts_from_title_tag(self):
+        html = "<html><head><title>Senior Dev - Acme Corp - Remote</title></head><body></body></html>"
+        t, c, l = JobFetcher._extract_metadata(html)
+        assert t == "Senior Dev"
+        assert c == "Acme Corp"
+        assert l == "Remote"
+
+    def test_extracts_from_og_title(self):
+        html = """
+        <html><head>
+        <meta property="og:title" content="ML Engineer | DeepMind | London">
+        </head><body></body></html>
+        """
+        t, c, l = JobFetcher._extract_metadata(html)
+        assert t == "ML Engineer"
+        assert c == "DeepMind"
+        assert l == "London"
+
+    def test_extracts_from_h1_when_no_title(self):
+        html = "<html><head><title></title></head><body><h1>Backend Engineer at Stripe</h1></body></html>"
+        t, c, l = JobFetcher._extract_metadata(html)
+        assert t == "Backend Engineer"
+        assert c == "Stripe"
+
+    def test_jsonld_job_posting(self):
+        html = """
+        <html><head>
+        <script type="application/ld+json">
+        {"@type": "JobPosting", "title": "SRE", "organization": {"name": "Netflix"},
+         "jobLocation": {"address": {"addressLocality": "Los Gatos", "addressRegion": "CA", "addressCountry": "US"}}}
+        </script>
+        </head><body></body></html>
+        """
+        t, c, l = JobFetcher._extract_metadata(html)
+        assert t == "SRE"
+        assert c == "Netflix"
+        assert "Los Gatos" in l
+
+    def test_og_site_name_used_for_company(self):
+        html = """
+        <html><head>
+        <title>Software Engineer - TechStart</title>
+        <meta property="og:site_name" content="TechStart">
+        </head><body></body></html>
+        """
+        t, c, l = JobFetcher._extract_metadata(html)
+        assert t == "Software Engineer"
+        assert c == "TechStart"
+
+    def test_job_board_site_name_not_used_as_company(self):
+        html = """
+        <html><head>
+        <title>Software Engineer - Acme Corp</title>
+        <meta property="og:site_name" content="Indeed">
+        </head><body></body></html>
+        """
+        t, c, l = JobFetcher._extract_metadata(html)
+        assert t == "Software Engineer"
+        assert c == "Acme Corp"
+
+    def test_empty_html(self):
+        t, c, l = JobFetcher._extract_metadata("")
+        assert t == "" and c == "" and l == ""
+
+    def test_returns_fetch_result_dataclass(self):
+        result = FetchResult(text="Job description text", title="Dev", company="Co", location="NYC")
+        assert result.text == "Job description text"
+        assert result.title == "Dev"
+        assert result.company == "Co"
+        assert result.location == "NYC"

@@ -17,14 +17,14 @@ from PySide6.QtWidgets import (
 
 from app.database import db
 from app.services.document_reader import extract_text
-from app.services.job_fetcher import JobFetcher, JobFetcherError
+from app.services.job_fetcher import FetchResult, JobFetcher, JobFetcherError
 from app.ui.workers import Worker
 
 
 class _FetchWorker(QThread):
     """Background thread for fetching job descriptions from URLs."""
 
-    finished = Signal(str)
+    finished = Signal(object)  # FetchResult
     error = Signal(str)
 
     def __init__(self, url: str, parent=None):
@@ -33,8 +33,8 @@ class _FetchWorker(QThread):
 
     def run(self):
         try:
-            text = JobFetcher.fetch_from_url(self.url)
-            self.finished.emit(text)
+            result = JobFetcher.fetch_from_url(self.url)
+            self.finished.emit(result)
         except JobFetcherError as exc:
             self.error.emit(str(exc))
 
@@ -108,10 +108,19 @@ class JobDescriptionPage(QWidget):
         self._fetch_worker.error.connect(self._on_fetch_error)
         self._fetch_worker.start()
 
-    def _on_fetch_done(self, text: str) -> None:
+    def _on_fetch_done(self, result: FetchResult) -> None:
         self.fetch_btn.setEnabled(True)
         self.fetch_btn.setText("Fetch from URL")
-        self.content.setPlainText(text)
+        self.content.setPlainText(result.text)
+
+        # Auto-fill title / company / location from metadata
+        if result.title and not self.title_edit.text().strip():
+            self.title_edit.setText(result.title)
+        if result.company and not self.company_edit.text().strip():
+            self.company_edit.setText(result.company)
+        if result.location and not self.location_edit.text().strip():
+            self.location_edit.setText(result.location)
+
         self.window.notify("Job description fetched successfully.")
 
     def _on_fetch_error(self, message: str) -> None:

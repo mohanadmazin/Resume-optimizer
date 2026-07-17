@@ -4,7 +4,9 @@
 
 import ipaddress
 import logging
+import re
 import socket
+from dataclasses import dataclass
 from urllib.parse import urlparse
 
 import requests
@@ -18,6 +20,69 @@ MAX_REDIRECTS = 5
 
 class JobFetcherError(Exception):
     """Raised when job fetching fails."""
+
+
+def _parse_title_string(raw: str) -> tuple[str, str, str]:
+    """Parse a page title into (title, company, location).
+
+    Handles common job board patterns:
+    - "Senior Dev - Acme Corp - Kuala Lumpur, Malaysia"
+    - "Senior Dev at Acme Corp in Kuala Lumpur"
+    - "Senior Dev | Acme Corp | Remote"
+    - "Senior Dev - Acme Corp"
+    - "Acme Corp is hiring a Senior Dev in Kuala Lumpur"
+    """
+    if not raw:
+        return "", "", ""
+
+    title = ""
+    company = ""
+    location = ""
+
+    # Pattern: "X at Company in Location" or "X @ Company"
+    m = re.match(r"^(.+?)\s+(?:at|@)\s+(.+?)(?:\s+(?:in|—|-)\s+(.+))?$", raw, re.IGNORECASE)
+    if m:
+        return m.group(1).strip(), m.group(2).strip(), (m.group(3) or "").strip()
+
+    # Pattern: "Company is hiring a X in Location"
+    m = re.match(r"^(.+?)\s+(?:is\s+)?hiring\s+(?:a|an|for)\s+(.+?)(?:\s+in\s+(.+))?$", raw, re.IGNORECASE)
+    if m:
+        return m.group(2).strip(), m.group(1).strip(), (m.group(3) or "").strip()
+
+    # Common delimiters: " | ", " - ", " — ", " · ", " :: "
+    for sep in [" | ", " — ", " - ", " · ", " :: "]:
+        if sep in raw:
+            parts = [p.strip() for p in raw.split(sep) if p.strip()]
+            if len(parts) >= 3:
+                # Heuristic: last part is usually location (contains comma or state code)
+                location = parts[-1]
+                title = parts[0]
+                company = parts[1]
+                return title, company, location
+            elif len(parts) == 2:
+                title = parts[0]
+                company = parts[1]
+                return title, company, ""
+
+    # If only one delimiter found, treat as "Title - Company"
+    for sep in [" | ", " — ", " - ", " · ", " :: "]:
+        if sep in raw:
+            parts = [p.strip() for p in raw.split(sep) if p.strip()]
+            if len(parts) == 2:
+                return parts[0], parts[1], ""
+
+    # No delimiter — return as title only
+    return raw, "", ""
+
+
+@dataclass
+class FetchResult:
+    """Result from fetching a job posting URL."""
+
+    text: str
+    title: str = ""
+    company: str = ""
+    location: str = ""
 
 
 # ── SSRF helpers ─────────────────────────────────────────────────────────────
@@ -79,16 +144,16 @@ class JobFetcher:
     ]
 
     @staticmethod
-    def fetch_from_url(url: str, timeout: int = 10) -> str:
+    def fetch_from_url(url: str, timeout: int = 10) -> FetchResult:
         """
-        Fetch a webpage and extract the main text content.
+        Fetch a webpage and extract the main text content plus metadata.
 
         Args:
             url: The URL of the job posting.
             timeout: Request timeout in seconds.
 
         Returns:
-            Extracted job description text.
+            FetchResult with text, title, company, and location.
 
         Raises:
             JobFetcherError: If fetching or parsing fails.
@@ -154,7 +219,9 @@ class JobFetcher:
                     f"Response exceeds the {MAX_RESPONSE_BYTES // (1024 * 1024)} MB limit."
                 )
 
-            text = JobFetcher._extract_clean_text(content.decode("utf-8", errors="replace"))
+            html_str = content.decode("utf-8", errors="replace")
+            text = JobFetcher._extract_clean_text(html_str)
+            title, company, location = JobFetcher._extract_metadata(html_str)
         finally:
             response.close()
 
@@ -164,7 +231,7 @@ class JobFetcher:
                 "Try pasting the job description manually."
             )
 
-        return text
+        return FetchResult(text=text, title=title, company=company, location=location)
 
     @staticmethod
     def _extract_clean_text(html_content: str) -> str:
@@ -183,3 +250,112 @@ class JobFetcher:
 
         lines = [line for line in main_content.stripped_strings]
         return "\n".join(lines)
+
+    @staticmethod
+    def _extract_metadata(html_content: str) -> tuple[str, str, str]:
+        """Extract job title, company, and location from HTML metadata.
+
+        Strategy (in priority order):
+        1. <title> tag — most job boards put "Job Title - Company - Location" there
+        2. <h1> tag — often the job title on listing pages
+        3. og:title / og:site_name meta tags
+        4. JSON-LD structured data (schema.org JobPosting)
+        5. Heuristic patterns in the first lines of body text
+        """
+        soup = BeautifulSoup(html_content, "html.parser")
+        title = ""
+        company = ""
+        location = ""
+
+        # ── 1. Try <title> tag ────────────────────────────────────────────
+        page_title = ""
+        if soup.title and soup.title.string:
+            page_title = soup.title.string.strip()
+
+        # ── 2. Try og:title meta tag ──────────────────────────────────────
+        og_title = ""
+        og_tag = soup.find("meta", property="og:title")
+        if og_tag and og_tag.get("content"):
+            og_title = og_tag["content"].strip()
+
+        # ── 3. Try <h1> tag ───────────────────────────────────────────────
+        h1_text = ""
+        h1_tag = soup.find("h1")
+        if h1_tag:
+            h1_text = h1_tag.get_text(strip=True)
+
+        # ── 4. Try JSON-LD structured data ────────────────────────────────
+        jsonld_company = ""
+        jsonld_location = ""
+        jsonld_title = ""
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                import json
+                data = json.loads(script.string or "")
+                if isinstance(data, list):
+                    data = data[0] if data else {}
+                if not isinstance(data, dict):
+                    continue
+                if data.get("@type") == "JobPosting":
+                    jsonld_title = data.get("title", "")
+                    org = data.get("organization", {})
+                    if isinstance(org, dict):
+                        jsonld_company = org.get("name", "")
+                    elif isinstance(org, str):
+                        jsonld_company = org
+                    loc = data.get("jobLocation", {})
+                    if isinstance(loc, dict):
+                        addr = loc.get("address", {})
+                        if isinstance(addr, dict):
+                            parts = [
+                                addr.get("addressLocality", ""),
+                                addr.get("addressRegion", ""),
+                                addr.get("addressCountry", ""),
+                            ]
+                            jsonld_location = ", ".join(p for p in parts if p)
+                        elif isinstance(addr, str):
+                            jsonld_location = addr
+                    elif isinstance(loc, str):
+                        jsonld_location = loc
+            except (json.JSONDecodeError, TypeError, KeyError, ValueError):
+                pass
+
+        # ── 5. Try og:site_name meta tag ──────────────────────────────────
+        og_site = ""
+        site_tag = soup.find("meta", property="og:site_name")
+        if site_tag and site_tag.get("content"):
+            og_site = site_tag["content"].strip()
+
+        # ── Resolve title ─────────────────────────────────────────────────
+        # Prefer <title> or og:title, fall back to <h1>
+        raw_title = og_title or page_title or h1_text
+
+        # Many job boards use "Job Title - Company - Location" or "Job Title at Company in Location"
+        # Try to split on common delimiters
+        title, company, location = _parse_title_string(raw_title)
+
+        # Fill gaps from JSON-LD (most structured/reliable)
+        if not title and jsonld_title:
+            title = jsonld_title
+        if not company and jsonld_company:
+            company = jsonld_company
+        if not location and jsonld_location:
+            location = jsonld_location
+
+        # If title is still empty, use h1 as fallback
+        if not title and h1_text:
+            title = h1_text
+
+        # If company is still empty, use og:site_name (but only if it looks like
+        # a company name, not a job board like "LinkedIn" or "Indeed")
+        if not company and og_site:
+            job_board_sites = {
+                "linkedin", "indeed", "glassdoor", "monster", "ziprecruiter",
+                "careerbuilder", "simplyhired", "github jobs", "stackoverflow",
+                "dribbble", "behance", "google careers", "amazon jobs",
+                "apple jobs", "microsoft careers",
+            }
+            if og_site.lower().replace(" ", "") not in {s.replace(" ", "") for s in job_board_sites}:
+                company = og_site
+
+        return title, company, location
