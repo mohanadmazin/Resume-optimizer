@@ -449,29 +449,127 @@ resume-optimizer-main/
     └── test_skill_gap_salary.py       # 5 tests
 ```
 
-### Planned (not yet implemented)
+### Actual File Map
 
 ```text
-app/domain/
-├── job.py                   # Job description domain model
-├── analysis.py              # Analysis run domain model
-├── application.py           # Application tracker domain model
-├── letter.py                # Cover letter version domain model
-├── interview.py             # Interview session domain model
-├── enums.py                 # Shared enums
-├── validators.py            # Domain validation rules
-├── skill_normalizer.py      # Skill alias normalization
-├── keyword_extractor.py     # Advanced keyword extraction
-├── ats_engine.py            # ATS Engine V2 (moved from services/)
-├── quality_engine.py        # Resume quality scoring
-└── fact_guard.py            # AI fact-checking
-
-app/ui/components/
-├── empty_state.py           # Reusable empty-state widget
-├── score_card.py            # Reusable score card widget
-├── keyword_chip.py          # Keyword chip with selection
-├── diff_viewer.py           # Side-by-side diff viewer
-└── confirmation_dialog.py   # Confirmation dialog
+resume-optimizer-main/
+├── main.py
+├── pyproject.toml
+├── requirements.txt
+├── README.md
+├── PROJECT_MAP.md
+├── .gitignore
+├── alembic.ini
+│
+├── migrations/
+│   ├── env.py
+│   └── versions/
+│       ├── 0001_initial_schema.py
+│       ├── 0002_add_resume_tracking.py
+│       └── 0003_add_cascade_delete.py
+│
+├── app/
+│   ├── __init__.py
+│   ├── schemas.py                     # Backward-compatible re-exports from app/domain/
+│   ├── validators.py                  # ResumeData validation helpers
+│   ├── logging_config.py              # Rotating file + console logging
+│   │
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── settings.py                # Pydantic AppSettings + SettingsService singleton
+│   │   └── paths.py                   # DB_PATH, CONFIG_PATH, LOG_DIR, etc.
+│   │
+│   ├── domain/
+│   │   ├── __init__.py
+│   │   ├── resume.py                  # ContactInfo, ExperienceItem, EducationItem, ProjectItem, ResumeData
+│   │   ├── skill_gap.py               # SkillGapItem, SkillGapResult
+│   │   ├── salary.py                  # SalaryEstimate (Decimal fields)
+│   │   ├── analysis.py                # ATSResult domain model
+│   │   ├── fact_guard.py              # ChangeType, ProposedChange, FactGuardResult
+│   │   ├── job_requirements.py        # JobRequirements domain model
+│   │   └── pipeline.py                # PipelineResult dataclass
+│   │
+│   ├── ai/
+│   │   ├── __init__.py
+│   │   ├── ollama_client.py           # OllamaClient: generate(), generate_json(), generate_structured(), pre_warm()
+│   │   └── prompts.py                 # All prompt templates (471 lines)
+│   │
+│   ├── database/
+│   │   ├── __init__.py
+│   │   ├── engine.py                  # SQLAlchemy SQLite engine
+│   │   ├── session.py                 # SessionLocal, get_session() context manager
+│   │   ├── models.py                  # Resume, JobDescription, Analysis, Optimization ORM
+│   │   ├── db.py                      # Backward-compatible CRUD facade
+│   │   ├── migrate.py                 # Alembic migration helper
+│   │   └── repositories/
+│   │       ├── __init__.py
+│   │       ├── base.py                # Abstract base repository
+│   │       ├── resume_repository.py   # Resume CRUD + SHA-256 content hash
+│   │       ├── job_repository.py      # JobDescription CRUD
+│   │       └── analysis_repository.py # Analysis CRUD with JOIN queries
+│   │
+│   ├── config/                        # Legacy compatibility layer
+│   │   ├── __init__.py                # Re-exports from app.core.*
+│   │   └── config_manager.py          # Old JSON config (superseded)
+│   │
+│   ├── application/                   # Use-case layer
+│   │   ├── __init__.py
+│   │   ├── import_resume.py           # ImportResumeUseCase
+│   │   ├── analyze_resume.py          # AnalyzeResumeUseCase
+│   │   └── optimize_resume.py         # OptimizeResumeUseCase + RunPipelineUseCase
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── ats_engine.py              # ATS keyword analysis + scoring
+│   │   ├── optimizer.py               # AI resume optimization (safe-only apply)
+│   │   ├── cover_letter.py            # AI cover letter generation + fact checking
+│   │   ├── resume_parser.py           # Heuristic + AI resume parsing
+│   │   ├── fact_guard.py              # Deterministic fact validation (SequenceMatcher)
+│   │   ├── document_reader.py         # PDF/DOCX/TXT text extraction
+│   │   ├── job_fetcher.py             # URL fetch with SSRF protection
+│   │   ├── salary_estimator.py        # AI salary estimation
+│   │   ├── skill_gap.py               # AI skill gap analysis
+│   │   ├── diff_highlight.py          # HTML diff between original and optimized
+│   │   └── exporter.py                # DOCX/PDF/Markdown export
+│   │
+│   └── ui/
+│       ├── __init__.py
+│       ├── main_window.py             # QMainWindow with sidebar nav + stack
+│       ├── state.py                   # AppState (resume, job, ats, pipeline, etc.)
+│       ├── workers.py                 # Worker + PipelineWorker (QThread) + cancel support
+│       ├── theme.py                   # DARK_STYLESHEET + LIGHT_STYLESHEET
+│       │
+│       ├── components/
+│       │   ├── __init__.py
+│       │   ├── ollama_status.py       # OllamaCheckerThread + OllamaStatusLabel
+│       │   └── loading_overlay.py     # LoadingOverlay + LoadingOverlayManager
+│       │
+│       └── pages/
+│           ├── __init__.py
+│           ├── dashboard.py           # One-click pipeline, score cards, recent table
+│           ├── resume_upload.py       # PDF/DOCX import + parse + save
+│           ├── job_description.py     # Paste/upload/URL fetch + save
+│           ├── ats_analysis.py        # Score cards, keyword heatmap, suggestions
+│           ├── optimization.py        # Before/after ATS comparison, diff preview, Accept/Reject
+│           ├── cover_letter.py        # AI cover letter generation + fact-check warnings
+│           ├── skill_gap.py           # Skill gap analysis with disclaimer
+│           ├── salary_estimate.py     # Salary estimation with disclaimer
+│           └── settings.py            # Ollama URL, model, temperature, theme
+│
+└── tests/
+    ├── __init__.py
+    ├── test_ats_engine.py             # 15 tests (scoring, skill matching, suggestions)
+    ├── test_cover_letter.py           # 11 tests (fact checking, generation, warnings)
+    ├── test_exporter.py               #  2 tests
+    ├── test_fact_guard.py             # 22 tests (normalization, entities, skills, changes)
+    ├── test_job_fetcher.py            # 30 tests (SSRF protection, IP validation, URL safety)
+    ├── test_migrations.py             # 23 tests (schema, backup, restore, cascade delete)
+    ├── test_optimizer.py              #  7 tests (safe-only apply, accepted changes)
+    ├── test_parser.py                 #  4 tests
+    ├── test_parser_fallback.py        #  8 tests (OllamaError fallback, edge cases)
+    ├── test_settings.py               # 29 tests (atomic write, backup, recovery, concurrency)
+    └── test_skill_gap_salary.py       #  5 tests
+    # Total: 156 tests across 11 test files
 ```
 
 ---
@@ -480,101 +578,25 @@ app/ui/components/
 
 The following inconsistencies should be fixed before adding more features.
 
-### 9.1 Duplicate ATS Engine
+### 9.1 Duplicate ATS Engine — RESOLVED (2026-07-16)
 
-Current files:
+`app/ats_engine.py` deleted. Only `app/services/ats_engine.py` remains.
 
-```text
-app/ats_engine.py
-app/services/ats_engine.py
-```
+### 9.2 Duplicate Configuration Sources — RESOLVED (2026-07-16)
 
-Target:
+Settings consolidated into `app/core/settings.py` with typed `AppSettings`.
 
-```text
-app/domain/ats_engine.py
-```
+### 9.3 ATS Page Filename Mismatch — RESOLVED (2026-07-16)
 
-Only one implementation should exist. UI and services should import the domain engine.
+Only `ats_analysis.py` exists. No mismatch.
 
-### 9.2 Duplicate Configuration Sources
+### 9.4 Oversized Shared Schema File — RESOLVED (2026-07-16)
 
-Current files:
+Split into domain modules: `resume.py`, `salary.py`, `skill_gap.py`, `fact_guard.py`, `pipeline.py`, `analysis.py`, `job_requirements.py`.
 
-```text
-app/config/config.json
-app/config/settings.json
-```
+### 9.5 Database Helper Concentration — RESOLVED (2026-07-16)
 
-Target:
-
-```text
-app/core/settings.py
-```
-
-Use one typed settings model and one persisted user-settings file.
-
-Separate:
-
-* Application defaults
-* User preferences
-* Runtime state
-* Secrets
-
-Do not store runtime state in the settings file.
-
-### 9.3 ATS Page Filename Mismatch
-
-Current map references both:
-
-```text
-at_analysis.py
-ats_analysis.py
-```
-
-Target:
-
-```text
-app/ui/pages/ats_analysis.py
-```
-
-### 9.4 Oversized Shared Schema File
-
-Current:
-
-```text
-app/schemas.py
-```
-
-Target:
-
-```text
-app/domain/resume.py
-app/domain/job.py
-app/domain/analysis.py
-app/domain/application.py
-app/domain/letter.py
-app/domain/interview.py
-app/domain/salary.py
-```
-
-### 9.5 Database Helper Concentration
-
-Current:
-
-```text
-app/database/db.py
-```
-
-Target:
-
-```text
-engine.py
-session.py
-repositories/
-```
-
-This prevents unrelated CRUD operations from accumulating in one module.
+Split into `engine.py`, `session.py`, and `repositories/`.
 
 ### 9.6 Config Stored in Source Directory
 
@@ -1981,7 +2003,7 @@ AI generation time depends on the selected model and hardware and should not blo
 * [ ] Add provider-neutral AI interface
 * [ ] Move prompts to versioned template files
 * [ ] Add centralized exception handling
-* [ ] Add typed AppState IDs
+* [x] Add typed AppState IDs (2026-07-17)
 * [ ] Add prompt and engine version tracking
 
 ### P2 — Product Value
@@ -2002,7 +2024,7 @@ AI generation time depends on the selected model and hardware and should not blo
 * [x] Add pytest-qt tests
 * [x] Add migration tests (23 tests)
 * [x] Add regression fixtures
-* [ ] Add CI checks
+* [x] Add CI checks (2026-07-17)
 * [ ] Add PyInstaller builds
 * [ ] Add accessibility checks
 * [ ] Add diagnostics page

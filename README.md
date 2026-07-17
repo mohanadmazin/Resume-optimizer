@@ -4,16 +4,19 @@ A local, offline, AI-powered desktop application for ATS resume optimization and
 
 ## Features
 
-- **Resume import**: PDF and DOCX, parsed into structured JSON (contact, summary, skills, experience, education, certifications)
-- **Job description input**: paste text or upload PDF/DOCX
-- **ATS analysis**: score (0-100), keyword match %, skills match %, missing keywords, improvement suggestions
+- **Resume import**: PDF, DOCX, TXT - parsed into structured JSON (contact, summary, skills, experience, education, certifications, projects)
+- **Job description input**: paste text, upload PDF/DOCX, or fetch from URL (with SSRF protection)
+- **ATS analysis**: deterministic score (0-100), keyword match %, skills match %, heatmap, missing keywords, improvement suggestions
 - **AI optimization**: rewrites your summary and experience bullets to improve keyword coverage and grammar - facts, employers, dates and certifications are never invented or altered
-- **Job match analysis**: match %, missing skills and keywords, recommendations
-- **Cover letter generator**: tailored letter from your resume + the job description
+- **Per-change review**: accept or reject each AI suggestion individually; fact guard detects unsupported claims
+- **Skill gap analysis**: matches your skills against job requirements with learning recommendations
+- **Salary estimation**: AI-based salary range estimation with explicit data-source disclaimer
+- **Cover letter generator**: tailored letter from your resume + the job description, with fact-check warnings
+- **One-click pipeline**: runs ATS analysis → optimization → cover letter in sequence with progress tracking
 - **Export**: DOCX, PDF and Markdown
 - **Model support**: `qwen3` and `llama3.1` (or any Ollama model), selectable in Settings
 - **Local SQLite database**: resumes, job descriptions, ATS scores and optimization history
-- **Modern dark-theme UI** with Dashboard, Resume Upload, Job Description, ATS Analysis, Optimization, Cover Letter and Settings pages
+- **Modern UI** with Dashboard, Resume Upload, Job Description, ATS Analysis, Optimization, Cover Letter, Skill Gap, Salary, and Settings pages
 
 ## Requirements
 
@@ -60,17 +63,76 @@ pytest
 ```
 main.py                  # entry point
 app/
-  config.py              # settings stored in ~/.resume_optimizer/config.json
-  schemas.py             # Pydantic models for structured resume data
-  ai/                    # Ollama client and prompt templates
-  database/              # SQLAlchemy schema + CRUD helpers (SQLite)
-  services/              # document reader, resume parser, ATS engine, optimizer, cover letter
-  exports/               # DOCX / PDF / Markdown exporters
-  ui/                    # PySide6 dark-theme UI (pages, workers, theme)
-tests/                   # pytest suite (parser, ATS engine, exporter)
+  core/
+    settings.py          # typed Pydantic AppSettings + SettingsService singleton
+    paths.py             # DB_PATH, CONFIG_PATH, LOG_DIR
+  domain/
+    resume.py            # ContactInfo, ExperienceItem, EducationItem, ProjectItem, ResumeData
+    analysis.py          # ATSResult domain model
+    skill_gap.py         # SkillGapItem, SkillGapResult
+    salary.py            # SalaryEstimate (Decimal fields)
+    fact_guard.py        # ChangeType, ProposedChange, FactGuardResult
+    pipeline.py          # PipelineResult dataclass
+    job_requirements.py  # JobRequirements domain model
+  ai/
+    ollama_client.py     # OllamaClient: generate, generate_json, pre_warm, cancel
+    prompts.py           # all prompt templates
+  database/
+    engine.py            # SQLAlchemy SQLite engine
+    session.py           # get_session() context manager
+    models.py            # Resume, JobDescription, Analysis ORM
+    db.py                # backward-compatible CRUD facade
+    migrate.py           # Alembic migration helper
+    repositories/        # base, resume, job, analysis repositories
+  application/
+    import_resume.py     # ImportResumeUseCase
+    analyze_resume.py    # AnalyzeResumeUseCase
+    optimize_resume.py   # OptimizeResumeUseCase + RunPipelineUseCase
+  services/
+    ats_engine.py        # ATS keyword analysis + scoring
+    optimizer.py         # AI resume optimization (safe-only apply + fact guard)
+    cover_letter.py      # AI cover letter generation + fact checking
+    resume_parser.py     # heuristic + AI resume parsing
+    fact_guard.py        # deterministic fact validation (SequenceMatcher)
+    job_fetcher.py       # URL fetch with SSRF protection
+    document_reader.py   # PDF/DOCX/TXT text extraction
+    salary_estimator.py  # AI salary estimation
+    skill_gap.py         # AI skill gap analysis
+    diff_highlight.py    # HTML diff between original and optimized
+    exporter.py          # DOCX/PDF/Markdown export
+  ui/
+    main_window.py       # QMainWindow with sidebar nav + stack
+    state.py             # AppState (resume, job, ats, pipeline, keywords, cancel)
+    workers.py           # Worker + PipelineWorker (QThread) + global cancel
+    theme.py             # DARK_STYLESHEET + LIGHT_STYLESHEET
+    components/
+      ollama_status.py   # OllamaCheckerThread + OllamaStatusLabel
+      loading_overlay.py # LoadingOverlay + LoadingOverlayManager
+    pages/
+      dashboard.py       # one-click pipeline, score cards
+      resume_upload.py   # PDF/DOCX import + parse + save
+      job_description.py # paste/upload/URL fetch + save
+      ats_analysis.py    # score cards, keyword heatmap, suggestions
+      optimization.py    # before/after ATS comparison, Accept/Reject
+      cover_letter.py    # AI cover letter + fact-check warnings
+      skill_gap.py       # skill gap analysis with disclaimer
+      salary_estimate.py # salary estimation with disclaimer
+      settings.py        # Ollama URL, model, temperature, theme
+tests/                   # 156 tests across 11 test files
+  test_ats_engine.py     # 15 tests
+  test_cover_letter.py   # 11 tests
+  test_exporter.py       #  2 tests
+  test_fact_guard.py     # 22 tests
+  test_job_fetcher.py    # 30 tests (SSRF protection)
+  test_migrations.py     # 23 tests
+  test_optimizer.py      #  7 tests
+  test_parser.py         #  4 tests
+  test_parser_fallback.py#  8 tests
+  test_settings.py       # 29 tests
+  test_skill_gap_salary.py# 5 tests
 ```
 
-User data (SQLite database and config) is stored in `~/.resume_optimizer/`.
+User data (SQLite database and settings) is stored in `~/.resume_optimizer/`.
 
 ## Build a desktop executable (PyInstaller)
 
