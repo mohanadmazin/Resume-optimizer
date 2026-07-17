@@ -8,3 +8,4 @@ beautifulsoup4>=4.12,<4.13
 lxml>=5.0,<7
 alembic>=1.15,<1.16
 pytest>=9.1,<10
+playwright>=1.45,<2

@@ -15,7 +15,8 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
-from app.services.html_extractor import extract_text_from_soup
+from app.services.browser_fetcher import BrowserFetchError, fetch_rendered_page, requires_browser_render
+from app.services.html_extractor import extract_text_from_html, extract_text_from_soup
 from app.services.metadata import JobMetadata, extract_metadata
 from app.services.security import (
     SSRFError,
@@ -245,6 +246,20 @@ def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResul
 
             meta = extract_metadata(soup)
             text = extract_text_from_soup(soup)
+
+            # ── Browser fallback for JS-rendered pages ──────────────────
+            if not text or len(text.strip()) < 100:
+                if requires_browser_render(url):
+                    logger.info("Static extraction thin (%d chars); trying browser render", len(text) if text else 0)
+                    try:
+                        rendered_html = fetch_rendered_page(url)
+                        from bs4 import BeautifulSoup as _BS
+                        browser_soup = _BS(rendered_html, "lxml")
+                        text = extract_text_from_soup(browser_soup)
+                        meta = extract_metadata(browser_soup)
+                        logger.info("Browser fallback yielded %d chars of text", len(text) if text else 0)
+                    except BrowserFetchError as exc:
+                        logger.warning("Browser fallback failed: %s", exc)
 
             if not text or len(text.strip()) < 20:
                 raise ExtractionError(
