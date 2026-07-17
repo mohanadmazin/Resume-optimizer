@@ -185,6 +185,16 @@ def _extract_job_location(loc) -> str:
 
 # ── Full metadata extraction ────────────────────────────────────────────────
 
+_BOARD_SUFFIX_RE = re.compile(
+    r"\s*[\|–—-]\s*(" + "|".join(re.escape(s) for s in _JOB_BOARD_SITES) + r")\s*$",
+    re.IGNORECASE,
+)
+
+
+def _strip_board_suffix(title: str) -> str:
+    """Remove trailing ' | LinkedIn', ' - Indeed', etc. from title strings."""
+    return _BOARD_SUFFIX_RE.sub("", title).strip()
+
 
 @dataclass(slots=True)
 class JobMetadata:
@@ -223,8 +233,9 @@ def extract_metadata(soup: BeautifulSoup) -> JobMetadata:
     if h1_tag:
         h1_text = h1_tag.get_text(strip=True)
 
-    # Pick best raw title source
+    # Pick best raw title source, strip job board suffixes like " | LinkedIn"
     raw_title = og_title or page_title or h1_text
+    raw_title = _strip_board_suffix(raw_title)
     parsed = parse_title_string(raw_title)
 
     # Assemble: JSON-LD is most reliable, use it first; fall back to parsed/h1

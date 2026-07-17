@@ -79,15 +79,24 @@ def strip_noise_tags(soup: Tag | BeautifulSoup) -> None:
         for el in soup.find_all(tag_name):
             el.decompose()
 
-    # Remove containers by class attribute
-    for el in soup.find_all(attrs={"class": lambda c: c is not None}):
-        classes = " ".join(c if isinstance(c, str) else " ".join(c))
-        if _has_noise_hint(classes, _NOISE_CLASS_HINTS):
-            el.decompose()
+    # Collect elements to remove (class/id based), then remove in batch
+    to_remove = []
+    for el in soup.find_all(True):
+        attrs = el.attrs
+        if not attrs:
+            continue
+        class_val = attrs.get("class")
+        if class_val:
+            classes = " ".join(class_val) if isinstance(class_val, list) else str(class_val)
+            if _has_noise_hint(classes, _NOISE_CLASS_HINTS):
+                to_remove.append(el)
+                continue
+        id_val = attrs.get("id")
+        if id_val and _has_noise_hint(str(id_val), _NOISE_ID_HINTS):
+            to_remove.append(el)
 
-    # Remove containers by id attribute
-    for el in soup.find_all(attrs={"id": lambda i: i is not None}):
-        if _has_noise_hint(el["id"], _NOISE_ID_HINTS):
+    for el in to_remove:
+        if el.parent is not None:
             el.decompose()
 
 

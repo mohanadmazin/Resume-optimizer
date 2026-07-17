@@ -9,6 +9,7 @@ Thin orchestrator that delegates to:
 """
 
 import logging
+import socket
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
@@ -91,26 +92,6 @@ _HEADERS = {
 }
 
 
-def _build_direct_url(target: ResolvedTarget, path: str, query: str, fragment: str) -> str:
-    """Build a URL pointing directly at the resolved IP with Host header."""
-    scheme = target.scheme
-    ip = target.ip
-    port = target.port
-
-    default_port = 443 if scheme == "https" else 80
-    if port != default_port:
-        base = f"{scheme}://{ip}:{port}"
-    else:
-        base = f"{scheme}://{ip}"
-
-    url = f"{base}{path}"
-    if query:
-        url += f"?{query}"
-    if fragment:
-        url += f"#{fragment}"
-    return url
-
-
 def _build_host_header(hostname: str, port: int) -> str:
     default_port = 443 if urlparse(f"https://{hostname}").scheme == "https" else 80
     if port != default_port:
@@ -118,17 +99,40 @@ def _build_host_header(hostname: str, port: int) -> str:
     return hostname
 
 
+def _pinned_getaddrinfo(
+    original_getaddrinfo, target_ip: str, target_hostname: str, target_port: int
+):
+    """Return a getaddrinfo replacement that pins DNS to the validated IP."""
+
+    def _pinned(host, port, family=0, type=0, proto=0, flags=0):
+        if host == target_hostname:
+            af = socket.AF_INET6 if ":" in target_ip else socket.AF_INET
+            return [(af, socket.SOCK_STREAM, 6, "", (target_ip, port or target_port))]
+        return original_getaddrinfo(host, port, family, type, proto, flags)
+
+    return _pinned
+
+
 def _connect(target: ResolvedTarget, url: str, config: FetchConfig) -> requests.Response:
-    """Connect to a resolved target with Host header preservation."""
-    parsed = urlparse(url)
-    direct_url = _build_direct_url(target, parsed.path, parsed.query, parsed.fragment)
+    """Connect with DNS pinning to prevent rebinding.
 
-    headers = dict(_HEADERS)
-    headers["Host"] = _build_host_header(target.hostname, target.port)
+    Resolves DNS once in resolve_and_validate(), validates the IP, then
+    pins the resolution so that requests connects only to the validated IP
+    while still using the hostname for TLS SNI.
+    """
+    original_getaddrinfo = socket.getaddrinfo
+    socket.getaddrinfo = _pinned_getaddrinfo(
+        original_getaddrinfo, target.ip, target.hostname, target.port
+    )
+    try:
+        headers = dict(_HEADERS)
+        headers["Host"] = _build_host_header(target.hostname, target.port)
 
-    session = requests.Session()
-    session.headers.update(headers)
-    return session.get(direct_url, timeout=config.timeout, allow_redirects=False)
+        session = requests.Session()
+        session.headers.update(headers)
+        return session.get(url, timeout=config.timeout, allow_redirects=False)
+    finally:
+        socket.getaddrinfo = original_getaddrinfo
 
 
 def _safe_url_for_log(url: str) -> str:
