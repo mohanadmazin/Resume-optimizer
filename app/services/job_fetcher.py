@@ -67,6 +67,10 @@ class ExtractionError(JobFetcherError):
     """Could not extract meaningful text from the page."""
 
 
+class JobFetchError(JobFetcherError):
+    """Raised when a job URL cannot be fetched (wraps all fetch failures)."""
+
+
 # ── Result ───────────────────────────────────────────────────────────────────
 
 
@@ -79,6 +83,7 @@ class FetchResult:
     company: str | None = None
     location: str | None = None
     source_url: str | None = None
+    requires_manual_input: bool = False
 
 
 # ── Fetcher ──────────────────────────────────────────────────────────────────
@@ -276,3 +281,47 @@ def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResul
             )
         finally:
             response.close()
+
+
+# ── High-level API ───────────────────────────────────────────────────────────
+
+
+_MIN_JD_LENGTH = 200
+
+
+def fetch_job(url: str) -> FetchResult:
+    """Fetch a job posting URL with graceful degradation.
+
+    Tries the full fetch pipeline (requests + browser fallback).
+    If extraction yields fewer than ``_MIN_JD_LENGTH`` chars or any
+    error occurs, returns a result with ``requires_manual_input=True``
+    instead of raising.
+
+    The caller (UI) can then prompt the user to paste the JD manually.
+    """
+    try:
+        result = fetch_from_url(url)
+
+        if len(result.text.strip()) < _MIN_JD_LENGTH:
+            logger.info(
+                "LinkedIn blocked extraction (%d chars) for %s",
+                len(result.text), url,
+            )
+            return FetchResult(
+                text="",
+                title=result.title,
+                company=result.company,
+                location=result.location,
+                source_url=url,
+                requires_manual_input=True,
+            )
+
+        return result
+
+    except Exception as exc:
+        logger.warning("fetch_job failed for %s: %s", url, exc)
+        return FetchResult(
+            text="",
+            source_url=url,
+            requires_manual_input=True,
+        )

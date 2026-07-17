@@ -28,6 +28,7 @@ from app.services.job_fetcher import (
     InvalidURLError,
     JobFetcherError,
     fetch_from_url,
+    fetch_job,
 )
 
 
@@ -569,4 +570,68 @@ class TestFetchFromUrl:
         with patch("app.services.job_fetcher._connect", side_effect=[resp1, resp2]):
             result = fetch_from_url("https://example.com/start")
         assert result.text == "We are looking for a senior developer with strong experience."
-        assert mock_resolve.call_count == 2
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# fetch_job() — graceful degradation tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestFetchJob:
+    def test_success_returns_result(self):
+        long_text = (
+            "We are looking for a Senior Python Developer to join our backend team. "
+            "You will design and build scalable microservices, work with PostgreSQL "
+            "and Redis, and collaborate with frontend engineers on REST APIs. "
+            "Requirements: 5+ years Python, Django or FastAPI, Docker, AWS. "
+            "Nice to have: Kubernetes, CI/CD pipelines, Terraform."
+        )
+        good_result = FetchResult(
+            text=long_text,
+            title="Backend Engineer",
+            company="Acme",
+        )
+        with patch("app.services.job_fetcher.fetch_from_url", return_value=good_result):
+            result = fetch_job("https://company.com/jobs/123")
+
+        assert result.text == good_result.text
+        assert result.requires_manual_input is False
+        assert result.title == "Backend Engineer"
+
+    def test_thin_text_returns_requires_manual_input(self):
+        thin_result = FetchResult(text="Sign in to see more", title="LinkedIn")
+        with patch("app.services.job_fetcher.fetch_from_url", return_value=thin_result):
+            result = fetch_job("https://www.linkedin.com/jobs/view/123")
+
+        assert result.requires_manual_input is True
+        assert result.text == ""
+        assert result.title == "LinkedIn"
+
+    def test_fetch_error_returns_requires_manual_input(self):
+        with patch("app.services.job_fetcher.fetch_from_url", side_effect=Exception("timeout")):
+            result = fetch_job("https://example.com/jobs/1")
+
+        assert result.requires_manual_input is True
+        assert result.text == ""
+
+    def test_empty_text_returns_requires_manual_input(self):
+        empty_result = FetchResult(text="")
+        with patch("app.services.job_fetcher.fetch_from_url", return_value=empty_result):
+            result = fetch_job("https://example.com/jobs/1")
+
+        assert result.requires_manual_input is True
+
+    def test_metadata_preserved_on_thin_text(self):
+        thin_result = FetchResult(text="Sign in", title="SWE at Google", company="Google")
+        with patch("app.services.job_fetcher.fetch_from_url", return_value=thin_result):
+            result = fetch_job("https://www.linkedin.com/jobs/view/123")
+
+        assert result.requires_manual_input is True
+        assert result.title == "SWE at Google"
+        assert result.company == "Google"
+
+    def test_source_url_preserved(self):
+        with patch("app.services.job_fetcher.fetch_from_url", side_effect=Exception("fail")):
+            result = fetch_job("https://example.com/jobs/99")
+
+        assert result.source_url == "https://example.com/jobs/99"

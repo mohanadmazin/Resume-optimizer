@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from app.database import db
 from app.services.document_reader import extract_text
-from app.services.job_fetcher import FetchResult, JobFetcherError, fetch_from_url
+from app.services.job_fetcher import FetchResult, fetch_job
 from app.ui.workers import Worker
 
 
@@ -25,18 +25,14 @@ class _FetchWorker(QThread):
     """Background thread for fetching job descriptions from URLs."""
 
     finished = Signal(object)  # FetchResult
-    error = Signal(str)
 
     def __init__(self, url: str, parent=None):
         super().__init__(parent)
         self.url = url
 
     def run(self):
-        try:
-            result = fetch_from_url(self.url)
-            self.finished.emit(result)
-        except JobFetcherError as exc:
-            self.error.emit(str(exc))
+        result = fetch_job(self.url)
+        self.finished.emit(result)
 
 
 class JobDescriptionPage(QWidget):
@@ -105,12 +101,19 @@ class JobDescriptionPage(QWidget):
 
         self._fetch_worker = _FetchWorker(url)
         self._fetch_worker.finished.connect(self._on_fetch_done)
-        self._fetch_worker.error.connect(self._on_fetch_error)
         self._fetch_worker.start()
 
     def _on_fetch_done(self, result: FetchResult) -> None:
         self.fetch_btn.setEnabled(True)
         self.fetch_btn.setText("Fetch from URL")
+
+        if result.requires_manual_input:
+            self.window.notify(
+                "Could not fetch the job description automatically. "
+                "Please paste it manually below."
+            )
+            return
+
         self.content.setPlainText(result.text)
 
         # Auto-fill title / company / location from metadata
@@ -122,11 +125,6 @@ class JobDescriptionPage(QWidget):
             self.location_edit.setText(result.location)
 
         self.window.notify("Job description fetched successfully.")
-
-    def _on_fetch_error(self, message: str) -> None:
-        self.fetch_btn.setEnabled(True)
-        self.fetch_btn.setText("Fetch from URL")
-        QMessageBox.critical(self, "Fetch failed", message)
 
     def _upload(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
