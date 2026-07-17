@@ -17,3 +17,4 @@ class SkillGapResult(BaseModel):
     matched: List[str] = Field(default_factory=list)
     missing: List[SkillGapItem] = Field(default_factory=list)
     summary: str = ""
+    data_source: str = "AI-generated (no external market data)"

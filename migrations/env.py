@@ -8,7 +8,6 @@ from app.core.paths import DB_PATH
 from app.database.models import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATH}")
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -16,9 +15,14 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def _get_url() -> str:
+    """Return the sqlalchemy URL, falling back to the default DB_PATH."""
+    return config.get_main_option("sqlalchemy.url") or f"sqlite:///{DB_PATH}"
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode — generate SQL without connecting."""
-    url = config.get_main_option("sqlalchemy.url")
+    url = _get_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -31,8 +35,12 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations against the live database."""
+    current_config = context.config
+    url = current_config.get_main_option("sqlalchemy.url") or f"sqlite:///{DB_PATH}"
+    current_config.set_main_option("sqlalchemy.url", url)
+
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        current_config.get_section(current_config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

@@ -27,7 +27,7 @@ from app.domain.fact_guard import FactGuardResult, ProposedChange
 from app.exports.exporter import export_docx, export_markdown, export_pdf, to_markdown
 from app.services.ats_engine import analyze
 from app.services.diff_highlight import resume_diff_html
-from app.services.optimizer import optimize_resume
+from app.services.optimizer import apply_accepted_changes, optimize_resume
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 
@@ -38,6 +38,7 @@ class OptimizationPage(QWidget):
         self.window = window
         self._worker = None
         self._overlay = LoadingOverlayManager()
+        self._change_cards: dict[int, tuple[ProposedChange, QFrame]] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -104,6 +105,12 @@ class OptimizationPage(QWidget):
         self.review_layout.setSpacing(8)
         self.review_panel.setVisible(False)
         layout.addWidget(self.review_panel)
+
+        # Apply button for accepted flagged changes
+        self.apply_btn = QPushButton("Apply Accepted Changes")
+        self.apply_btn.clicked.connect(self._apply_accepted)
+        self.apply_btn.setVisible(False)
+        layout.addWidget(self.apply_btn)
 
         # Exports
         exports = QHBoxLayout()
@@ -194,11 +201,12 @@ class OptimizationPage(QWidget):
         # Calculate after score
         new_result = analyze(optimized, state.job_text)
 
-        # Save optimization
-        if state.resume_id is not None and state.job_id is not None:
-            db.save_optimization(
-                state.resume_id, state.job_id, config.load_config()["model"], optimized.model_dump_json()
-            )
+        # Only save to database when there are no flagged changes
+        if fact_result.flagged_count == 0:
+            if state.resume_id is not None and state.job_id is not None:
+                db.save_optimization(
+                    state.resume_id, state.job_id, config.load_config()["model"], optimized.model_dump_json()
+                )
 
         # Update score display
         old_score = state.ats.ats_score if state.ats else 0
@@ -212,7 +220,8 @@ class OptimizationPage(QWidget):
         if flagged:
             self.window.notify(
                 f"Optimization complete — {flagged} change(s) require review "
-                f"(new numbers, entities, or skills detected)."
+                f"(new numbers, entities, or skills detected). "
+                f"Review and accept/reject below, then click 'Apply Accepted Changes'."
             )
         else:
             self.window.notify(
@@ -232,9 +241,13 @@ class OptimizationPage(QWidget):
         flagged = result.flagged_count
         total = len(result.all_changes)
 
+        # Clear old change cards
+        self._change_cards.clear()
+
         if total == 0:
             self.fact_banner.setVisible(False)
             self.review_panel.setVisible(False)
+            self.apply_btn.setVisible(False)
             return
 
         # Banner
@@ -250,7 +263,7 @@ class OptimizationPage(QWidget):
             self.fact_banner.setText(
                 f"AI suggestions require review — {flagged}/{total} change(s) "
                 f"contain unsupported details: {', '.join(warnings)}. "
-                f"Review each change below before accepting."
+                f"Accept or reject each change below, then click 'Apply Accepted Changes'."
             )
             self.fact_banner.setStyleSheet(
                 "background-color: rgba(234, 179, 8, 0.15); color: #EAB308; "
@@ -279,13 +292,14 @@ class OptimizationPage(QWidget):
             header.setObjectName("reviewHeader")
             self.review_layout.addWidget(header)
 
-            for change in result.flagged_changes:
-                self._add_change_card(change)
+            for idx, change in enumerate(result.flagged_changes):
+                self._add_change_card(idx, change)
 
-        self.review_panel.setVisible(True)
+        self.review_panel.setVisible(flagged > 0)
+        self.apply_btn.setVisible(flagged > 0)
 
-    def _add_change_card(self, change: ProposedChange) -> None:
-        """Add a single change card to the review panel."""
+    def _add_change_card(self, idx: int, change: ProposedChange) -> None:
+        """Add a single change card to the review panel with Accept/Reject."""
         card = QFrame()
         card.setObjectName("changeCard")
         card_layout = QVBoxLayout(card)
@@ -319,7 +333,8 @@ class OptimizationPage(QWidget):
         card_layout.addLayout(header_row)
 
         # Original text
-        orig_label = QLabel(f"Original: {change.original[:200]}")
+        orig_text = change.original[:200] if change.original else "(new content)"
+        orig_label = QLabel(f"Original: {orig_text}")
         orig_label.setWordWrap(True)
         orig_label.setStyleSheet("color: #94A3B8; font-size: 12px;")
         card_layout.addWidget(orig_label)
@@ -330,7 +345,86 @@ class OptimizationPage(QWidget):
         rewrite_label.setStyleSheet("color: #F59E0B; font-size: 12px;")
         card_layout.addWidget(rewrite_label)
 
+        # Accept / Reject buttons
+        btn_row = QHBoxLayout()
+        accept_btn = QPushButton("Accept")
+        reject_btn = QPushButton("Reject")
+        status_label = QLabel("Pending review")
+        status_label.setStyleSheet("color: #9CA3AF; font-size: 11px;")
+
+        def _on_accept(change_idx=idx, sl=status_label, ab=accept_btn, rb=reject_btn):
+            self.window.state.fact_guard.flagged_changes[change_idx].accepted = True
+            sl.setText("Accepted")
+            sl.setStyleSheet("color: #22C55E; font-size: 11px; font-weight: bold;")
+            ab.setEnabled(False)
+            rb.setEnabled(False)
+
+        def _on_reject(change_idx=idx, sl=status_label, ab=accept_btn, rb=reject_btn):
+            self.window.state.fact_guard.flagged_changes[change_idx].accepted = False
+            sl.setText("Rejected")
+            sl.setStyleSheet("color: #EF4444; font-size: 11px; font-weight: bold;")
+            ab.setEnabled(False)
+            rb.setEnabled(False)
+
+        accept_btn.clicked.connect(_on_accept)
+        reject_btn.clicked.connect(_on_reject)
+        btn_row.addWidget(accept_btn)
+        btn_row.addWidget(reject_btn)
+        btn_row.addWidget(status_label)
+        btn_row.addStretch()
+        card_layout.addLayout(btn_row)
+
+        self._change_cards[idx] = (change, card)
         self.review_layout.addWidget(card)
+
+    def _apply_accepted(self) -> None:
+        """Apply all accepted flagged changes and rebuild the optimized resume."""
+        state = self.window.state
+        if state.fact_guard is None or state.resume is None:
+            return
+
+        all_reviewed = all(
+            c.accepted or not any([c.has_new_numbers, c.has_new_entities, c.has_new_skills])
+            for c in state.fact_guard.flagged_changes
+        )
+
+        if not all_reviewed:
+            QMessageBox.warning(
+                self,
+                "Changes pending",
+                "Please accept or reject all flagged changes before applying.",
+            )
+            return
+
+        state.optimized = apply_accepted_changes(state.resume, state.fact_guard)
+        state.fact_guard = None
+
+        self.after.setHtml(resume_diff_html(state.resume, state.optimized))
+
+        # Save to database now that all changes are reviewed
+        if state.resume_id is not None and state.job_id is not None:
+            db.save_optimization(
+                state.resume_id, state.job_id,
+                config.load_config()["model"],
+                state.optimized.model_dump_json(),
+            )
+
+        self.review_panel.setVisible(False)
+        self.apply_btn.setVisible(False)
+        self.fact_banner.setText("All changes reviewed and applied.")
+        self.fact_banner.setStyleSheet(
+            "background-color: rgba(34, 197, 94, 0.15); color: #22C55E; "
+            "padding: 10px; border-radius: 6px; font-weight: bold;"
+        )
+        self.fact_banner.setVisible(True)
+
+        # Recalculate score
+        new_result = analyze(state.optimized, state.job_text)
+        old_score = state.ats.ats_score if state.ats else 0
+        self.after_score_label.setText(f"Optimized ATS Score: {new_result.ats_score} / 100")
+        self._style_after_score(old_score, new_result.ats_score)
+
+        self.window.notify("Accepted changes applied and saved.")
 
     # ── Score styling ──────────────────────────────────────────────────────
 
@@ -407,6 +501,23 @@ class OptimizationPage(QWidget):
         if resume is None:
             QMessageBox.warning(self, "Nothing to export", "Import or optimize a resume first.")
             return
+
+        # Warn if there are still pending flagged changes
+        if state.fact_guard and state.fact_guard.flagged_count > 0:
+            pending = sum(
+                1 for c in state.fact_guard.flagged_changes
+                if not c.accepted and (c.has_new_numbers or c.has_new_entities or c.has_new_skills)
+            )
+            if pending > 0:
+                reply = QMessageBox.question(
+                    self,
+                    "Pending review",
+                    f"There are {pending} flagged change(s) that haven't been reviewed yet. "
+                    f"Exporting now will only include safe changes. Continue?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
         filters = {
             "docx": "Word Document (*.docx)",
             "pdf": "PDF Document (*.pdf)",

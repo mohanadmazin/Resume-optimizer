@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from app.database import db
 from app.services.document_reader import extract_text
 from app.services.job_fetcher import JobFetcher, JobFetcherError
+from app.ui.workers import Worker
 
 
 class _FetchWorker(QThread):
@@ -43,6 +44,7 @@ class JobDescriptionPage(QWidget):
         super().__init__()
         self.window = window
         self._fetch_worker = None
+        self._extract_worker = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -76,9 +78,9 @@ class JobDescriptionPage(QWidget):
 
         # Upload button row
         row = QHBoxLayout()
-        upload_btn = QPushButton("Upload PDF / DOCX")
-        upload_btn.clicked.connect(self._upload)
-        row.addWidget(upload_btn)
+        self.upload_btn = QPushButton("Upload PDF / DOCX")
+        self.upload_btn.clicked.connect(self._upload)
+        row.addWidget(self.upload_btn)
         row.addStretch()
         layout.addLayout(row)
 
@@ -123,10 +125,21 @@ class JobDescriptionPage(QWidget):
         )
         if not path:
             return
-        try:
-            self.content.setPlainText(extract_text(path))
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Upload failed", str(exc))
+        self.upload_btn.setEnabled(False)
+        self.window.notify("Extracting text from document...")
+        self._extract_worker = Worker(extract_text, path)
+        self._extract_worker.result.connect(self._on_extract_done)
+        self._extract_worker.error.connect(self._on_extract_error)
+        self._extract_worker.start()
+
+    def _on_extract_done(self, text: str) -> None:
+        self.upload_btn.setEnabled(True)
+        self.content.setPlainText(text)
+        self.window.notify("Job description uploaded.")
+
+    def _on_extract_error(self, message: str) -> None:
+        self.upload_btn.setEnabled(True)
+        QMessageBox.critical(self, "Upload failed", message)
 
     def _save(self) -> None:
         text = self.content.toPlainText().strip()
@@ -146,7 +159,7 @@ class JobDescriptionPage(QWidget):
         self._trigger_analyses()
 
     def _trigger_analyses(self) -> None:
-        """Auto-fill role/location and run ATS, Skill Gap, and Salary analyses."""
+        """Auto-fill role/location and run ATS analysis first, then skill gap and salary sequentially."""
         state = self.window.state
 
         skill_gap_page = self.window.get_page("Skill Gap")
@@ -160,12 +173,27 @@ class JobDescriptionPage(QWidget):
             if state.job_location:
                 salary_page.location_input.setText(state.job_location)
 
+        # Run ATS analysis first (deterministic, fast)
         ats_page = self.window.get_page("ATS Analysis")
         if ats_page:
             ats_page.run_analysis(silent=True)
 
+        # Skill gap and salary use AI — run them sequentially to avoid
+        # overloading Ollama with concurrent requests
+        self._sequential_analyses = []
         if skill_gap_page:
-            skill_gap_page.run_analysis(silent=True)
-
+            self._sequential_analyses.append(("Skill Gap", skill_gap_page))
         if salary_page:
-            salary_page.run_analysis(silent=True)
+            self._sequential_analyses.append(("Salary Estimate", salary_page))
+
+        if self._sequential_analyses:
+            self._run_next_analysis()
+
+    def _run_next_analysis(self) -> None:
+        """Run the next analysis in the queue sequentially."""
+        if not self._sequential_analyses:
+            return
+
+        name, page = self._sequential_analyses.pop(0)
+        if hasattr(page, 'run_analysis'):
+            page.run_analysis(silent=True)

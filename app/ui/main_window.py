@@ -29,6 +29,7 @@ from app.ui.pages.settings import SettingsPage
 from app.ui.pages.skill_gap import SkillGapPage
 
 from app.ui.state import AppState
+from app.core.settings import settings_service
 
 from app.ui.theme import (
     create_dark_theme,
@@ -64,54 +65,13 @@ class MainWindow(QMainWindow):
         self.setup_ui()
         self.setup_pages()
 
-        self.apply_theme(
-            self.state.theme    
-        )
+        self.apply_theme(self.state.theme)
+
+        settings_service.on_changed(self._on_settings_changed)
 
         # Pre-warm Ollama model in background after 1 second
         QTimer.singleShot(1000, self._prewarm_model)
 
-    def apply_theme(self, theme):
-
-        theme = theme.lower()
-
-
-        if theme == "dark":
-
-            self.setPalette(
-                self.palette()
-            )
-
-            self.setStyleSheet(
-                DARK_STYLESHEET
-            )
-
-
-        else:
-
-            self.setStyleSheet(
-                LIGHT_STYLESHEET
-            )
-
-
-        self.state.set_theme(
-            theme
-        )
-
-
-        self.themeComboBox.blockSignals(
-            True
-        )
-
-
-        self.themeComboBox.setCurrentText(
-            theme.capitalize()
-        )
-
-
-        self.themeComboBox.blockSignals(
-            False
-        )
     def setup_ui(self):
 
         central = QWidget()
@@ -313,6 +273,11 @@ class MainWindow(QMainWindow):
             lambda ok: None  # silently succeed or skip
         )
         self._warm_worker.start()
+
+    def _on_settings_changed(self, settings) -> None:
+        """React to settings changes from any source."""
+        if hasattr(self, 'ollama_status'):
+            self.ollama_status.set_base_url(settings.ai.ollama_url)
 
 
 

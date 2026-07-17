@@ -9,6 +9,7 @@ from app.domain.resume import (
     ContactInfo,
     EducationItem,
     ExperienceItem,
+    ParseWarning,
     ProjectItem,
     ResumeData,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "ContactInfo",
     "EducationItem",
     "ExperienceItem",
+    "ParseWarning",
     "ProjectItem",
     "ResumeData",
     "SkillGapItem",

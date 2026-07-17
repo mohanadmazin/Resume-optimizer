@@ -55,6 +55,18 @@ class SalaryEstimatePage(QWidget):
         )
         layout.addWidget(desc)
 
+        disclaimer = QLabel(
+            "WARNING: This is an AI-generated compensation estimate, NOT verified "
+            "market salary data. No external salary dataset, API, or cited report "
+            "is used. The AI does not have access to current salary data. "
+            "Treat the numbers as a rough discussion point only."
+        )
+        disclaimer.setWordWrap(True)
+        disclaimer.setStyleSheet("color: #F59E0B; font-size: 11px; font-style: italic; "
+                                 "background-color: rgba(245, 158, 11, 0.1); "
+                                 "padding: 6px; border-radius: 4px;")
+        layout.addWidget(disclaimer)
+
         input_row = QHBoxLayout()
         self.role_input = QLineEdit()
         self.role_input.setPlaceholderText("Target role (e.g. Software Engineer)")

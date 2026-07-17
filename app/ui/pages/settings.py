@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from app.ai.ollama_client import OllamaClient
 from app.ui.workers import Worker
 
-from app.core.settings import load_settings, save_settings, AppSettings
+from app.core.settings import settings_service
 
 
 class SettingsPage(QWidget):
@@ -143,7 +143,7 @@ class SettingsPage(QWidget):
 
     def on_show(self):
 
-        settings = load_settings()
+        settings = settings_service.settings
 
 
         self.url_edit.setText(
@@ -243,8 +243,7 @@ class SettingsPage(QWidget):
 
     def _save(self):
 
-        settings = load_settings()
-
+        current = settings_service.settings
 
         models = [
             self.model_combo.itemText(i)
@@ -256,7 +255,7 @@ class SettingsPage(QWidget):
 
         model = (
             self.model_combo.currentText().strip()
-            or settings.ai.model
+            or current.ai.model
         )
 
 
@@ -264,23 +263,20 @@ class SettingsPage(QWidget):
 
             models.append(model)
 
-
-        settings.ai.ollama_url = (
+        updated = current.model_copy(deep=True)
+        updated.ai.ollama_url = (
             self.url_edit.text().strip()
-            or settings.ai.ollama_url
+            or current.ai.ollama_url
         )
-        settings.ai.model = model
-        settings.ai.available_models = models
-        settings.ai.temperature = round(
+        updated.ai.model = model
+        updated.ai.available_models = models
+        updated.ai.temperature = round(
             self.temp_spin.value(), 2
         )
 
+        settings_service.save(updated)
 
-        save_settings(settings)
-
-        # Update the Ollama status indicator in MainWindow
-        if hasattr(self.window, 'ollama_status'):
-            self.window.ollama_status.set_base_url(settings.ai.ollama_url)
+        self.window.state.reload_settings()
 
         self.window.notify(
             "Settings saved."

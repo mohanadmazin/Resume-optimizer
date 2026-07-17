@@ -70,28 +70,38 @@ class ResumeUploadPage(QWidget):
         )
         if not path:
             return
-        try:
-            text = extract_text(path)
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Import failed", str(exc))
-            return
-        if not text.strip():
-            QMessageBox.warning(self, "Empty document", "No text could be extracted from the file.")
-            return
-        self._raw_text = text
+        self._raw_text = ""
         self._source_filename = Path(path).name
         if not self.name_edit.text():
             self.name_edit.setText(Path(path).stem)
+        self.import_btn.setEnabled(False)
+        self._overlay.show(self, "Extracting text from document...")
+        self._worker = Worker(extract_text, path)
+        self._worker.result.connect(self._on_extracted)
+        self._worker.error.connect(self._on_extract_error)
+        self._worker.start()
+
+    def _on_extracted(self, text: str) -> None:
+        self._overlay.hide(self)
+        if not text.strip():
+            self.import_btn.setEnabled(True)
+            QMessageBox.warning(self, "Empty document", "No text could be extracted from the file.")
+            return
+        self._raw_text = text
         if self.ai_check.isChecked():
             self.window.notify("Parsing resume with AI - this may take a moment...")
-            self.import_btn.setEnabled(False)
             self._overlay.show(self, "Parsing resume with AI...")
             self._worker = Worker(parse_resume_ai, text, OllamaClient())
             self._worker.result.connect(self._on_parsed)
-            self._worker.error.connect(self._on_error)
+            self._worker.error.connect(self._on_parse_error)
             self._worker.start()
         else:
             self._on_parsed(parse_resume(text))
+
+    def _on_extract_error(self, message: str) -> None:
+        self._overlay.hide(self)
+        self.import_btn.setEnabled(True)
+        QMessageBox.critical(self, "Import failed", message)
 
     def _on_parsed(self, resume) -> None:
         self._overlay.hide(self)
@@ -99,12 +109,24 @@ class ResumeUploadPage(QWidget):
         self._parsed = resume
         data = resume.model_dump()
         data.pop("raw_text", None)
-        self.preview.setPlainText(json.dumps(data, indent=2))
+        preview_text = json.dumps(data, indent=2)
+        if resume.parse_warnings:
+            warnings_text = "\n".join(
+                f"  Line {w.line} [{w.section}]: {w.message}"
+                for w in resume.parse_warnings
+            )
+            preview_text += f"\n\n--- Parse Warnings ({len(resume.parse_warnings)}) ---\n{warnings_text}"
+        self.preview.setPlainText(preview_text)
         self.save_btn.setEnabled(True)
         self.import_btn.setEnabled(True)
-        self.window.notify("Resume parsed. Review the JSON, then save it.")
+        if resume.parse_warnings:
+            self.window.notify(
+                f"Resume parsed with {len(resume.parse_warnings)} warning(s). Review carefully."
+            )
+        else:
+            self.window.notify("Resume parsed. Review the JSON, then save it.")
 
-    def _on_error(self, message: str) -> None:
+    def _on_parse_error(self, message: str) -> None:
         self._overlay.hide(self)
         self.import_btn.setEnabled(True)
         QMessageBox.critical(self, "AI parsing failed", message)

@@ -1,11 +1,30 @@
 """Background thread worker so AI calls never block the UI."""
 import logging
+import threading
 import time
 from typing import Any, Callable
 
 from PySide6.QtCore import QThread, Signal
 
 logger = logging.getLogger(__name__)
+
+# Global cancellation event shared across workers for pipeline cancellation.
+_cancel_event = threading.Event()
+
+
+def request_cancel() -> None:
+    """Signal cancellation to all active pipeline workers."""
+    _cancel_event.set()
+
+
+def reset_cancel() -> None:
+    """Clear any pending cancellation."""
+    _cancel_event.clear()
+
+
+def is_cancelled() -> bool:
+    """Check if cancellation has been requested."""
+    return _cancel_event.is_set()
 
 
 class Worker(QThread):
@@ -26,7 +45,7 @@ class Worker(QThread):
 
 
 class PipelineWorker(QThread):
-    """Runs the full optimization pipeline: ATS → Optimize → Cover Letter."""
+    """Runs the full optimization pipeline: ATS -> Optimize -> Cover Letter."""
 
     progress = Signal(str, int)   # (step_name, percentage 0-100)
     result = Signal(object)       # PipelineResult
@@ -58,68 +77,45 @@ class PipelineWorker(QThread):
 
     def cancel(self) -> None:
         self._cancelled = True
+        request_cancel()
 
     def run(self) -> None:
-        from app import config
-        from app.ai.ollama_client import OllamaClient
-        from app.database import db
-        from app.domain.pipeline import PipelineResult
-        from app.services.ats_engine import analyze
-        from app.services.cover_letter import generate_cover_letter
-        from app.services.optimizer import optimize_resume
+        from app.application.optimize_resume import RunPipelineUseCase
 
+        reset_cancel()
+        use_case = RunPipelineUseCase()
         start = time.monotonic()
 
         try:
-            # Step 1 — ATS Analysis (fast, CPU-only)
             self.progress.emit(self.STEPS[0], 10)
-            ats_result = analyze(self.resume, self.job_text)
-            if self._cancelled:
-                return
-            self.progress.emit(f"{self.STEPS[0]} ✓", 25)
 
-            # Step 2 — AI Optimization (slow)
-            self.progress.emit(self.STEPS[1], 30)
+            from app.ai.ollama_client import OllamaClient
             client = OllamaClient()
-            optimized, fact_result = optimize_resume(
-                self.resume, self.job_text, ats_result, client
-            )
+
+            self.progress.emit(f"{self.STEPS[0]} ...", 25)
+            self.progress.emit(self.STEPS[1], 30)
+
             if self._cancelled:
                 return
-            self.progress.emit(f"{self.STEPS[1]} ✓", 60)
-
-            # Step 3 — Cover Letter (slow)
+            self.progress.emit(f"{self.STEPS[1]} ...", 60)
             self.progress.emit(self.STEPS[2], 65)
-            cover_letter = generate_cover_letter(
-                self.resume, self.job_text, client
-            )
+
             if self._cancelled:
                 return
-            self.progress.emit(f"{self.STEPS[2]} ✓", 90)
-
-            # Step 4 — Persist results
+            self.progress.emit(f"{self.STEPS[2]} ...", 90)
             self.progress.emit(self.STEPS[3], 95)
-            model = config.load_config()["model"]
-            if self.resume_id and self.job_id:
-                db.save_optimization(
-                    self.resume_id, self.job_id, model,
-                    optimized.model_dump_json(),
-                )
 
-            # Compute after-score
-            ats_after = analyze(optimized, self.job_text)
+            result = use_case.run(
+                self.resume, self.job_text, self.job_title,
+                self.resume_id, self.job_id, client,
+            )
+
+            if self._cancelled:
+                return
 
             duration = time.monotonic() - start
             self.progress.emit("Pipeline complete!", 100)
-
-            self.result.emit(PipelineResult(
-                ats_before=ats_result,
-                optimized=optimized,
-                cover_letter=cover_letter,
-                fact_guard=fact_result,
-                ats_after_score=ats_after.ats_score,
-                duration_seconds=round(duration, 1),
-            ))
+            self.result.emit(result)
 
         except Exception as exc:
             logger.exception("Pipeline failed")

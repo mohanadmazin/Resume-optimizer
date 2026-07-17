@@ -56,6 +56,15 @@ class SkillGapPage(QWidget):
         )
         layout.addWidget(desc)
 
+        disclaimer = QLabel(
+            "Note: Market skills are AI-generated and not grounded in an actual "
+            "job-posting corpus, dated skills dataset, or citations. The missing "
+            "skills list reflects the AI's training data, not verified market evidence."
+        )
+        disclaimer.setWordWrap(True)
+        disclaimer.setStyleSheet("color: #9CA3AF; font-size: 11px; font-style: italic;")
+        layout.addWidget(disclaimer)
+
         input_row = QHBoxLayout()
         self.role_input = QLineEdit()
         self.role_input.setPlaceholderText("e.g. Senior Software Engineer")

@@ -44,29 +44,48 @@ def _card(title: str) -> tuple[QFrame, QLabel]:
 
 
 def _highlight_keywords(text: str, matched: list[str], missing: list[str]) -> str:
-    """Convert text to HTML with highlighted keywords."""
-    html_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    html_text = html_text.replace("\n", "<br>")
+    """Convert text to HTML with highlighted keywords.
 
-    # Highlight matched keywords (green)
-    for word in matched:
-        pattern = r'(?i)\b(' + re.escape(word) + r')\b'
-        replacement = (
-            r'<span style="background-color: #22C55E; color: white; '
-            r'font-weight: bold; padding: 2px 4px; border-radius: 3px;">\1</span>'
-        )
-        html_text = re.sub(pattern, replacement, html_text)
+    Uses a token-based approach to avoid matching inside HTML tags or
+    previously generated highlight spans.
+    """
+    # First escape HTML entities in the original text
+    escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    lines = escaped.split("\n")
 
-    # Highlight missing keywords (red)
-    for word in missing:
-        pattern = r'(?i)\b(' + re.escape(word) + r')\b'
-        replacement = (
-            r'<span style="background-color: #EF4444; color: white; '
-            r'font-weight: bold; padding: 2px 4px; border-radius: 3px;">\1</span>'
-        )
-        html_text = re.sub(pattern, replacement, html_text)
+    # Build a combined regex for all keywords (matched + missing) — longest first
+    # to avoid partial matches
+    all_keywords = sorted(set(matched + missing), key=len, reverse=True)
+    if not all_keywords:
+        return f"<div style='font-family: Segoe UI; font-size: 13px; line-height: 1.6;'>{'<br>'.join(lines)}</div>"
 
-    return f"<div style='font-family: Segoe UI; font-size: 13px; line-height: 1.6;'>{html_text}</div>"
+    # Create keyword lookup sets for fast membership testing
+    matched_set = {k.lower() for k in matched}
+    missing_set = {k.lower() for k in missing}
+
+    # Tokenize each line and highlight matched tokens
+    result_lines = []
+    for line in lines:
+        # Split on word boundaries while preserving the delimiters
+        tokens = re.split(r'(\b\w+\b)', line)
+        highlighted_parts = []
+        for token in tokens:
+            lower = token.lower()
+            if lower in matched_set:
+                highlighted_parts.append(
+                    f'<span style="background-color: #22C55E; color: white; '
+                    f'font-weight: bold; padding: 2px 4px; border-radius: 3px;">{token}</span>'
+                )
+            elif lower in missing_set:
+                highlighted_parts.append(
+                    f'<span style="background-color: #EF4444; color: white; '
+                    f'font-weight: bold; padding: 2px 4px; border-radius: 3px;">{token}</span>'
+                )
+            else:
+                highlighted_parts.append(token)
+        result_lines.append("".join(highlighted_parts))
+
+    return f"<div style='font-family: Segoe UI; font-size: 13px; line-height: 1.6;'>{'<br>'.join(result_lines)}</div>"
 
 
 class ATSAnalysisPage(QWidget):
@@ -120,6 +139,9 @@ class ATSAnalysisPage(QWidget):
         self.keywords_list = QListWidget()
         self.keywords_list.itemChanged.connect(
             self._update_select_all_checkbox
+        )
+        self.keywords_list.itemChanged.connect(
+            lambda _: self._sync_selected_keywords()
         )
 
         left.addWidget(self.keywords_list)
@@ -195,6 +217,17 @@ class ATSAnalysisPage(QWidget):
             )
 
         self.keywords_list.blockSignals(False)
+        self._sync_selected_keywords()
+
+    def _sync_selected_keywords(self) -> None:
+        """Synchronize checked keyword items with application state."""
+        state = self.window.state
+        selected = []
+        for i in range(self.keywords_list.count()):
+            item = self.keywords_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                selected.append(item.text())
+        state.selected_keywords = selected
 
     def _load_fallbacks(self) -> None:
         state = self.window.state
@@ -281,6 +314,9 @@ class ATSAnalysisPage(QWidget):
             self.keywords_list.addItem(item)
 
         self.keywords_list.blockSignals(False)
+
+        # Sync checked keywords to state
+        self._sync_selected_keywords()
 
         # Master checkbox selected
         self.select_all_checkbox.blockSignals(True)

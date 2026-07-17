@@ -350,7 +350,9 @@ resume-optimizer-main/
 ├── migrations/
 │   ├── env.py
 │   └── versions/
-│       └── 0001_initial_schema.py
+│       ├── 0001_initial_schema.py
+│       ├── 0002_add_resume_tracking.py
+│       └── 0003_add_cascade_delete.py
 │
 ├── app/
 │   ├── __init__.py
@@ -368,6 +370,8 @@ resume-optimizer-main/
 │   │   ├── resume.py                  # ContactInfo, ExperienceItem, EducationItem, ProjectItem, ResumeData
 │   │   ├── skill_gap.py               # SkillGapItem, SkillGapResult
 │   │   ├── salary.py                  # SalaryEstimate (Decimal fields)
+│   │   ├── analysis.py                # ATSResult domain model
+│   │   ├── fact_guard.py              # ChangeType, ProposedChange, FactGuardResult
 │   │   └── pipeline.py                # PipelineResult dataclass
 │   │
 │   ├── ai/
@@ -395,11 +399,12 @@ resume-optimizer-main/
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── ats_engine.py              # ATS keyword analysis + scoring
-│   │   ├── optimizer.py               # AI resume optimization
-│   │   ├── cover_letter.py            # AI cover letter generation
-│   │   ├── resume_parser.py           # Heuristic + AI resume parsing (374 lines)
+│   │   ├── optimizer.py               # AI resume optimization (safe-only apply)
+│   │   ├── cover_letter.py            # AI cover letter generation + fact checking
+│   │   ├── resume_parser.py           # Heuristic + AI resume parsing
+│   │   ├── fact_guard.py              # Deterministic fact validation (SequenceMatcher)
 │   │   ├── document_reader.py         # PDF/DOCX/TXT text extraction
-│   │   ├── job_fetcher.py             # URL-based job description fetching
+│   │   ├── job_fetcher.py             # URL fetch with SSRF protection
 │   │   ├── salary_estimator.py        # AI salary estimation
 │   │   ├── skill_gap.py               # AI skill gap analysis
 │   │   ├── diff_highlight.py          # HTML diff between original and optimized
@@ -409,8 +414,8 @@ resume-optimizer-main/
 │       ├── __init__.py
 │       ├── main_window.py             # QMainWindow with sidebar nav + stack
 │       ├── state.py                   # AppState (resume, job, ats, pipeline, etc.)
-│       ├── workers.py                 # Worker + PipelineWorker (QThread)
-│       ├── theme.py                   # DARK_STYLESHEET + LIGHT_STYLESHEET
+│   ├── workers.py                 # Worker + PipelineWorker (QThread) + cancel support
+│   ├── theme.py                   # DARK_STYLESHEET + LIGHT_STYLESHEET
 │       │
 │       ├── components/
 │       │   ├── __init__.py
@@ -431,9 +436,16 @@ resume-optimizer-main/
 │
 └── tests/
     ├── __init__.py
-    ├── test_ats_engine.py             # 4 tests
+    ├── test_ats_engine.py             # 15 tests (ATS scoring, skill matching, suggestions)
+    ├── test_cover_letter.py           # 11 tests (fact checking, generation, warnings)
     ├── test_exporter.py               # 2 tests
+    ├── test_fact_guard.py             # 22 tests (normalization, entities, skills, changes)
+    ├── test_job_fetcher.py            # 30 tests (SSRF protection, IP validation, URL safety)
+    ├── test_migrations.py             # 23 tests (schema, backup, restore, cascade delete)
+    ├── test_optimizer.py              # 7 tests (safe-only apply, accepted changes)
     ├── test_parser.py                 # 4 tests
+    ├── test_parser_fallback.py        # 8 tests (OllamaError fallback, edge cases)
+    ├── test_settings.py               # 29 tests (atomic write, backup, recovery, concurrency)
     └── test_skill_gap_salary.py       # 5 tests
 ```
 
@@ -1907,7 +1919,7 @@ AI generation time depends on the selected model and hardware and should not blo
 * Add structured-output validation
 * Add response repair
 * Add fact guard
-* Add per-change acceptance
+* [x] Add per-change acceptance
 * Add model diagnostics
 
 ### Phase 5 — Application Workflow
@@ -1957,7 +1969,7 @@ AI generation time depends on the selected model and hardware and should not blo
 * [x] Validate all AI JSON before saving (2026-07-16)
 * [x] Redesign salary values as numeric fields (2026-07-16)
 * [x] Add salary source and confidence fields (2026-07-16)
-* [ ] Prevent AI-generated unsupported claims
+* [x] Prevent AI-generated unsupported claims (#2: safe-only apply + fact guard)
 * [x] Add transaction-safe saves (2026-07-16)
 
 ### P1 — Maintainability
@@ -1987,9 +1999,9 @@ AI generation time depends on the selected model and hardware and should not blo
 
 ### P3 — Release Quality
 
-* [ ] Add pytest-qt tests
-* [ ] Add migration tests
-* [ ] Add regression fixtures
+* [x] Add pytest-qt tests
+* [x] Add migration tests (23 tests)
+* [x] Add regression fixtures
 * [ ] Add CI checks
 * [ ] Add PyInstaller builds
 * [ ] Add accessibility checks
@@ -2069,6 +2081,43 @@ The salary feature remains a prototype until it uses a dated and identified sala
 * [x] Theme styles for pipeline button, cancel button, step label
 * [x] Added beautifulsoup4 dependency
 * [x] Synced requirements.txt with pyproject.toml
+
+### Bug Audit Fixes — 2026-07-17
+
+25-issue comprehensive bug audit covering crashes, data integrity, UX, parser correctness, and test coverage:
+
+* [x] **#1** Fixed `OllamaError` import in `resume_parser.py`
+* [x] **#2** Optimizer now only applies safe changes; flagged changes require user review (Accept/Reject UI)
+* [x] **#3** Fact guard uses `SequenceMatcher` for inserted/rewritten bullet detection; all bullets checked
+* [x] **#4** ATS scoring uses structured resume data only; falls back to raw_text only when structured is empty
+* [x] **#5** Migration 0002 already exists for source columns (was already fixed)
+* [x] **#6** Fixed `pyproject.toml` build backend to `setuptools.build_meta`
+* [x] **#7** Added `_sync_selected_keywords()` to ATS page for keyword checkbox sync
+* [x] **#8** Fixed salary experience range to apply min floor before max calculation
+* [x] **#9** Entity detection requires multi-word proper nouns or company suffixes; skill normalization with aliases
+* [x] **#10** Headline added to diff highlight comparison preview
+* [x] **#11** Cover letter fact-checking for numbers and company names; warnings appended to output
+* [x] **#12** `RunPipelineUseCase` sets `requires_review=True` and skips DB save when flagged
+* [x] **#13** Global `threading.Event` cancel mechanism in workers; `OllamaClient.set_cancel_event()`
+* [x] **#14** Ollama status check guards against overlapping threads; cleanup on finish
+* [x] **#15** `load_settings()` returns `model_copy(deep=True)` in all fallback paths
+* [x] **#16** `_quarantine_settings()` renames broken file to `.invalid.json`
+* [x] **#17** `AppState.reload_settings()` added; `SettingsPage` calls it after save
+* [x] **#18** Project parser detects new title-like lines before merging into previous bullet
+* [x] **#19** Experience parser detects new job entries by checking length, case, digits, bullets
+* [x] **#20** `_KNOWN_SKILLS` curated vocabulary for skill extraction from JDs
+* [x] **#21** Token-based highlighting in ATS heatmap avoids matching inside HTML tags
+* [x] **#22** Salary disclaimer updated to explicit WARNING about no external data source
+* [x] **#23** Skill gap disclaimer already present (from earlier work)
+* [x] **#24** Job description page runs analyses sequentially (ATS first, then skill gap, then salary)
+* [x] **#25** Test coverage expanded: 161 tests across 11 test files (was 15 tests across 5 files)
+
+### Infrastructure Fixes — 2026-07-17
+
+* [x] Fixed `migrations/env.py` — uses `context.config` instead of stale module-level variable
+* [x] Added SSRF protection to `job_fetcher.py` — IP validation, redirect protection, content-type checks
+* [x] Fixed `test_migrations.py` — 23 tests all passing
+* [x] Fixed `test_job_fetcher.py` — 30 tests all passing
 
 ---
 

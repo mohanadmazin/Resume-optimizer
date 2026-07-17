@@ -7,9 +7,9 @@ import logging
 import re
 
 from pydantic import ValidationError
-from app.ai.ollama_client import OllamaClient
+from app.ai.ollama_client import OllamaClient, OllamaError
 from app.ai.prompts import PARSE_PROMPT, PARSE_SYSTEM
-from app.schemas import ContactInfo, EducationItem, ExperienceItem, ProjectItem, ResumeData
+from app.schemas import ContactInfo, EducationItem, ExperienceItem, ParseWarning, ProjectItem, ResumeData
 
 logger = logging.getLogger(__name__)
 
@@ -118,17 +118,20 @@ def parse_resume(text: str) -> ResumeData:
     contact = _parse_contact(sections.get("header", []), text)
     headline = _extract_headline(sections.get("header", []), contact.name)
 
+    experience, exp_warnings = _parse_experience(sections.get("experience", []))
+
     return ResumeData(
         contact=contact,
         headline=headline,
         summary=" ".join(l.strip() for l in sections.get("summary", []) if l.strip()),
         skills=_parse_skills(sections.get("skills", [])),
-        experience=_parse_experience(sections.get("experience", [])),
+        experience=experience,
         education=_parse_education(sections.get("education", [])),
         certifications=_parse_certifications(sections.get("certifications", [])),
         projects=_parse_projects(sections.get("projects", [])),
         languages=_parse_languages(sections.get("languages", [])),
         raw_text=text,
+        parse_warnings=exp_warnings,
     )
 
 
@@ -251,10 +254,13 @@ def _parse_skills(lines: list[str]) -> list[str]:
     return skills
 
 
-def _parse_experience(lines: list[str]) -> list[ExperienceItem]:
+def _parse_experience(lines: list[str]) -> tuple[list[ExperienceItem], list[ParseWarning]]:
     items: list[ExperienceItem] = []
+    warnings: list[ParseWarning] = []
     current: ExperienceItem | None = None
+    line_num = 0
     for raw in lines:
+        line_num += 1
         line = raw.strip()
         if not line:
             continue
@@ -277,6 +283,35 @@ def _parse_experience(lines: list[str]) -> list[ExperienceItem]:
             continue
         # Continuation line: not a bullet, no dates, but current has bullets already
         if current is not None and current.bullets and not dates:
+            # Check if this looks like a new experience entry (short, title-case, no digits)
+            stripped = line.strip()
+            is_new_entry = (
+                len(stripped) < 60
+                and not stripped[0].islower()
+                and not any(ch.isdigit() for ch in stripped)
+                and not BULLET_RE.match(stripped)
+            )
+            if is_new_entry:
+                # This is likely a new job title — don't merge into previous bullet
+                items.append(current)
+                current = ExperienceItem()
+                parts = [
+                    p.strip(" ,|\u2013\u2014-")
+                    for p in re.split(r"\s*(?:\||,|\u2013|\u2014| at | @ )\s*", line)
+                    if p.strip(" ,|\u2013\u2014-")
+                ]
+                if parts:
+                    current.title = parts[0]
+                if len(parts) > 1:
+                    current.company = parts[1]
+                continue
+            warnings.append(ParseWarning(
+                section="experience",
+                line=line_num,
+                message=(
+                    f"Merged line into previous bullet (ambiguous): \"{line[:80]}\""
+                ),
+            ))
             current.bullets[-1] += " " + line
             continue
         if current is not None:
@@ -297,7 +332,7 @@ def _parse_experience(lines: list[str]) -> list[ExperienceItem]:
             current.company = parts[1]
     if current is not None:
         items.append(current)
-    return [item for item in items if item.title or item.bullets]
+    return [item for item in items if item.title or item.bullets], warnings
 
 
 def _parse_education(lines: list[str]) -> list[EducationItem]:
@@ -352,8 +387,20 @@ def _parse_projects(lines: list[str]) -> list[ProjectItem]:
             current.meta = line
             continue
         # Continuation line: not a bullet, no meta yet, current has bullets
-        # But only if it doesn't look like a new project title (has dates)
+        # But only if it doesn't look like a new project title (has dates or is short title-like)
         if current is not None and current.bullets and not current.meta and not DATE_RANGE_RE.search(line):
+            # Check if this looks like a new project title
+            stripped = line.strip()
+            is_new_title = (
+                len(stripped) < 80
+                and not stripped[0].islower()
+                and not any(ch.isdigit() for ch in stripped)
+                and not BULLET_RE.match(stripped)
+            )
+            if is_new_title:
+                items.append(current)
+                current = ProjectItem(title=line)
+                continue
             current.bullets[-1] += " " + line
             continue
         if current is not None:

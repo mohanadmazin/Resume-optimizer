@@ -69,6 +69,10 @@ def resume_diff_html(original: ResumeData, optimized: ResumeData) -> str:
     if contact:
         lines.append(f"<p style='color:#9aa0a6;'>{escape(contact)}</p>")
 
+    if optimized.headline:
+        headline_html = _diff_words_html(original.headline, optimized.headline)
+        lines.append(f"<p style='color:#9aa0a6;'>{headline_html}</p>")
+
     if optimized.summary:
         lines.append(
             "<p style='font-size:15px; font-weight:normal;'>Summary</p>"

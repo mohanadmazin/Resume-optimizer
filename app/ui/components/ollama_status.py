@@ -57,9 +57,18 @@ class OllamaStatusLabel(QWidget):
         self.check()
 
     def check(self) -> None:
+        if self._checker and self._checker.isRunning():
+            return
+        self._cleanup_checker()
         self._checker = OllamaCheckerThread(self.base_url)
         self._checker.status_changed.connect(self._update_ui)
+        self._checker.finished.connect(self._cleanup_checker)
         self._checker.start()
+
+    def _cleanup_checker(self) -> None:
+        if self._checker:
+            self._checker.deleteLater()
+            self._checker = None
 
     def _set_checking(self) -> None:
         self._dot.setStyleSheet(

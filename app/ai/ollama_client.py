@@ -2,6 +2,7 @@
 import json
 import logging
 import re
+import threading
 from typing import TypeVar
 
 import requests
@@ -36,12 +37,25 @@ class OllamaError(Exception):
     """Raised when the Ollama API is unreachable or returns bad data."""
 
 
+class OllamaCancelledError(OllamaError):
+    """Raised when a request is cancelled by the user."""
+
+
 class OllamaClient:
     def __init__(self, base_url: str | None = None, model: str | None = None):
         settings = load_settings()
         self.base_url = (base_url or settings.ai.ollama_url).rstrip("/")
         self.model = model or settings.ai.model
         self.temperature = settings.ai.temperature
+        self._cancel_event: threading.Event | None = None
+
+    def set_cancel_event(self, event: threading.Event | None) -> None:
+        """Set a threading.Event to check for cancellation."""
+        self._cancel_event = event
+
+    def _check_cancelled(self) -> None:
+        if self._cancel_event is not None and self._cancel_event.is_set():
+            raise OllamaCancelledError("Request cancelled by user")
 
     def is_available(self) -> bool:
         try:
@@ -61,6 +75,7 @@ class OllamaClient:
         return [m["name"] for m in resp.json().get("models", [])]
 
     def generate(self, prompt: str, system: str | None = None, json_mode: bool = False) -> str:
+        self._check_cancelled()
         payload = {
             "model": self.model,
             "prompt": prompt,

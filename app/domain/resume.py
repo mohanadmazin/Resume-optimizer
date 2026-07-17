@@ -4,6 +4,13 @@ from typing import List
 from pydantic import BaseModel, Field
 
 
+class ParseWarning(BaseModel):
+    """A non-fatal warning produced during resume parsing."""
+    section: str = ""
+    line: int = 0
+    message: str = ""
+
+
 class ContactInfo(BaseModel):
     name: str = ""
     email: str = ""
@@ -48,3 +55,4 @@ class ResumeData(BaseModel):
     projects: List[ProjectItem] = Field(default_factory=list)
     languages: List[str] = Field(default_factory=list)
     raw_text: str = ""
+    parse_warnings: List[ParseWarning] = Field(default_factory=list)

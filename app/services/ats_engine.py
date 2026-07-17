@@ -2,12 +2,15 @@
 import logging
 import re
 from collections import Counter
-from dataclasses import asdict, dataclass, field
 from typing import List
 
+from app.domain.analysis import ATSResult
 from app.schemas import ResumeData
 
 logger = logging.getLogger(__name__)
+
+# Re-export for backward compatibility.
+__all__ = ["ATSResult", "analyze", "extract_keywords", "extract_required_skills"]
 
 STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "been", "but", "by", "can", "could", "did", "do",
@@ -26,23 +29,99 @@ STOPWORDS = {
     "requirements", "responsibilities", "responsible", "role", "salary", "seeking", "skills",
     "strong", "team", "understanding", "work", "working", "years", "year", "using", "used",
     "use", "within", "like", "e.g", "eg", "ie",
+    # Generic words often mistaken for skills
+    "environment", "support", "business", "solution", "solutions", "tools", "tool",
+    "development", "management", "operations", "performance", "quality", "standards",
+    "practices", "processes", "procedures", "documentation", "communication",
+    "collaboration", "integration", "delivery", "engineering", "technology",
+    "technologies", "platforms", "applications", "services", "infrastructure",
+    "architecture", "strategies", "initiatives", "objectives", "requirements",
+}
+
+# Known technical skill tokens — only these are extracted as skills from JDs
+_KNOWN_SKILLS: set[str] = {
+    # Languages
+    "python", "java", "javascript", "typescript", "c++", "c#", "go", "golang", "rust",
+    "ruby", "php", "swift", "kotlin", "scala", "r", "matlab", "perl", "haskell",
+    "elixir", "dart", "lua", "sql", "nosql", "html", "css", "scss", "sass",
+    # Frameworks
+    "django", "flask", "fastapi", "spring", "springboot", "express", "node.js", "nodejs",
+    "react", "reactjs", "vue", "vuejs", "angular", "angularjs", "svelte", "next.js", "nextjs",
+    "rails", "laravel", "symfony", ".net", "dotnet", "asp.net",
+    # Data
+    "postgresql", "postgres", "mysql", "mongodb", "redis", "elasticsearch", "cassandra",
+    "dynamodb", "sqlite", "oracle", "neo4j", "mssql", "sqlserver",
+    # Cloud & DevOps
+    "aws", "gcp", "azure", "docker", "kubernetes", "k8s", "terraform", "ansible",
+    "jenkins", "github actions", "gitlab ci", "ci/cd", "ci cd", "prometheus", "grafana",
+    "cloudformation", "helm", "argocd", ".CircleCI", "travis",
+    # AI/ML
+    "tensorflow", "pytorch", "keras", "scikit-learn", "sklearn", "pandas", "numpy",
+    "spark", "hadoop", "kafka", "airflow", "mlflow", "langchain", "openai",
+    "machine learning", "deep learning", "nlp", "natural language processing",
+    "computer vision", "neural networks", "transformers",
+    # Tools
+    "git", "linux", "bash", "powershell", "vim", "vscode", "jira", "confluence",
+    "slack", "docker compose", "postman", "figma", "jupyter",
+    # Methodologies
+    "agile", "scrum", "kanban", "devops", "mlops", "tdd", "bdd", "saas", "paas", "iaas",
+    "microservices", "serverless", "rest", "restful", "graphql", "grpc", "websocket",
+    "oauth", "jwt", "oauth2",
+    # Testing
+    "pytest", "unittest", "jest", "mocha", "cypress", "selenium", "playwright",
+    "junit", "xunit", "postman",
+    # Misc
+    "kafka", "rabbitmq", "nginx", "apache", "tomcat", "graphql", "protobuf", "grpc",
+    "blockchain", "web3", "solidity", "ethereum",
 }
 
 SHORT_KEEP = {"c#", "go", "r", "ai", "ml", "qa", "ci", "cd", "ux", "ui", "c++", "aws", "sql", "api", "git"}
 
+# Canonical skill name → set of known aliases (all lowercase).
+# When matching, we check whether the resume contains ANY form of the skill.
+SKILL_ALIASES: dict[str, set[str]] = {
+    "javascript":   {"js", "javascript", "ecmascript", "es6", "es2015"},
+    "typescript":   {"ts", "typescript"},
+    "python":       {"python", "python3", "py"},
+    "postgresql":   {"postgres", "postgresql", "psql", "pgsql"},
+    "kubernetes":   {"k8s", "kubernetes", "kube"},
+    "restful apis": {"rest", "restful", "restful apis", "rest api", "rest apis"},
+    "ci/cd":        {"ci/cd", "ci cd", "continuous integration", "continuous delivery", "continuous deployment"},
+    "machine learning": {"ml", "machine learning"},
+    "deep learning": {"dl", "deep learning"},
+    "react":        {"react", "reactjs", "react.js"},
+    "vue":          {"vue", "vuejs", "vue.js"},
+    "angular":      {"angular", "angularjs", "angular.js"},
+    "node.js":      {"node", "nodejs", "node.js"},
+    "golang":       {"go", "golang"},
+    "rust":         {"rust", "rustlang"},
+    "amazon web services": {"aws", "amazon web services", "amazon aws"},
+    "google cloud platform": {"gcp", "google cloud", "google cloud platform"},
+    "microsoft azure": {"azure", "microsoft azure"},
+    "devops":       {"devops", "dev ops"},
+    "natural language processing": {"nlp", "natural language processing"},
+    "computer vision": {"cv", "computer vision"},
+}
 
-@dataclass
-class ATSResult:
-    ats_score: int
-    keyword_match_pct: float
-    skills_match_pct: float
-    matched_keywords: List[str] = field(default_factory=list)
-    missing_keywords: List[str] = field(default_factory=list)
-    missing_skills: List[str] = field(default_factory=list)
-    suggestions: List[str] = field(default_factory=list)
+# Build reverse map: alias → canonical name
+_ALIAS_TO_CANONICAL: dict[str, str] = {}
+for canonical, aliases in SKILL_ALIASES.items():
+    for alias in aliases:
+        _ALIAS_TO_CANONICAL[alias] = canonical
 
-    def to_dict(self) -> dict:
-        return asdict(self)
+
+def _canonicalize(skill: str) -> str:
+    """Return the canonical form of a skill, or the original if unknown."""
+    return _ALIAS_TO_CANONICAL.get(skill, skill)
+
+
+def _skill_matches(resume_text: str, skill: str) -> bool:
+    """Check if resume_text contains *skill* or any of its known aliases."""
+    forms = SKILL_ALIASES.get(_canonicalize(skill), {skill})
+    for form in forms:
+        if _contains(resume_text, form):
+            return True
+    return False
 
 
 def extract_keywords(text: str, top_n: int = 25) -> list[str]:
@@ -63,10 +142,9 @@ def extract_keywords(text: str, top_n: int = 25) -> list[str]:
 def extract_required_skills(text: str) -> list[str]:
     """Extract skill-like terms from a job description.
 
-    Returns unique skill terms (single words and bigrams) that appear in
-    the JD but are not generic stopwords or boilerplate.  This is used to
-    compute a *skills-match* score that answers: "Of the skills the JD
-    asks for, how many does the resume contain?"
+    Returns unique skill terms that appear in the JD and are known
+    technical skills (from the curated vocabulary).  Generic words like
+    "environment", "support", or "business" are excluded.
     """
     tokens = [t.strip(".-/") for t in re.findall(r"[a-z][a-z0-9+#.\-/]*", text.lower())]
     words = [
@@ -78,14 +156,20 @@ def extract_required_skills(text: str) -> list[str]:
     bigram_counts: Counter = Counter()
     for first, second in zip(words, words[1:]):
         bigram_counts[f"{first} {second}"] += 1
-    # Keep bigrams that appear at least twice — strong signal of a skill term
-    bigrams = [b for b, c in bigram_counts.most_common(20) if c >= 2]
+    # Keep bigrams that appear at least twice AND match a known skill
+    bigrams = [
+        b for b, c in bigram_counts.most_common(20)
+        if c >= 2 and _canonicalize(b) in SKILL_ALIASES or b in _KNOWN_SKILLS
+    ]
 
-    # Single-word candidates, excluding words already part of a kept bigram
+    # Single-word candidates — must be known skills
     bigram_words = set()
     for b in bigrams:
         bigram_words.update(b.split())
-    singles = [w for w, _ in Counter(words).most_common(60) if w not in bigram_words]
+    singles = [
+        w for w, _ in Counter(words).most_common(60)
+        if w not in bigram_words and (w in _KNOWN_SKILLS or _canonicalize(w) in SKILL_ALIASES)
+    ]
 
     seen: set[str] = set()
     result: list[str] = []
@@ -112,15 +196,18 @@ def _resume_text(resume: ResumeData) -> str:
 
 def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
     keywords = extract_keywords(jd_text)
-    resume_text = f"{resume.raw_text} {_resume_text(resume)}".lower()
+    structured = _resume_text(resume).strip()
+    resume_text = structured if structured else resume.raw_text
+    resume_text = resume_text.lower()
 
     matched = [k for k in keywords if _contains(resume_text, k)]
     missing = [k for k in keywords if k not in matched]
     keyword_pct = round(100 * len(matched) / len(keywords), 1) if keywords else 0.0
 
     # Skills match: extract required skills from JD, check which appear in resume
+    # Uses alias-aware matching so JS/JavaScript, K8s/Kubernetes etc. are recognized.
     required_skills = extract_required_skills(jd_text)
-    matched_required = [s for s in required_skills if _contains(resume_text, s)]
+    matched_required = [s for s in required_skills if _skill_matches(resume_text, s)]
     missing_skills = [s for s in required_skills if s not in matched_required]
     skills_pct = (
         round(100 * len(matched_required) / len(required_skills), 1)

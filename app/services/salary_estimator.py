@@ -112,8 +112,13 @@ def estimate_experience(resume: ResumeData) -> ExperienceEstimate:
     total_months = sum(_months_between(s, e) for s, e in merged)
     min_years = round(total_months / 12, 1)
 
+    # Apply minimum floor before calculating max
+    if intervals:
+        min_years = max(min_years, 0.5)
+
     # Maximum: if there are missing dates, add a buffer of 1 year per missing entry
     max_years = min_years + len(missing) * 1.0
+    max_years = max(min_years, max_years)
 
     # Confidence assessment
     total_entries = len(resume.experience)
@@ -126,10 +131,6 @@ def estimate_experience(resume: ResumeData) -> ExperienceEstimate:
         confidence = "medium"
     else:
         confidence = "low"
-
-    # At least 0.5 years if there's any experience at all
-    if min_years < 0.5 and intervals:
-        min_years = 0.5
 
     return ExperienceEstimate(
         minimum_years=min_years,
@@ -200,6 +201,8 @@ def estimate_salary(
         salary_annual_min=_dec(data.get("salary_annual_min")),
         salary_annual_max=_dec(data.get("salary_annual_max")),
         currency=data.get("currency", ""),
+        salary_source="AI-generated (no external salary data)",
+        source_date="",
         confidence=exp.confidence,
         factors=data.get("factors", []),
         notes=data.get("notes", ""),
