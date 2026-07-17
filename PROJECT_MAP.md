@@ -77,6 +77,7 @@ Legend:
 | python-docx | Compatible 1.x release | DOCX import and export                |
 | requests    | Compatible 2.x release | Ollama HTTP communication             |
 | beautifulsoup4 | Compatible 4.x release | HTML parsing for URL job fetch     |
+| lxml           | Compatible 5.x release | Fast HTML parser backend            |
 | Alembic     | Compatible 1.x release | Database schema migrations            |
 | pytest      | Compatible 9.x release | Automated testing                     |
 
@@ -327,7 +328,7 @@ Rules:
 | `app/domain/`   | Pydantic schemas (resume, salary, skill gap, pipeline)         |
 | `app/ai/`       | Ollama HTTP client, prompt templates, JSON validation          |
 | `app/database/` | ORM models, engine, session, repositories, legacy CRUD facade  |
-| `app/services/` | ATS engine, optimizer, cover letter, parser, job fetcher, etc. |
+| `app/services/` | ATS engine, optimizer, cover letter, parser, security, HTML extraction, metadata, job fetcher, etc. |
 | `app/config/`   | Legacy config compatibility shim (delegates to `app/core/`)    |
 | `app/ui/`       | Main window, state, workers, theme, components, pages          |
 | `app/exports/`  | DOCX/PDF/Markdown export (via `app/services/exporter.py`)      |
@@ -404,7 +405,10 @@ resume-optimizer-main/
 │   │   ├── resume_parser.py           # Heuristic + AI resume parsing
 │   │   ├── fact_guard.py              # Deterministic fact validation (SequenceMatcher)
 │   │   ├── document_reader.py         # PDF/DOCX/TXT text extraction
-│   │   ├── job_fetcher.py             # URL fetch with SSRF protection
+│   │   ├── job_fetcher.py             # URL fetch orchestrator with SSRF protection
+│   │   ├── security.py               # SSRF protection, DNS resolution, port blocking
+│   │   ├── html_extractor.py          # HTML text extraction, noise filtering
+│   │   ├── metadata.py               # Title parsing, JSON-LD, metadata extraction
 │   │   ├── salary_estimator.py        # AI salary estimation
 │   │   ├── skill_gap.py               # AI skill gap analysis
 │   │   ├── diff_highlight.py          # HTML diff between original and optimized
@@ -440,7 +444,7 @@ resume-optimizer-main/
     ├── test_cover_letter.py           # 11 tests (fact checking, generation, warnings)
     ├── test_exporter.py               # 2 tests
     ├── test_fact_guard.py             # 22 tests (normalization, entities, skills, changes)
-    ├── test_job_fetcher.py            # 30 tests (SSRF protection, IP validation, URL safety)
+    ├── test_job_fetcher.py            # 51 tests (security, HTML extraction, metadata, fetcher)
     ├── test_migrations.py             # 23 tests (schema, backup, restore, cascade delete)
     ├── test_optimizer.py              # 7 tests (safe-only apply, accepted changes)
     ├── test_parser.py                 # 4 tests
@@ -448,11 +452,6 @@ resume-optimizer-main/
     ├── test_settings.py               # 29 tests (atomic write, backup, recovery, concurrency)
     └── test_skill_gap_salary.py       # 5 tests
 ```
-
-### Actual File Map
-
-```text
-resume-optimizer-main/
 ├── main.py
 ├── pyproject.toml
 ├── requirements.txt
@@ -526,7 +525,10 @@ resume-optimizer-main/
 │   │   ├── resume_parser.py           # Heuristic + AI resume parsing
 │   │   ├── fact_guard.py              # Deterministic fact validation (SequenceMatcher)
 │   │   ├── document_reader.py         # PDF/DOCX/TXT text extraction
-│   │   ├── job_fetcher.py             # URL fetch with SSRF protection
+│   │   ├── job_fetcher.py             # URL fetch orchestrator with SSRF protection
+│   │   ├── security.py               # SSRF protection, DNS resolution, port blocking
+│   │   ├── html_extractor.py          # HTML text extraction, noise filtering
+│   │   ├── metadata.py               # Title parsing, JSON-LD, metadata extraction
 │   │   ├── salary_estimator.py        # AI salary estimation
 │   │   ├── skill_gap.py               # AI skill gap analysis
 │   │   ├── diff_highlight.py          # HTML diff between original and optimized
@@ -562,14 +564,14 @@ resume-optimizer-main/
     ├── test_cover_letter.py           # 11 tests (fact checking, generation, warnings)
     ├── test_exporter.py               #  2 tests
     ├── test_fact_guard.py             # 22 tests (normalization, entities, skills, changes)
-    ├── test_job_fetcher.py            # 30 tests (SSRF protection, IP validation, URL safety)
+    ├── test_job_fetcher.py            # 51 tests (security, HTML extraction, metadata, fetcher)
     ├── test_migrations.py             # 23 tests (schema, backup, restore, cascade delete)
     ├── test_optimizer.py              #  7 tests (safe-only apply, accepted changes)
     ├── test_parser.py                 #  4 tests
     ├── test_parser_fallback.py        #  8 tests (OllamaError fallback, edge cases)
     ├── test_settings.py               # 29 tests (atomic write, backup, recovery, concurrency)
     └── test_skill_gap_salary.py       #  5 tests
-    # Total: 156 tests across 11 test files
+    # Total: 200 tests across 11 test files
 ```
 
 ---

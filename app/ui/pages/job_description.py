@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from app.database import db
 from app.services.document_reader import extract_text
-from app.services.job_fetcher import FetchResult, JobFetcher, JobFetcherError
+from app.services.job_fetcher import FetchResult, JobFetcherError, fetch_from_url
 from app.ui.workers import Worker
 
 
@@ -33,7 +33,7 @@ class _FetchWorker(QThread):
 
     def run(self):
         try:
-            result = JobFetcher.fetch_from_url(self.url)
+            result = fetch_from_url(self.url)
             self.finished.emit(result)
         except JobFetcherError as exc:
             self.error.emit(str(exc))

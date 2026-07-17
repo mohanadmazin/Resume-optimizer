@@ -1,485 +1,259 @@
 # app/services/job_fetcher.py
 
-"""Service to fetch and extract clean job description text from a URL."""
+"""Fetch job descriptions from URLs.
 
-import ipaddress
+Thin orchestrator that delegates to:
+- security.py — SSRF protection, DNS resolution
+- html_extractor.py — text extraction from HTML
+- metadata.py — title/company/location extraction
+"""
+
 import logging
-import re
-import socket
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
-from bs4 import BeautifulSoup
+
+from app.services.html_extractor import extract_text_from_soup
+from app.services.metadata import JobMetadata, extract_metadata
+from app.services.security import (
+    SSRFError,
+    ResolvedTarget,
+    resolve_and_validate,
+    validate_port,
+    validate_scheme,
+)
 
 logger = logging.getLogger(__name__)
 
-MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB
-MAX_REDIRECTS = 5
+
+# ── Configuration ────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class FetchConfig:
+    """Tunable limits for URL fetching."""
+
+    max_bytes: int = 5 * 1024 * 1024  # 5 MB
+    max_redirects: int = 5
+    timeout: int = 10
+
+
+DEFAULT_CONFIG = FetchConfig()
+
+
+# ── Errors ───────────────────────────────────────────────────────────────────
 
 
 class JobFetcherError(Exception):
-    """Raised when job fetching fails."""
+    """Base error for job fetching."""
 
 
-def _parse_title_string(raw: str) -> tuple[str, str, str]:
-    """Parse a page title into (title, company, location).
-
-    Handles common job board patterns:
-    - "Senior Dev - Acme Corp - Kuala Lumpur, Malaysia"
-    - "Senior Dev at Acme Corp in Kuala Lumpur"
-    - "Senior Dev | Acme Corp | Remote"
-    - "Senior Dev - Acme Corp"
-    - "Acme Corp is hiring a Senior Dev in Kuala Lumpur"
-    """
-    if not raw:
-        return "", "", ""
-
-    title = ""
-    company = ""
-    location = ""
-
-    # Pattern: "X at Company in Location" or "X @ Company"
-    m = re.match(r"^(.+?)\s+(?:at|@)\s+(.+?)(?:\s+(?:in|—|-)\s+(.+))?$", raw, re.IGNORECASE)
-    if m:
-        return m.group(1).strip(), m.group(2).strip(), (m.group(3) or "").strip()
-
-    # Pattern: "Company hiring Title in Location" or "Company is hiring a Title in Location"
-    m = re.match(r"^(.+?)\s+(?:is\s+)?hiring\s+(?:a|an|for\s+)?(.+?)(?:\s+in\s+(.+))?$", raw, re.IGNORECASE)
-    if m:
-        return m.group(2).strip(), m.group(1).strip(), (m.group(3) or "").strip()
-
-    # Common delimiters: " | ", " - ", " — ", " · ", " :: "
-    for sep in [" | ", " — ", " - ", " · ", " :: "]:
-        if sep in raw:
-            parts = [p.strip() for p in raw.split(sep) if p.strip()]
-            if len(parts) >= 3:
-                # Heuristic: last part is usually location (contains comma or state code)
-                location = parts[-1]
-                title = parts[0]
-                company = parts[1]
-                return title, company, location
-            elif len(parts) == 2:
-                title = parts[0]
-                company = parts[1]
-                return title, company, ""
-
-    # If only one delimiter found, treat as "Title - Company"
-    for sep in [" | ", " — ", " - ", " · ", " :: "]:
-        if sep in raw:
-            parts = [p.strip() for p in raw.split(sep) if p.strip()]
-            if len(parts) == 2:
-                return parts[0], parts[1], ""
-
-    # No delimiter — return as title only
-    return raw, "", ""
+class InvalidURLError(JobFetcherError):
+    """URL is malformed or uses a disallowed scheme."""
 
 
-@dataclass
+class FetchTimeoutError(JobFetcherError):
+    """Request timed out."""
+
+
+class ContentTooLargeError(JobFetcherError):
+    """Response exceeds the size limit."""
+
+
+class ExtractionError(JobFetcherError):
+    """Could not extract meaningful text from the page."""
+
+
+# ── Result ───────────────────────────────────────────────────────────────────
+
+
+@dataclass(slots=True)
 class FetchResult:
     """Result from fetching a job posting URL."""
 
     text: str
-    title: str = ""
-    company: str = ""
-    location: str = ""
+    title: str | None = None
+    company: str | None = None
+    location: str | None = None
+    source_url: str | None = None
 
 
-# ── SSRF helpers ─────────────────────────────────────────────────────────────
+# ── Fetcher ──────────────────────────────────────────────────────────────────
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    ),
+    # Disable compression to prevent decompression bombs
+    "Accept-Encoding": "identity",
+}
 
 
-def _validate_url(url: str) -> None:
-    """Raise ``JobFetcherError`` if the URL scheme is not allowed."""
+def _build_direct_url(target: ResolvedTarget, path: str, query: str, fragment: str) -> str:
+    """Build a URL pointing directly at the resolved IP with Host header."""
+    scheme = target.scheme
+    ip = target.ip
+    port = target.port
+
+    default_port = 443 if scheme == "https" else 80
+    if port != default_port:
+        base = f"{scheme}://{ip}:{port}"
+    else:
+        base = f"{scheme}://{ip}"
+
+    url = f"{base}{path}"
+    if query:
+        url += f"?{query}"
+    if fragment:
+        url += f"#{fragment}"
+    return url
+
+
+def _build_host_header(hostname: str, port: int) -> str:
+    default_port = 443 if urlparse(f"https://{hostname}").scheme == "https" else 80
+    if port != default_port:
+        return f"{hostname}:{port}"
+    return hostname
+
+
+def _connect(target: ResolvedTarget, url: str, config: FetchConfig) -> requests.Response:
+    """Connect to a resolved target with Host header preservation."""
     parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise JobFetcherError(f"URL scheme '{parsed.scheme}' is not allowed.")
+    direct_url = _build_direct_url(target, parsed.path, parsed.query, parsed.fragment)
 
+    headers = dict(_HEADERS)
+    headers["Host"] = _build_host_header(target.hostname, target.port)
 
-def _resolve_and_validate(hostname: str) -> str:
-    """Resolve *hostname* to a single public IP and return it.
-
-    This resolves DNS exactly once and validates the result, preventing
-    DNS rebinding attacks where a hostname could resolve to different IPs
-    on successive lookups.
-    """
-    if not hostname:
-        raise JobFetcherError("URL has no hostname.")
-
-    try:
-        results = socket.getaddrinfo(hostname, None)
-    except OSError as exc:
-        raise JobFetcherError(f"DNS resolution failed for '{hostname}': {exc}")
-
-    if not results:
-        raise JobFetcherError(f"DNS resolution returned no results for '{hostname}'.")
-
-    # Validate ALL resolved IPs — reject if ANY is unsafe (防御性)
-    for family, _type, _proto, _canonname, sockaddr in results:
-        ip_str = sockaddr[0]
-        try:
-            ip = ipaddress.ip_address(ip_str)
-        except ValueError:
-            raise JobFetcherError(f"Resolved address '{ip_str}' is not a valid IP.")
-        if ip.is_private or ip.is_reserved or ip.is_loopback or ip.is_link_local or ip.is_multicast:
-            raise JobFetcherError(
-                f"URL hostname '{hostname}' resolves to a private/reserved IP ({ip_str})."
-            )
-
-    # Return the first resolved IP for connecting
-    first_ip = results[0][4][0]
-    return first_ip
+    session = requests.Session()
+    session.headers.update(headers)
+    return session.get(direct_url, timeout=config.timeout, allow_redirects=False)
 
 
 def _safe_url_for_log(url: str) -> str:
-    """Strip query params and fragments from a URL for safe logging."""
+    """Strip query params and fragments for safe logging."""
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
 
-def _connect_to_ip(
-    resolved_ip: str,
-    parsed_url: "urllib.parse.ParseResult",
-    timeout: int,
-    headers: dict[str, str],
-) -> requests.Response:
-    """Connect to *resolved_ip* while preserving the original Host header.
+# ── Public API ───────────────────────────────────────────────────────────────
 
-    This ensures we only connect to IPs we resolved and validated ourselves,
-    preventing DNS rebinding attacks.
+
+def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResult:
+    """Fetch a job posting URL and extract text + metadata.
+
+    Resolves DNS once per hostname and connects directly to the resolved
+    IP to prevent DNS rebinding attacks.
+
+    Args:
+        url: The job posting URL.
+        config: Tunable fetch limits.
+
+    Returns:
+        FetchResult with extracted text, title, company, location.
+
+    Raises:
+        JobFetcherError (or subclass) on any failure.
     """
-    hostname = parsed_url.hostname
-    port = parsed_url.port
-    scheme = parsed_url.scheme
+    if not url or not url.strip():
+        raise InvalidURLError("URL cannot be empty.")
 
-    # Build the direct URL using the resolved IP
-    if port and ((scheme == "https" and port != 443) or (scheme == "http" and port != 80)):
-        direct_url = f"{scheme}://{resolved_ip}:{port}{parsed_url.path}"
-        if parsed_url.query:
-            direct_url += f"?{parsed_url.query}"
-        if parsed_url.fragment:
-            direct_url += f"#{parsed_url.fragment}"
-    else:
-        direct_url = f"{scheme}://{resolved_ip}{parsed_url.path}"
-        if parsed_url.query:
-            direct_url += f"?{parsed_url.query}"
-        if parsed_url.fragment:
-            direct_url += f"#{parsed_url.fragment}"
+    url = url.strip()
 
-    # Set Host header so the server routes correctly
-    request_headers = dict(headers)
-    if port and port not in (80, 443):
-        request_headers["Host"] = f"{hostname}:{port}"
-    else:
-        request_headers["Host"] = hostname
-
-    session = requests.Session()
-    session.headers.update(request_headers)
-    return session.get(direct_url, timeout=timeout, allow_redirects=False)
-
-
-class JobFetcher:
-    """Fetches and extracts job description text from web pages."""
-
-    HEADERS = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    # Reject non-HTTP schemes before prepending https://
+    if url.startswith(("ftp://", "file://", "mailto:", "javascript:")):
+        raise InvalidURLError(
+            f"URL scheme not allowed. Only http:// and https:// URLs are supported."
         )
-    }
 
-    TAGS_TO_REMOVE = [
-        "script", "style", "noscript", "header", "footer",
-        "nav", "aside", "meta", "head", "title", "svg", "button",
-        "form", "input", "select", "textarea", "label",
-        "iframe", "dialog", "modal",
-    ]
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
 
-    # Text patterns that indicate noise (login prompts, similar jobs, etc.)
-    NOISE_PATTERNS = [
-        r"(?i)^sign in to\b",
-        r"(?i)^join now$",
-        r"(?i)^forgot password\??$",
-        r"(?i)^email or phone$",
-        r"(?i)^new to \w+\??$",
-        r"(?i)^password$",
-        r"(?i)^cookie policy$",
-        r"(?i)^privacy policy$",
-        r"(?i)^user agreement$",
-        r"(?i)^by clicking continue\b",
-        r"(?i)^similar jobs$",
-        r"(?i)^people also viewed$",
-        r"(?i)^explore top content\b",
-        r"(?i)^see who\b.*hired\b",
-        r"(?i)^referrals increase\b",
-        r"(?i)^get notified when\b",
-        r"(?i)^set alert$",
-        r"(?i)^sign in to set\b",
-        r"(?i)^sign in to evaluate\b",
-        r"(?i)^sign in to tailor\b",
-        r"(?i)^sign in to access\b",
-        r"(?i)^direct message the job poster\b",
-        r"(?i)^use ai to assess\b",
-        r"(?i)^\d+ applicants?$",
-        r"(?i)^\d+ (hours?|days?|weeks?|months?) ago$",
-        r"(?i)^save$",
-        r"(?i)^report this job$",
-        r"(?i)^all jobs$",
-        r"(?i)^view top content$",
-        r"(?i)^find curated posts\b",
-    ]
+    # Validate scheme and port before any network activity
+    try:
+        validate_scheme(url)
+        validate_port(url)
+    except SSRFError as exc:
+        raise InvalidURLError(str(exc)) from exc
 
-    @staticmethod
-    def fetch_from_url(url: str, timeout: int = 10) -> FetchResult:
-        """
-        Fetch a webpage and extract the main text content plus metadata.
+    logger.info("Fetching job description from: %s", _safe_url_for_log(url))
 
-        Resolves DNS once per hostname and connects directly to the resolved
-        IP to prevent DNS rebinding attacks.
+    current_url = url
+    redirects_followed = 0
 
-        Args:
-            url: The URL of the job posting.
-            timeout: Request timeout in seconds.
+    while True:
+        # Resolve DNS once and validate — prevents DNS rebinding
+        try:
+            target = resolve_and_validate(current_url)
+        except SSRFError as exc:
+            raise InvalidURLError(str(exc)) from exc
 
-        Returns:
-            FetchResult with text, title, company, and location.
+        try:
+            response = _connect(target, current_url, config)
+        except requests.exceptions.Timeout:
+            raise FetchTimeoutError(f"Request timed out after {config.timeout} seconds.")
+        except requests.exceptions.ConnectionError:
+            raise JobFetcherError(
+                f"Could not connect to {target.hostname}. Check the URL and your network."
+            )
+        except requests.exceptions.RequestException as exc:
+            raise JobFetcherError(f"Failed to fetch URL: {exc}")
 
-        Raises:
-            JobFetcherError: If fetching or parsing fails.
-        """
-        import urllib.parse as _urlparse
+        try:
+            # Handle redirects
+            if response.status_code in (301, 302, 303, 307, 308):
+                redirects_followed += 1
+                if redirects_followed > config.max_redirects:
+                    raise JobFetcherError("Too many redirects.")
+                location = response.headers.get("Location")
+                if not location:
+                    raise JobFetcherError("Redirect with missing Location header.")
+                current_url = urljoin(current_url, location)
+                validate_scheme(current_url)
+                continue
 
-        if not url or not url.strip():
-            raise JobFetcherError("URL cannot be empty.")
-
-        url = url.strip()
-        if not url.startswith(("http://", "https://")):
-            url = "https://" + url
-
-        _validate_url(url)
-
-        logger.info("Fetching job description from: %s", _safe_url_for_log(url))
-
-        current_url = url
-        redirects_followed = 0
-
-        while True:
-            parsed = _urlparse.urlparse(current_url)
-            hostname = parsed.hostname
-            if not hostname:
-                raise JobFetcherError(f"URL has no hostname: {current_url}")
-
-            # Resolve DNS once and validate — prevents DNS rebinding
-            resolved_ip = _resolve_and_validate(hostname)
-
-            try:
-                response = _connect_to_ip(resolved_ip, parsed, timeout, JobFetcher.HEADERS)
-            except requests.exceptions.Timeout:
-                raise JobFetcherError(f"Request timed out after {timeout} seconds.")
-            except requests.exceptions.ConnectionError:
+            # Handle HTTP errors
+            if response.status_code >= 400:
                 raise JobFetcherError(
-                    f"Could not connect to {hostname}. Check the URL and your network."
+                    f"HTTP error {response.status_code} when fetching {url}."
                 )
-            except requests.exceptions.RequestException as exc:
-                raise JobFetcherError(f"Failed to fetch URL: {exc}")
 
-            try:
-                if response.status_code in (301, 302, 303, 307, 308):
-                    redirects_followed += 1
-                    if redirects_followed > MAX_REDIRECTS:
-                        raise JobFetcherError("Too many redirects.")
-                    location = response.headers.get("Location")
-                    if not location:
-                        raise JobFetcherError("Redirect with missing Location header.")
-                    if location.startswith(("http://", "https://")):
-                        current_url = location
-                    else:
-                        current_url = f"{parsed.scheme}://{parsed.netloc}{location}"
-                    _validate_url(current_url)
-                    continue
+            # Validate content type
+            content_type = response.headers.get("Content-Type", "")
+            if "text/html" not in content_type and "text/plain" not in content_type:
+                raise JobFetcherError(
+                    f"Unsupported content type: {content_type}. Only HTML pages are supported."
+                )
 
-                if response.status_code >= 400:
-                    raise JobFetcherError(f"HTTP error {response.status_code} when fetching {url}.")
+            # Validate size
+            content = response.content
+            if len(content) > config.max_bytes:
+                raise ContentTooLargeError(
+                    f"Response exceeds the {config.max_bytes // (1024 * 1024)} MB limit."
+                )
 
-                content_type = response.headers.get("Content-Type", "")
-                if "text/html" not in content_type and "text/plain" not in content_type:
-                    raise JobFetcherError(
-                        f"Unsupported content type: {content_type}. Only HTML pages are supported."
-                    )
+            # Single parse: extract metadata first (needs title/meta/script tags),
+            # then clean text (removes those tags).
+            html_str = content.decode("utf-8", errors="replace")
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html_str, "lxml")
 
-                content = response.content
-                if len(content) > MAX_RESPONSE_BYTES:
-                    raise JobFetcherError(
-                        f"Response exceeds the {MAX_RESPONSE_BYTES // (1024 * 1024)} MB limit."
-                    )
+            meta = extract_metadata(soup)
+            text = extract_text_from_soup(soup)
 
-                html_str = content.decode("utf-8", errors="replace")
-                text = JobFetcher._extract_clean_text(html_str)
-                title, company, location = JobFetcher._extract_metadata(html_str)
-                return FetchResult(text=text, title=title, company=company, location=location)
-            finally:
-                response.close()
+            if not text or len(text.strip()) < 20:
+                raise ExtractionError(
+                    "Could not extract meaningful text from this page. "
+                    "Try pasting the job description manually."
+                )
 
-    @staticmethod
-    def _extract_clean_text(html_content: str) -> str:
-        """Parse HTML and return cleaned plain text."""
-        soup = BeautifulSoup(html_content, "html.parser")
-
-        for tag_name in JobFetcher.TAGS_TO_REMOVE:
-            for element in soup.find_all(tag_name):
-                element.decompose()
-
-        # Remove LinkedIn-style sections by class/id hints
-        for element in soup.find_all(
-            attrs={"class": lambda c: c and any(
-                kw in (c if isinstance(c, str) else " ".join(c)).lower()
-                for kw in ["sign", "login", "modal", "overlay", "auth",
-                            "similar-jobs", "people-also-viewed",
-                            "job-alert", "related-jobs", "sidebar"]
-            )}
-        ):
-            element.decompose()
-
-        for element in soup.find_all(attrs={"id": lambda i: i and any(
-            kw in i.lower()
-            for kw in ["sign", "login", "modal", "auth", "similar",
-                        "related", "sidebar", "footer"]
-        )}):
-            element.decompose()
-
-        # Try progressively narrower content selectors
-        main_content = (
-            soup.find("main")
-            or soup.find("article")
-            or soup.find(attrs={"class": lambda c: c and "job" in " ".join(c).lower() if isinstance(c, list) else c and "job" in c.lower()})
-            or soup.find(attrs={"id": lambda i: i and "job" in i.lower()})
-            or soup.find("body")
-        )
-        if not main_content:
-            return ""
-
-        lines = [line for line in main_content.stripped_strings]
-
-        # Filter noise lines
-        cleaned = []
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if len(stripped) < 2:
-                continue
-            if any(re.match(p, stripped) for p in JobFetcher.NOISE_PATTERNS):
-                continue
-            cleaned.append(stripped)
-
-        return "\n".join(cleaned)
-
-    @staticmethod
-    def _extract_metadata(html_content: str) -> tuple[str, str, str]:
-        """Extract job title, company, and location from HTML metadata.
-
-        Strategy (in priority order):
-        1. <title> tag — most job boards put "Job Title - Company - Location" there
-        2. <h1> tag — often the job title on listing pages
-        3. og:title / og:site_name meta tags
-        4. JSON-LD structured data (schema.org JobPosting)
-        5. Heuristic patterns in the first lines of body text
-        """
-        soup = BeautifulSoup(html_content, "html.parser")
-        title = ""
-        company = ""
-        location = ""
-
-        # ── 1. Try <title> tag ────────────────────────────────────────────
-        page_title = ""
-        if soup.title and soup.title.string:
-            page_title = soup.title.string.strip()
-
-        # ── 2. Try og:title meta tag ──────────────────────────────────────
-        og_title = ""
-        og_tag = soup.find("meta", property="og:title")
-        if og_tag and og_tag.get("content"):
-            og_title = og_tag["content"].strip()
-
-        # ── 3. Try <h1> tag ───────────────────────────────────────────────
-        h1_text = ""
-        h1_tag = soup.find("h1")
-        if h1_tag:
-            h1_text = h1_tag.get_text(strip=True)
-
-        # ── 4. Try JSON-LD structured data ────────────────────────────────
-        jsonld_company = ""
-        jsonld_location = ""
-        jsonld_title = ""
-        for script in soup.find_all("script", type="application/ld+json"):
-            try:
-                import json
-                data = json.loads(script.string or "")
-                if isinstance(data, list):
-                    data = data[0] if data else {}
-                if not isinstance(data, dict):
-                    continue
-                if data.get("@type") == "JobPosting":
-                    jsonld_title = data.get("title", "")
-                    org = data.get("organization", {})
-                    if isinstance(org, dict):
-                        jsonld_company = org.get("name", "")
-                    elif isinstance(org, str):
-                        jsonld_company = org
-                    loc = data.get("jobLocation", {})
-                    if isinstance(loc, dict):
-                        addr = loc.get("address", {})
-                        if isinstance(addr, dict):
-                            parts = [
-                                addr.get("addressLocality", ""),
-                                addr.get("addressRegion", ""),
-                                addr.get("addressCountry", ""),
-                            ]
-                            jsonld_location = ", ".join(p for p in parts if p)
-                        elif isinstance(addr, str):
-                            jsonld_location = addr
-                    elif isinstance(loc, str):
-                        jsonld_location = loc
-            except (json.JSONDecodeError, TypeError, KeyError, ValueError):
-                pass
-
-        # ── 5. Try og:site_name meta tag ──────────────────────────────────
-        og_site = ""
-        site_tag = soup.find("meta", property="og:site_name")
-        if site_tag and site_tag.get("content"):
-            og_site = site_tag["content"].strip()
-
-        # ── Resolve title ─────────────────────────────────────────────────
-        # Prefer <title> or og:title, fall back to <h1>
-        raw_title = og_title or page_title or h1_text
-
-        # Many job boards use "Job Title - Company - Location" or "Job Title at Company in Location"
-        # Try to split on common delimiters
-        title, company, location = _parse_title_string(raw_title)
-
-        # Fill gaps from JSON-LD (most structured/reliable)
-        if not title and jsonld_title:
-            title = jsonld_title
-        if not company and jsonld_company:
-            company = jsonld_company
-        if not location and jsonld_location:
-            location = jsonld_location
-
-        # If title is still empty, use h1 as fallback
-        if not title and h1_text:
-            title = h1_text
-
-        # If company is still empty, use og:site_name (but only if it looks like
-        # a company name, not a job board like "LinkedIn" or "Indeed")
-        if not company and og_site:
-            job_board_sites = {
-                "linkedin", "indeed", "glassdoor", "monster", "ziprecruiter",
-                "careerbuilder", "simplyhired", "github jobs", "stackoverflow",
-                "dribbble", "behance", "google careers", "amazon jobs",
-                "apple jobs", "microsoft careers", "bayt", "naukri",
-                "seek", "jobsdb", "jobstreet", "careerjet", "jooble",
-                "reed", "totaljobs", "stepstone", "xing",
-            }
-            if og_site.lower().replace(" ", "") not in {s.replace(" ", "") for s in job_board_sites}:
-                company = og_site
-
-        return title, company, location
+            return FetchResult(
+                text=text,
+                title=meta.title or None,
+                company=meta.company or None,
+                location=meta.location or None,
+                source_url=url,
+            )
+        finally:
+            response.close()
