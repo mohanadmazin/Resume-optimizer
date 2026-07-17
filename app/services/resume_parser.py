@@ -9,6 +9,8 @@ import re
 from pydantic import ValidationError
 from app.ai.ollama_client import OllamaClient, OllamaError
 from app.ai.prompts import PARSE_PROMPT, PARSE_SYSTEM
+from app.domain.fact_guard import HallucinatedField
+from app.services.parser_fact_guard import verify_parse
 from app.schemas import ContactInfo, EducationItem, ExperienceItem, ParseWarning, ProjectItem, ResumeData
 
 logger = logging.getLogger(__name__)
@@ -173,12 +175,33 @@ def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
 
         resume = ResumeData.model_validate(fields)
 
+        # ── Parser fact guard: strip hallucinated fields ────────────────
+        fact_result = verify_parse(resume, text)
+        if fact_result.has_hallucinations:
+            for h in fact_result.hallucinated_fields:
+                _strip_hallucinated_field(resume, h)
+            resume.parse_warnings.extend(fact_result.warnings)
+            logger.info(
+                "Parser fact guard stripped %d hallucinated field(s)",
+                len(fact_result.hallucinated_fields),
+            )
+
     except (OllamaError, ValidationError, ValueError, TypeError) as exc:
         logger.warning("AI parsing failed; using heuristic parser: %s", exc)
         resume = parse_resume(text)
 
     resume.raw_text = text
     return resume
+
+
+def _strip_hallucinated_field(resume: ResumeData, h: HallucinatedField) -> None:
+    """Set a hallucinated field to its default value."""
+    if h.section == "experience" and h.index < len(resume.experience):
+        setattr(resume.experience[h.index], h.field, "")
+    elif h.section == "education" and h.index < len(resume.education):
+        setattr(resume.education[h.index], h.field, "")
+    elif h.section == "certifications" and h.index < len(resume.certifications):
+        resume.certifications[h.index] = ""
 
 
 def _match_section(line: str) -> str | None:

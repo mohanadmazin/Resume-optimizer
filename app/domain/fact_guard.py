@@ -4,6 +4,8 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
+from app.domain.resume import ParseWarning
+
 
 class ChangeType(str, Enum):
     SUMMARY = "summary"
@@ -45,3 +47,27 @@ class FactGuardResult(BaseModel):
     @property
     def flagged_count(self) -> int:
         return len(self.flagged_changes)
+
+
+# ── Parser fact guard models ────────────────────────────────────────────
+
+
+class HallucinatedField(BaseModel):
+    """A single field that the AI parser invented (not found in source text)."""
+
+    section: str
+    index: int
+    field: str
+    extracted_value: str
+    reason: str = "not found in source text"
+
+
+class ParseFactGuardResult(BaseModel):
+    """Result of checking AI parser output against the source resume text."""
+
+    hallucinated_fields: List[HallucinatedField] = Field(default_factory=list)
+    warnings: List[ParseWarning] = Field(default_factory=list)
+
+    @property
+    def has_hallucinations(self) -> bool:
+        return len(self.hallucinated_fields) > 0

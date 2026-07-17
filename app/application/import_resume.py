@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from app.domain.resume import ResumeData
 from app.services.document_reader import extract_text
 from app.services.resume_parser import parse_resume, parse_resume_ai
+from app.validators import validate_resume
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,9 @@ class ImportResumeUseCase:
 
     def save(self, result: ImportResult, name: str) -> int:
         """Persist the imported resume. Returns the resume ID."""
+        errors = validate_resume(result.resume)
+        if errors:
+            logger.warning("Resume validation warnings for '%s': %s", name, errors)
         from app.database import db
         resume_id = db.save_resume(
             name,
