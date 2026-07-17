@@ -30,6 +30,7 @@ class AISettings(BaseModel):
     model: str = Field(default="qwen3", min_length=1, max_length=200)
     available_models: list[str] = Field(default_factory=lambda: ["qwen3", "llama3.1"])
     temperature: float = Field(default=0.3, ge=0, le=1)
+    custom_skills: list[str] = Field(default_factory=list)
 
     @field_validator("ollama_url")
     @classmethod

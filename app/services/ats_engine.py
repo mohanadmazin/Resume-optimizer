@@ -44,36 +44,102 @@ _KNOWN_SKILLS: set[str] = {
     "python", "java", "javascript", "typescript", "c++", "c#", "go", "golang", "rust",
     "ruby", "php", "swift", "kotlin", "scala", "r", "matlab", "perl", "haskell",
     "elixir", "dart", "lua", "sql", "nosql", "html", "css", "scss", "sass",
+    "fortran", "cobol", "assembly", "vba", "objective-c", "groovy", "julia",
+    "typescript", "javascript",
     # Frameworks
     "django", "flask", "fastapi", "spring", "springboot", "express", "node.js", "nodejs",
     "react", "reactjs", "vue", "vuejs", "angular", "angularjs", "svelte", "next.js", "nextjs",
     "rails", "laravel", "symfony", ".net", "dotnet", "asp.net",
-    # Data
+    "blazor", "flutter", "react native", "ionic", "xamarin", "telerik",
+    "graphql", "apollo", "tailwind", "bootstrap", "jquery",
+    # Databases
     "postgresql", "postgres", "mysql", "mongodb", "redis", "elasticsearch", "cassandra",
     "dynamodb", "sqlite", "oracle", "neo4j", "mssql", "sqlserver",
+    "snowflake", "databricks", "bigquery", "redshift", "clickhouse", "cockroachdb",
+    "mariadb", "couchdb", "firebase", "supabase", "memcached", "etcd", "riak",
+    "db2", "teradata", "informix",
     # Cloud & DevOps
     "aws", "gcp", "azure", "docker", "kubernetes", "k8s", "terraform", "ansible",
     "jenkins", "github actions", "gitlab ci", "ci/cd", "ci cd", "prometheus", "grafana",
-    "cloudformation", "helm", "argocd", ".CircleCI", "travis",
+    "cloudformation", "helm", "argocd", "circleci", "travis",
+    "azure devops", "azure pipelines", "bitbucket pipelines", "spinnaker",
+    "puppet", "chef", "saltstack", "vagrant", "packer", "vagrant",
+    "cloudflare", "fastly", "akamai", "s3", "ec2", "lambda", "cloudfront",
+    "gke", "aks", "eks", "openshift", "istio", "envoy", "consul", "vault",
+    "pulumi", "crossplane", "argocd", "flux",
+    # Data & Analytics
+    "spark", "hadoop", "kafka", "airflow", "mlflow", "dbt", "snowflake",
+    "tableau", "power bi", "looker", "superset", "metabase", "qlik",
+    "pentaho", "talend", "informatica", "ssis", "ssas", "ssrs",
+    "excel", "google sheets", "pandas", "numpy", "scipy",
     # AI/ML
-    "tensorflow", "pytorch", "keras", "scikit-learn", "sklearn", "pandas", "numpy",
-    "spark", "hadoop", "kafka", "airflow", "mlflow", "langchain", "openai",
+    "tensorflow", "pytorch", "keras", "scikit-learn", "sklearn",
+    "langchain", "openai", "llamaindex", "huggingface", "transformers",
     "machine learning", "deep learning", "nlp", "natural language processing",
     "computer vision", "neural networks", "transformers",
+    "stable diffusion", "midjourney", "dall-e", "chatgpt", "gpt-4", "llm",
+    "xgboost", "lightgbm", "catboost", "prophet", "scikit",
+    "opencv", "yolo", "bert", "gpt", "llama", "mistral", "gemini",
+    "mlops", "feature store", "model deployment", "vector database",
+    "pinecone", "weaviate", "milvus", "chromadb", "faiss",
     # Tools
     "git", "linux", "bash", "powershell", "vim", "vscode", "jira", "confluence",
     "slack", "docker compose", "postman", "figma", "jupyter",
+    "notion", "airtable", "salesforce", "hubspot", "zendesk", "intercom",
+    "splunk", "datadog", "new relic", "dynatrace", "appdynamics",
+    "sonarqube", "checkmarx", "veracode", "fortify",
     # Methodologies
     "agile", "scrum", "kanban", "devops", "mlops", "tdd", "bdd", "saas", "paas", "iaas",
     "microservices", "serverless", "rest", "restful", "graphql", "grpc", "websocket",
-    "oauth", "jwt", "oauth2",
+    "oauth", "jwt", "oauth2", "saml", "ldap",
+    "domain-driven design", "event-driven", "cqrs", "event sourcing",
+    "12-factor", "clean architecture", "hexagonal architecture",
     # Testing
     "pytest", "unittest", "jest", "mocha", "cypress", "selenium", "playwright",
     "junit", "xunit", "postman",
+    "k6", "gatling", "jmeter", "loadrunner", "artillery",
+    "robot framework", "cucumber", "specflow", "testng", "phpunit",
+    "sonarqube", "codecov", "coveralls",
+    # Networking & Security
+    "tcp/ip", "dns", "load balancing", "firewall", "vpn", "ssl/tls",
+    "owasp", "burp suite", "nessus", "wireshark", "nmap",
+    "penetration testing", "vulnerability assessment", "siem",
+    "iso 27001", "soc 2", "gdpr", "hipaa", "pci-dss",
+    # Engineering / Hardware
+    "autocad", "solidworks", "catia", "revit", "plc", "scada",
+    "matlab", "simulink", "labview", "embedded systems", "rtos",
+    "pcb design", "altium", "eagle", "fpga", "vhdl", "verilog",
+    "ros", "industrial automation",
     # Misc
-    "kafka", "rabbitmq", "nginx", "apache", "tomcat", "graphql", "protobuf", "grpc",
+    "rabbitmq", "nginx", "apache", "tomcat", "protobuf", "avro",
     "blockchain", "web3", "solidity", "ethereum",
+    "erp", "sap", "oracle erp", "workday", "successfactors",
+    "project management", "stakeholder management", "risk management",
+    "budget management", "vendor management", "change management",
+    "business analysis", "requirements gathering", "process improvement",
+    "six sigma", "lean", "itil", "cobit",
 }
+
+# Custom skills loaded from user settings at runtime.
+_custom_skills_loaded = False
+
+
+def _ensure_custom_skills() -> None:
+    """Merge user-configured custom skills into _KNOWN_SKILLS (once)."""
+    global _custom_skills_loaded
+    if _custom_skills_loaded:
+        return
+    _custom_skills_loaded = True
+    try:
+        from app.core.settings import load_settings
+        custom = load_settings().ai.custom_skills
+        if custom:
+            before = len(_KNOWN_SKILLS)
+            for s in custom:
+                _KNOWN_SKILLS.add(s.strip().lower())
+            logger.info("Loaded %d custom skills (vocabulary: %d → %d)", len(custom), before, len(_KNOWN_SKILLS))
+    except Exception:
+        logger.debug("Could not load custom skills", exc_info=True)
 
 SHORT_KEEP = {"c#", "go", "r", "ai", "ml", "qa", "ci", "cd", "ux", "ui", "c++", "aws", "sql", "api", "git"}
 
@@ -301,6 +367,7 @@ def extract_required_skills(text: str) -> list[str]:
     technical skills (from the curated vocabulary).  Generic words like
     "environment", "support", or "business" are excluded.
     """
+    _ensure_custom_skills()
     tokens = [t.strip(".-/") for t in re.findall(r"[a-z][a-z0-9+#.\-/]*", text.lower())]
     words = [
         t for t in tokens
@@ -350,6 +417,7 @@ def _resume_text(resume: ResumeData) -> str:
 
 
 def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
+    _ensure_custom_skills()
     weighted_keywords = _extract_weighted_keywords(jd_text)
     keywords = [kw for kw, _ in weighted_keywords]
     weights = {kw: w for kw, w in weighted_keywords}

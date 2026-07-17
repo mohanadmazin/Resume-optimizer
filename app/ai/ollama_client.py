@@ -101,7 +101,7 @@ class OllamaClient:
             payload["format"] = "json"
         try:
             logger.info("Ollama request: model=%s json_mode=%s", self.model, json_mode)
-            resp = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=600)
+            resp = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=120)
             resp.raise_for_status()
         except requests.RequestException as exc:
             logger.error("Ollama request failed: %s", exc)

@@ -36,6 +36,9 @@ pip install -r requirements.txt
 # 3. Pull at least one model
 ollama pull qwen3
 ollama pull llama3.1             # optional
+
+# 4. Install browser for fetching job URLs (optional)
+playwright install chromium
 ```
 
 ## Run

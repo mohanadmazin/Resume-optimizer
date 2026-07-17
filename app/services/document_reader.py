@@ -37,7 +37,16 @@ def extract_text(path: str) -> str:
 
 def _read_pdf(path: str) -> str:
     with fitz.open(path) as doc:
-        return "\n".join(page.get_text() for page in doc)
+        parts: list[str] = []
+        for page in doc:
+            blocks = page.get_text("blocks")
+            # Sort by vertical position (top→bottom), then horizontal (left→right)
+            blocks.sort(key=lambda b: (round(b[1], 1), b[0]))
+            for block in blocks:
+                # block[4] is the text content; skip image-only blocks
+                if len(block) > 4 and block[4].strip():
+                    parts.append(block[4].strip())
+        return "\n".join(parts)
 
 
 def _is_section_header_row(first_cell: str) -> bool:

@@ -244,8 +244,23 @@ class FactGuard:
         all_unsupported_entities = list(dict.fromkeys(all_unsupported_entities))
         all_unsupported_skills = list(dict.fromkeys(all_unsupported_skills))
 
-        safe = [c for c in all_changes if not (c.has_new_numbers or c.has_new_entities or c.has_new_skills)]
-        flagged = [c for c in all_changes if c.has_new_numbers or c.has_new_entities or c.has_new_skills]
+        safe: list[ProposedChange] = []
+        flagged: list[ProposedChange] = []
+        for c in all_changes:
+            if c.has_new_skills:
+                c.change_type = ChangeType.SKILL_ADD
+                flagged.append(c)
+            elif c.has_new_numbers:
+                c.change_type = ChangeType.METRIC_ADD
+                flagged.append(c)
+            elif c.has_new_entities:
+                c.change_type = ChangeType.EMPLOYER_ADD
+                flagged.append(c)
+            else:
+                # Pure language improvement — no factual additions
+                if c.change_type == ChangeType.BULLET:
+                    c.change_type = ChangeType.REWRITE
+                safe.append(c)
 
         logger.info(
             "FactGuard: %d changes total, %d safe, %d flagged",

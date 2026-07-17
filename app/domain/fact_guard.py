@@ -11,6 +11,11 @@ class ChangeType(str, Enum):
     SUMMARY = "summary"
     HEADLINE = "headline"
     BULLET = "bullet"
+    GRAMMAR = "grammar"
+    REWRITE = "rewrite"
+    SKILL_ADD = "skill_add"
+    METRIC_ADD = "metric_add"
+    EMPLOYER_ADD = "employer_add"
 
 
 class ProposedChange(BaseModel):

@@ -31,17 +31,37 @@ class Worker(QThread):
     result = Signal(object)
     error = Signal(str)
 
-    def __init__(self, fn: Callable[..., Any], *args: Any, parent: object = None, **kwargs: Any):
+    def __init__(
+        self,
+        fn: Callable[..., Any],
+        *args: Any,
+        parent: object = None,
+        timeout: int = 180,
+        **kwargs: Any,
+    ):
         super().__init__(parent)
         self._fn = fn
         self._args = args
         self._kwargs = kwargs
+        self._timeout = timeout
+        self._timer: threading.Timer | None = None
 
     def run(self) -> None:
+        self._timer = threading.Timer(self._timeout, self._on_timeout)
+        self._timer.daemon = True
+        self._timer.start()
         try:
             self.result.emit(self._fn(*self._args, **self._kwargs))
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI
             self.error.emit(str(exc))
+        finally:
+            if self._timer is not None:
+                self._timer.cancel()
+
+    def _on_timeout(self) -> None:
+        logger.warning("Worker timed out after %ds calling %s", self._timeout, self._fn.__name__)
+        self.error.emit(f"Operation timed out after {self._timeout} seconds. The AI model may be loading or unresponsive.")
+        self.terminate()
 
 
 class PipelineWorker(QThread):
