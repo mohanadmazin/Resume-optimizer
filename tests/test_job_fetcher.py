@@ -418,3 +418,62 @@ class TestExtractMetadata:
         assert result.title == "Dev"
         assert result.company == "Co"
         assert result.location == "NYC"
+
+    def test_linkedin_hiring_pattern_in_title(self):
+        """LinkedIn title: 'Company hiring Title in Location' (no a/an/for)."""
+        html = '<html><head><title>HCLTech hiring Senior Network Engineer in Kuala Lumpur, Malaysia</title></head><body></body></html>'
+        t, c, l = JobFetcher._extract_metadata(html)
+        assert t == "Senior Network Engineer"
+        assert c == "HCLTech"
+        assert l == "Kuala Lumpur, Malaysia"
+
+    def test_linkedin_site_name_filtered(self):
+        """LinkedIn og:site_name should not become the company name."""
+        html = """
+        <html><head>
+        <title>Dev - Acme Corp</title>
+        <meta property="og:site_name" content="LinkedIn">
+        </head><body></body></html>
+        """
+        t, c, l = JobFetcher._extract_metadata(html)
+        assert c == "Acme Corp"
+
+    def test_extract_clean_text_filters_noise(self):
+        """Noise lines like 'Sign in', 'Join now' should be removed."""
+        html = """
+        <html><body>
+        <main>
+        <p>Senior Network Engineer</p>
+        <p>HCLTech</p>
+        <p>Sign in to see more</p>
+        <p>Join now</p>
+        <p>We are seeking a skilled engineer...</p>
+        <p>Forgot password?</p>
+        <p>Email or phone</p>
+        </main>
+        </body></html>
+        """
+        text = JobFetcher._extract_clean_text(html)
+        assert "Sign in" not in text
+        assert "Join now" not in text
+        assert "Forgot password" not in text
+        assert "Email or phone" not in text
+        assert "Senior Network Engineer" in text
+        assert "We are seeking" in text
+
+    def test_extract_clean_text_removes_forms(self):
+        """Form elements should be removed."""
+        html = """
+        <html><body>
+        <main>
+        <p>Job description text here.</p>
+        <form><input type="text" placeholder="Email"><button>Submit</button></form>
+        <p>More job details.</p>
+        </main>
+        </body></html>
+        """
+        text = JobFetcher._extract_clean_text(html)
+        assert "Job description" in text
+        assert "More job details" in text
+        assert "Email" not in text
+        assert "Submit" not in text

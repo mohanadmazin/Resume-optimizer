@@ -44,8 +44,8 @@ def _parse_title_string(raw: str) -> tuple[str, str, str]:
     if m:
         return m.group(1).strip(), m.group(2).strip(), (m.group(3) or "").strip()
 
-    # Pattern: "Company is hiring a X in Location"
-    m = re.match(r"^(.+?)\s+(?:is\s+)?hiring\s+(?:a|an|for)\s+(.+?)(?:\s+in\s+(.+))?$", raw, re.IGNORECASE)
+    # Pattern: "Company hiring Title in Location" or "Company is hiring a Title in Location"
+    m = re.match(r"^(.+?)\s+(?:is\s+)?hiring\s+(?:a|an|for\s+)?(.+?)(?:\s+in\s+(.+))?$", raw, re.IGNORECASE)
     if m:
         return m.group(2).strip(), m.group(1).strip(), (m.group(3) or "").strip()
 
@@ -141,6 +141,42 @@ class JobFetcher:
     TAGS_TO_REMOVE = [
         "script", "style", "noscript", "header", "footer",
         "nav", "aside", "meta", "head", "title", "svg", "button",
+        "form", "input", "select", "textarea", "label",
+        "iframe", "dialog", "modal",
+    ]
+
+    # Text patterns that indicate noise (login prompts, similar jobs, etc.)
+    NOISE_PATTERNS = [
+        r"(?i)^sign in to\b",
+        r"(?i)^join now$",
+        r"(?i)^forgot password\??$",
+        r"(?i)^email or phone$",
+        r"(?i)^new to \w+\??$",
+        r"(?i)^password$",
+        r"(?i)^cookie policy$",
+        r"(?i)^privacy policy$",
+        r"(?i)^user agreement$",
+        r"(?i)^by clicking continue\b",
+        r"(?i)^similar jobs$",
+        r"(?i)^people also viewed$",
+        r"(?i)^explore top content\b",
+        r"(?i)^see who\b.*hired\b",
+        r"(?i)^referrals increase\b",
+        r"(?i)^get notified when\b",
+        r"(?i)^set alert$",
+        r"(?i)^sign in to set\b",
+        r"(?i)^sign in to evaluate\b",
+        r"(?i)^sign in to tailor\b",
+        r"(?i)^sign in to access\b",
+        r"(?i)^direct message the job poster\b",
+        r"(?i)^use ai to assess\b",
+        r"(?i)^\d+ applicants?$",
+        r"(?i)^\d+ (hours?|days?|weeks?|months?) ago$",
+        r"(?i)^save$",
+        r"(?i)^report this job$",
+        r"(?i)^all jobs$",
+        r"(?i)^view top content$",
+        r"(?i)^find curated posts\b",
     ]
 
     @staticmethod
@@ -242,14 +278,50 @@ class JobFetcher:
             for element in soup.find_all(tag_name):
                 element.decompose()
 
-        main_content = soup.find("main") or soup.find("article")
-        if not main_content:
-            main_content = soup.find("body")
+        # Remove LinkedIn-style sections by class/id hints
+        for element in soup.find_all(
+            attrs={"class": lambda c: c and any(
+                kw in (c if isinstance(c, str) else " ".join(c)).lower()
+                for kw in ["sign", "login", "modal", "overlay", "auth",
+                            "similar-jobs", "people-also-viewed",
+                            "job-alert", "related-jobs", "sidebar"]
+            )}
+        ):
+            element.decompose()
+
+        for element in soup.find_all(attrs={"id": lambda i: i and any(
+            kw in i.lower()
+            for kw in ["sign", "login", "modal", "auth", "similar",
+                        "related", "sidebar", "footer"]
+        )}):
+            element.decompose()
+
+        # Try progressively narrower content selectors
+        main_content = (
+            soup.find("main")
+            or soup.find("article")
+            or soup.find(attrs={"class": lambda c: c and "job" in " ".join(c).lower() if isinstance(c, list) else c and "job" in c.lower()})
+            or soup.find(attrs={"id": lambda i: i and "job" in i.lower()})
+            or soup.find("body")
+        )
         if not main_content:
             return ""
 
         lines = [line for line in main_content.stripped_strings]
-        return "\n".join(lines)
+
+        # Filter noise lines
+        cleaned = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if len(stripped) < 2:
+                continue
+            if any(re.match(p, stripped) for p in JobFetcher.NOISE_PATTERNS):
+                continue
+            cleaned.append(stripped)
+
+        return "\n".join(cleaned)
 
     @staticmethod
     def _extract_metadata(html_content: str) -> tuple[str, str, str]:
@@ -353,7 +425,9 @@ class JobFetcher:
                 "linkedin", "indeed", "glassdoor", "monster", "ziprecruiter",
                 "careerbuilder", "simplyhired", "github jobs", "stackoverflow",
                 "dribbble", "behance", "google careers", "amazon jobs",
-                "apple jobs", "microsoft careers",
+                "apple jobs", "microsoft careers", "bayt", "naukri",
+                "seek", "jobsdb", "jobstreet", "careerjet", "jooble",
+                "reed", "totaljobs", "stepstone", "xing",
             }
             if og_site.lower().replace(" ", "") not in {s.replace(" ", "") for s in job_board_sites}:
                 company = og_site
