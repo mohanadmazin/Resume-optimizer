@@ -16,7 +16,7 @@ from app.ai.ollama_client import OllamaClient
 from app.database import db
 from app.exports.exporter import export_text_docx
 from app.schemas import ResumeData
-from app.services.cover_letter import generate_cover_letter
+from app.services.cover_letter import CoverLetterResult, generate_cover_letter
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 
@@ -46,6 +46,12 @@ class CoverLetterPage(QWidget):
         row.addWidget(self.save_btn)
         row.addStretch()
         layout.addLayout(row)
+
+        self.warnings_label = QLabel()
+        self.warnings_label.setWordWrap(True)
+        self.warnings_label.setStyleSheet("color: #e0a000; font-size: 12px;")
+        self.warnings_label.hide()
+        layout.addWidget(self.warnings_label)
 
         self.output = QTextEdit()
         self.output.setPlaceholderText(
@@ -77,16 +83,24 @@ class CoverLetterPage(QWidget):
             )
             return
         self.generate_btn.setEnabled(False)
+        self.warnings_label.hide()
         self.window.notify("Generating cover letter - this may take a minute...")
         self._overlay.show(self, "Generating cover letter...")
-        self._worker = Worker(generate_cover_letter, resume, state.job_text, OllamaClient())
+        self._worker = Worker(
+            generate_cover_letter, resume, state.job_text, OllamaClient(),
+        )
         self._worker.result.connect(self._on_done)
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
-    def _on_done(self, text: str) -> None:
+    def _on_done(self, result: CoverLetterResult) -> None:
         self._overlay.hide(self)
-        self.output.setPlainText(text)
+        self.output.setPlainText(result.text)
+        if result.warnings:
+            self.warnings_label.setText(
+                "Warnings:\n" + "\n".join(f"- {w}" for w in result.warnings)
+            )
+            self.warnings_label.show()
         self.generate_btn.setEnabled(True)
         self.save_btn.setEnabled(True)
         self.window.notify("Cover letter generated.")

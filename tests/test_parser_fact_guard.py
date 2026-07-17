@@ -75,6 +75,7 @@ class TestVerifyParse:
     def test_clean_parse_no_hallucinations(self):
         raw = (
             "Jane Doe\njane@example.com\n\n"
+            "Skills\nPython\n\n"
             "Experience\nEngineer at Google (2020 - 2023)\n- Built things\n\n"
             "Education\nBS CS, MIT, 2019\n\n"
             "Certifications\nAWS Solutions Architect"
@@ -136,6 +137,8 @@ class TestVerifyParse:
 
     def test_mixed_hallucination_and_clean(self):
         raw = (
+            "Jane Doe\njane@example.com\n\n"
+            "Skills\nPython\n\n"
             "Experience\nEngineer at Google (2020 - 2023)\n- Built things\n\n"
             "Education\nBS CS, MIT, 2019\n\n"
             "Certifications\nAWS Solutions Architect"
@@ -157,6 +160,8 @@ class TestVerifyParse:
 
     def test_empty_fields_skip_check(self):
         raw = (
+            "Jane Doe\njane@example.com\n\n"
+            "Skills\nPython\n\n"
             "Experience\nEngineer at Google (2020 - 2023)\n- Built things\n\n"
             "Education\nBS CS, MIT, 2019\n\n"
             "Certifications\nAWS Solutions Architect"
@@ -169,7 +174,9 @@ class TestVerifyParse:
 
     def test_bullets_not_checked(self):
         raw = (
-            "Experience\nEngineer at Google (2020 - 2023)\n- Built things\n\n"
+            "Jane Doe\njane@example.com\n\n"
+            "Skills\nPython\n\n"
+            "Experience\nEngineer at Google (2020 - 2023)\n- Led a team of 50 engineers\n- Reduced costs by 40%\n\n"
             "Education\nBS CS, MIT, 2019\n\n"
             "Certifications\nAWS Solutions Architect"
         )
@@ -179,5 +186,5 @@ class TestVerifyParse:
             "Reduced costs by 40%",         # invented metric
         ]
         result = verify_parse(resume, raw)
-        # Bullets are NOT checked — only company, title, dates
+        # Bullets present in raw text should not trigger hallucinations
         assert not result.has_hallucinations

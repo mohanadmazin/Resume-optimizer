@@ -10,6 +10,7 @@ Thin orchestrator that delegates to:
 
 import logging
 import socket
+import threading
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
@@ -97,9 +98,12 @@ _HEADERS = {
     "Accept-Encoding": "identity",
 }
 
+# Serialise DNS monkeypatching to avoid races with other networking threads.
+_DNS_PATCH_LOCK = threading.Lock()
 
-def _build_host_header(hostname: str, port: int) -> str:
-    default_port = 443 if urlparse(f"https://{hostname}").scheme == "https" else 80
+
+def _build_host_header(hostname: str, port: int, scheme: str) -> str:
+    default_port = 443 if scheme == "https" else 80
     if port != default_port:
         return f"{hostname}:{port}"
     return hostname
@@ -125,20 +129,56 @@ def _connect(target: ResolvedTarget, url: str, config: FetchConfig) -> requests.
     Resolves DNS once in resolve_and_validate(), validates the IP, then
     pins the resolution so that requests connects only to the validated IP
     while still using the hostname for TLS SNI.
-    """
-    original_getaddrinfo = socket.getaddrinfo
-    socket.getaddrinfo = _pinned_getaddrinfo(
-        original_getaddrinfo, target.ip, target.hostname, target.port
-    )
-    try:
-        headers = dict(_HEADERS)
-        headers["Host"] = _build_host_header(target.hostname, target.port)
 
-        session = requests.Session()
-        session.headers.update(headers)
-        return session.get(url, timeout=config.timeout, allow_redirects=False)
-    finally:
-        socket.getaddrinfo = original_getaddrinfo
+    The DNS patch is serialised with a lock to prevent races with
+    concurrent networking threads.
+    """
+    parsed = urlparse(url)
+    original_getaddrinfo = socket.getaddrinfo
+
+    with _DNS_PATCH_LOCK:
+        socket.getaddrinfo = _pinned_getaddrinfo(
+            original_getaddrinfo, target.ip, target.hostname, target.port
+        )
+        try:
+            headers = dict(_HEADERS)
+            headers["Host"] = _build_host_header(
+                target.hostname, target.port, parsed.scheme,
+            )
+
+            session = requests.Session()
+            session.headers.update(headers)
+            return session.get(url, timeout=config.timeout, allow_redirects=False)
+        finally:
+            socket.getaddrinfo = original_getaddrinfo
+
+
+def _read_limited_body(
+    response: requests.Response,
+    max_bytes: int,
+) -> bytes:
+    """Read response body in chunks, aborting if it exceeds *max_bytes*."""
+    declared_size = response.headers.get("Content-Length")
+    if declared_size:
+        try:
+            if int(declared_size) > max_bytes:
+                raise ContentTooLargeError(
+                    f"Response exceeds {max_bytes // (1024 * 1024)} MB limit."
+                )
+        except ValueError:
+            pass
+
+    body = bytearray()
+    for chunk in response.iter_content(chunk_size=64 * 1024):
+        if not chunk:
+            continue
+        if len(body) + len(chunk) > max_bytes:
+            raise ContentTooLargeError(
+                f"Response exceeds {max_bytes // (1024 * 1024)} MB limit."
+            )
+        body.extend(chunk)
+
+    return bytes(body)
 
 
 def _safe_url_for_log(url: str) -> str:
@@ -211,7 +251,7 @@ def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResul
             raise JobFetcherError(f"Failed to fetch URL: {exc}")
 
         try:
-            # Handle redirects
+            # Handle redirects — validate port on every redirect target
             if response.status_code in (301, 302, 303, 307, 308):
                 redirects_followed += 1
                 if redirects_followed > config.max_redirects:
@@ -220,7 +260,11 @@ def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResul
                 if not location:
                     raise JobFetcherError("Redirect with missing Location header.")
                 current_url = urljoin(current_url, location)
-                validate_scheme(current_url)
+                try:
+                    validate_scheme(current_url)
+                    validate_port(current_url)
+                except SSRFError as exc:
+                    raise InvalidURLError(str(exc)) from exc
                 continue
 
             # Handle HTTP errors
@@ -236,12 +280,8 @@ def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResul
                     f"Unsupported content type: {content_type}. Only HTML pages are supported."
                 )
 
-            # Validate size
-            content = response.content
-            if len(content) > config.max_bytes:
-                raise ContentTooLargeError(
-                    f"Response exceeds the {config.max_bytes // (1024 * 1024)} MB limit."
-                )
+            # Read body with streaming size check
+            content = _read_limited_body(response, config.max_bytes)
 
             # Single parse: extract metadata first (needs title/meta/script tags),
             # then clean text (removes those tags).
@@ -254,10 +294,10 @@ def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResul
 
             # ── Browser fallback for JS-rendered pages ──────────────────
             if not text or len(text.strip()) < 100:
-                if requires_browser_render(url):
+                if requires_browser_render(current_url):
                     logger.info("Static extraction thin (%d chars); trying browser render", len(text) if text else 0)
                     try:
-                        rendered_html = fetch_rendered_page(url)
+                        rendered_html = fetch_rendered_page(current_url)
                         from bs4 import BeautifulSoup as _BS
                         browser_soup = _BS(rendered_html, "lxml")
                         text = extract_text_from_soup(browser_soup)
@@ -277,7 +317,7 @@ def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResul
                 title=meta.title or None,
                 company=meta.company or None,
                 location=meta.location or None,
-                source_url=url,
+                source_url=current_url,
             )
         finally:
             response.close()

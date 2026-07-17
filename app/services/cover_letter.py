@@ -2,6 +2,7 @@
 import json
 import logging
 import re
+from dataclasses import dataclass, field
 
 from app.ai.ollama_client import OllamaClient
 from app.ai.prompts import COVER_LETTER_PROMPT, COVER_LETTER_SYSTEM
@@ -20,7 +21,18 @@ _NUMBER_RE = re.compile(
 )
 
 
-def _check_cover_letter_facts(letter: str, resume: ResumeData) -> list[str]:
+@dataclass(frozen=True, slots=True)
+class CoverLetterResult:
+    """Structured cover letter output with warnings kept separate."""
+    text: str
+    warnings: list[str] = field(default_factory=list)
+
+
+def _check_cover_letter_facts(
+    letter: str,
+    resume: ResumeData,
+    allowed_organizations: set[str] | None = None,
+) -> list[str]:
     """Return a list of warnings for unsupported claims in the cover letter."""
     warnings: list[str] = []
 
@@ -43,11 +55,18 @@ def _check_cover_letter_facts(letter: str, resume: ResumeData) -> list[str]:
     }
     known_orgs = resume_companies | resume_institutions
 
-    # Candidate's own name should not be flagged as an unknown organization
+    # Add allowed organizations (target employer)
+    if allowed_organizations:
+        known_orgs.update(org.strip().lower() for org in allowed_organizations if org.strip())
+
+    # Candidate's own name should not be flagged
     candidate_name = (resume.contact.name or "").lower()
 
     # Look for capitalized multi-word proper nouns that might be company names
-    company_pattern = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+(?:\s+(?:Corp|Inc|Ltd|LLC|Co|Company|Group|Technologies|Systems))?)\b")
+    company_pattern = re.compile(
+        r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+(?:\s+(?:Corp|Inc|Ltd|LLC|Co|Company|Group|"
+        r"Technologies|Systems))?)\b"
+    )
     letter_orgs = set(company_pattern.findall(letter))
     for org in letter_orgs:
         if org.lower() not in known_orgs and org.lower() not in {
@@ -61,8 +80,10 @@ def _check_cover_letter_facts(letter: str, resume: ResumeData) -> list[str]:
 def generate_cover_letter(
     resume,
     jd_text,
-    client
-):
+    client,
+    target_company: str | None = None,
+) -> CoverLetterResult:
+    """Generate a cover letter and return structured result with separate warnings."""
     logger.info("Generating cover letter for %s", resume.contact.name or "unknown")
     data = resume.model_dump()
     data.pop("raw_text", None)
@@ -93,11 +114,11 @@ def generate_cover_letter(
     )
 
     # Fact-check the generated cover letter
-    warnings = _check_cover_letter_facts(letter, resume)
+    allowed = {target_company} if target_company else None
+    warnings = _check_cover_letter_facts(letter, resume, allowed_organizations=allowed)
+
     if warnings:
         for w in warnings:
             logger.warning("Cover letter fact check: %s", w)
-        disclaimer = "\n\n---\nFact-check warnings:\n" + "\n".join(f"- {w}" for w in warnings)
-        letter += disclaimer
 
-    return letter
+    return CoverLetterResult(text=letter, warnings=warnings)

@@ -3,9 +3,19 @@
 Launches a headless Chromium instance via Playwright to render pages
 that return empty or minimal content from plain HTTP requests
 (e.g. LinkedIn, Indeed, Workday).
+
+All browser requests are routed through SSRF validation to prevent
+the browser from accessing private, loopback, or blocked targets.
 """
 import logging
 from urllib.parse import urlparse
+
+from app.services.security import (
+    SSRFError,
+    resolve_and_validate,
+    validate_port,
+    validate_scheme,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +26,7 @@ JS_HEAVY_DOMAINS: frozenset[str] = frozenset({
     "glassdoor.com",
     "workday.com",
     "workdayjobs.com",
+    "myworkdayjobs.com",
 })
 
 _USER_AGENT = (
@@ -24,6 +35,8 @@ _USER_AGENT = (
     "Chrome/120.0.0.0 Safari/537.36"
 )
 
+_BLOCKED_RESOURCE_TYPES = {"image", "media", "font"}
+
 
 class BrowserFetchError(Exception):
     """Raised when the headless browser cannot render the page."""
@@ -31,8 +44,29 @@ class BrowserFetchError(Exception):
 
 def requires_browser_render(url: str) -> bool:
     """Return True if *url* belongs to a JS-heavy domain."""
-    hostname = urlparse(url).hostname or ""
-    return any(d in hostname for d in JS_HEAVY_DOMAINS)
+    hostname = (urlparse(url).hostname or "").lower().rstrip(".")
+    return any(
+        hostname == domain or hostname.endswith(f".{domain}")
+        for domain in JS_HEAVY_DOMAINS
+    )
+
+
+def _secure_route(route, request) -> None:
+    """Playwright route handler: enforce SSRF checks on every browser request."""
+    try:
+        validate_scheme(request.url)
+        validate_port(request.url)
+        resolve_and_validate(request.url)
+    except SSRFError:
+        logger.warning("Blocked browser request to unsafe target: %s", request.url)
+        route.abort("blockedbyclient")
+        return
+
+    if request.resource_type in _BLOCKED_RESOURCE_TYPES:
+        route.abort("blockedbyclient")
+        return
+
+    route.continue_()
 
 
 def fetch_rendered_page(url: str, timeout: int = 30_000) -> str:
@@ -48,6 +82,10 @@ def fetch_rendered_page(url: str, timeout: int = 30_000) -> str:
     Raises:
         BrowserFetchError: If Playwright is unavailable or rendering fails.
     """
+    validate_scheme(url)
+    validate_port(url)
+    resolve_and_validate(url)
+
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -59,16 +97,22 @@ def fetch_rendered_page(url: str, timeout: int = 30_000) -> str:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             try:
-                page = browser.new_page(user_agent=_USER_AGENT)
+                context = browser.new_context(
+                    user_agent=_USER_AGENT,
+                    service_workers="block",
+                )
+                context.route("**/*", _secure_route)
 
-                page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+                page = context.new_page()
+                response = page.goto(url, wait_until="domcontentloaded", timeout=timeout)
 
-                # Wait for main content container — LinkedIn uses <main>
-                try:
-                    page.wait_for_selector("main", timeout=10_000)
-                except Exception:
-                    # Not all sites use <main>; fall back to a short wait
-                    page.wait_for_timeout(3_000)
+                if response is None:
+                    raise BrowserFetchError("Navigation returned no response.")
+
+                final_url = page.url
+                validate_scheme(final_url)
+                validate_port(final_url)
+                resolve_and_validate(final_url)
 
                 html = page.content()
                 logger.info("Browser-rendered page: %d chars of HTML", len(html))

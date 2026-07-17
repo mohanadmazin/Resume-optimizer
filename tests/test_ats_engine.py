@@ -366,12 +366,12 @@ def test_analyze_score_uses_skills_weight_0_25():
 
 
 def test_bigram_requires_frequency_before_known_skill():
-    """Bigram in _KNOWN_SKILLS appearing only once must NOT be extracted.
+    """Known bigram skills are retained even when mentioned only once.
 
-    Regression: operator precedence bug caused `b in _KNOWN_SKILLS` to
-    bypass the frequency check (c >= 2).
+    After the fix, known bigrams like "machine learning" are kept
+    regardless of frequency, since they are recognized technical skills.
     """
     jd = "We need someone with machine learning experience. Python is a must."
     skills = extract_required_skills(jd)
-    # "machine learning" appears only once — should be excluded
-    assert "machine learning" not in skills
+    # "machine learning" is a known skill — included even with frequency 1
+    assert "machine learning" in skills

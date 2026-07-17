@@ -77,7 +77,7 @@ def test_parse_resume_ai_success(mock_client_cls):
         "languages": [],
     }
 
-    text = "Some resume text"
+    text = "AI Parsed User ai@test.com Machine Learning Python Some resume text"
     result = parse_resume_ai(text, mock_client)
 
     assert result.contact.name == "AI Parsed User"

@@ -46,21 +46,30 @@ class TestFetchRenderedPage:
     def test_successful_render(self):
         mock_page = MagicMock()
         mock_page.content.return_value = "<html><body><main>Job content here</main></body></html>"
+        mock_page.url = "https://example.com"
+        mock_page.goto.return_value = MagicMock(status=200)
+
+        mock_context = MagicMock()
+        mock_context.new_page.return_value = mock_page
 
         mock_browser = MagicMock()
-        mock_browser.new_page.return_value = mock_page
+        mock_browser.new_context.return_value = mock_context
 
         mock_pw = MagicMock()
         mock_pw.chromium.launch.return_value = mock_browser
 
-        with patch("playwright.sync_api.sync_playwright") as mock_sync:
+        with (
+            patch("playwright.sync_api.sync_playwright") as mock_sync,
+            patch("app.services.browser_fetcher.validate_scheme"),
+            patch("app.services.browser_fetcher.validate_port"),
+            patch("app.services.browser_fetcher.resolve_and_validate"),
+        ):
             mock_sync.return_value.__enter__.return_value = mock_pw
             html = fetch_rendered_page("https://example.com")
 
         assert "<html" in html
         assert "Job content here" in html
         mock_page.goto.assert_called_once()
-        mock_browser.close.assert_called_once()
 
     def test_browser_error_wrapped(self):
         mock_pw = MagicMock()
@@ -92,6 +101,7 @@ class TestBrowserFallbackIntegration:
         mock_response.status_code = 200
         mock_response.headers = {"Content-Type": "text/html"}
         mock_response.content = thin_html.encode()
+        mock_response.iter_content.return_value = [thin_html.encode()]
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
 
@@ -113,8 +123,9 @@ class TestBrowserFallbackIntegration:
         """Regular sites should NOT trigger browser fallback."""
         minimal_html = (
             "<html><body>"
-            "<h1>Backend Engineer at Acme</h1>"
-            "<p>We need a Python developer with 3+ years experience.</p>"
+            "<h1>Backend Engineer at Acme Corporation</h1>"
+            "<p>We need a Python developer with 3+ years of experience "
+            "in Django and PostgreSQL.</p>"
             "</body></html>"
         )
 
@@ -122,6 +133,7 @@ class TestBrowserFallbackIntegration:
         mock_response.status_code = 200
         mock_response.headers = {"Content-Type": "text/html"}
         mock_response.content = minimal_html.encode()
+        mock_response.iter_content.return_value = [minimal_html.encode()]
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
 

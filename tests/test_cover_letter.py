@@ -96,7 +96,7 @@ def test_generate_cover_letter_calls_client(mock_client_cls):
     letter = generate_cover_letter(resume, "Looking for a Python developer", mock_client)
 
     mock_client.generate.assert_called_once()
-    assert "Jane" in letter
+    assert "Jane" in letter.text
 
 
 @patch("app.services.cover_letter.OllamaClient")
@@ -108,10 +108,12 @@ def test_generate_cover_letter_appends_fact_check_warnings(mock_client_cls):
     )
 
     resume = _resume()
-    letter = generate_cover_letter(resume, "Job description", mock_client)
+    result = generate_cover_letter(resume, "Job description", mock_client)
 
-    assert "Fact-check warnings" in letter
-    assert "75%" in letter
+    assert len(result.warnings) > 0
+    assert "75%" in result.text
+    # Warnings must NOT appear in the exported text
+    assert "Fact-check warnings" not in result.text
 
 
 @patch("app.services.cover_letter.OllamaClient")
@@ -122,9 +124,9 @@ def test_generate_cover_letter_no_warnings_for_clean(mock_client_cls):
     )
 
     resume = _resume()
-    letter = generate_cover_letter(resume, "Job description", mock_client)
+    result = generate_cover_letter(resume, "Job description", mock_client)
 
-    assert "Fact-check warnings" not in letter
+    assert len(result.warnings) == 0
 
 
 @patch("app.services.cover_letter.OllamaClient")
@@ -135,7 +137,7 @@ def test_generate_cover_letter_replaces_closing(mock_client_cls):
     )
 
     resume = _resume()
-    letter = generate_cover_letter(resume, "Job description", mock_client)
+    result = generate_cover_letter(resume, "Job description", mock_client)
 
     # The closing should be replaced with the actual candidate name
-    assert "Sincerely,\nJane Doe" in letter
+    assert "Sincerely,\nJane Doe" in result.text

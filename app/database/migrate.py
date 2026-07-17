@@ -6,14 +6,12 @@ Alembic migrations.  Handles three scenarios:
 1. **Fresh install** — database does not exist; ``upgrade("head")`` creates
    all tables from scratch.
 2. **Pre-Alembic database** — exists, has tables, but no ``alembic_version``
-   table.  The schema is already current (created by ``create_all()``), so we
-   stamp at head to register the version without re-running migrations.
+   table.  We infer the actual schema revision, stamp there, then upgrade.
 3. **Alembic-tracked database** — has ``alembic_version``.  We back up the
    database, run ``upgrade("head")``, and restore from backup on failure.
 """
 
 import logging
-import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -31,14 +29,14 @@ MAX_BACKUPS = 5
 # ── Alembic config ──────────────────────────────────────────────────────────
 
 
-def _get_alembic_config() -> Config:
+def _get_alembic_config(db_path: Path = DB_PATH) -> Config:
     """Build an Alembic ``Config`` pointing at the project migrations."""
     project_root = Path(__file__).resolve().parent.parent.parent
     migrations_dir = project_root / "migrations"
 
     config = Config()
     config.set_main_option("script_location", str(migrations_dir))
-    config.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATH}")
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
     return config
 
 
@@ -80,11 +78,69 @@ def _has_alembic_version(db_path: Path) -> bool:
         return False
 
 
+def _table_columns(db_path: Path, table: str) -> set[str]:
+    """Return the set of column names for *table*."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
+    finally:
+        conn.close()
+    return {row[1] for row in rows}
+
+
+def _has_cascade_fk(
+    db_path: Path,
+    table: str,
+    referenced_table: str,
+) -> bool:
+    """Check whether *table* has an ON DELETE CASCADE FK to *referenced_table*."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        rows = conn.execute(f"PRAGMA foreign_key_list({table})").fetchall()  # noqa: S608
+    finally:
+        conn.close()
+    # PRAGMA foreign_key_list columns: id, seq, table, from, to, on_update, on_delete, match
+    return any(
+        row[2] == referenced_table and row[6].upper() == "CASCADE"
+        for row in rows
+    )
+
+
+_TRACKING_COLUMNS = {
+    "source_type",
+    "source_filename",
+    "source_hash",
+    "is_original",
+}
+
+
+def _infer_legacy_revision(db_path: Path) -> str:
+    """Infer the Alembic revision that matches the current schema.
+
+    Returns:
+        "0001" if tracking columns are missing.
+        "0002" if tracking columns exist but cascade FKs are missing.
+        "head" if the schema is already fully current.
+    """
+    columns = _table_columns(db_path, "resumes")
+
+    if not _TRACKING_COLUMNS.issubset(columns):
+        return "0001"
+
+    analyses_cascade = _has_cascade_fk(db_path, "analyses", "resumes")
+    optimizations_cascade = _has_cascade_fk(db_path, "optimizations", "resumes")
+
+    if analyses_cascade and optimizations_cascade:
+        return "head"
+
+    return "0002"
+
+
 # ── Backup / restore ────────────────────────────────────────────────────────
 
 
 def _backup_database(db_path: Path) -> Path | None:
-    """Copy the database to *BACKUP_DIR* and prune old copies.
+    """Create a transactionally consistent backup using SQLite's online backup API.
 
     Returns the path of the new backup, or ``None`` if the source does not
     exist.
@@ -92,18 +148,18 @@ def _backup_database(db_path: Path) -> Path | None:
     if not db_path.exists():
         return None
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup_path = BACKUP_DIR / f"resume_optimizer_{timestamp}.db"
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
-    shutil.copy2(db_path, backup_path)
+    source_uri = f"file:{db_path.as_posix()}?mode=ro"
 
-    # Copy WAL / SHM sidecar files if present.
-    for suffix in ("-wal", "-shm"):
-        sidecar = db_path.with_name(db_path.name + suffix)
-        if sidecar.exists():
-            shutil.copy2(sidecar, backup_path.with_name(backup_path.name + suffix))
+    with sqlite3.connect(source_uri, uri=True) as source:
+        with sqlite3.connect(backup_path) as destination:
+            source.backup(destination)
+            destination.execute("PRAGMA integrity_check")
 
-    logger.info("Backed up database to %s", backup_path)
+    logger.info("Created consistent database backup at %s", backup_path)
     _prune_backups()
     return backup_path
 
@@ -117,21 +173,14 @@ def _prune_backups(keep: int = MAX_BACKUPS) -> None:
     )
     for old in backups[keep:]:
         old.unlink(missing_ok=True)
-        for suffix in ("-wal", "-shm"):
-            old.with_name(old.name + suffix).unlink(missing_ok=True)
         logger.debug("Pruned old backup %s", old)
 
 
 def _restore_backup(backup_path: Path, db_path: Path) -> None:
-    """Overwrite the database with *backup_path*."""
-    shutil.copy2(backup_path, db_path)
-    for suffix in ("-wal", "-shm"):
-        src = backup_path.with_name(backup_path.name + suffix)
-        dst = db_path.with_name(db_path.name + suffix)
-        if src.exists():
-            shutil.copy2(src, dst)
-        elif dst.exists():
-            dst.unlink()
+    """Overwrite the database with *backup_path* using SQLite backup API."""
+    with sqlite3.connect(backup_path) as source:
+        with sqlite3.connect(db_path) as destination:
+            source.backup(destination)
     logger.info("Restored database from %s", backup_path)
 
 
@@ -143,7 +192,7 @@ def run_migrations() -> None:
 
     Called at application startup instead of the old ``create_all()`` path.
     """
-    config = _get_alembic_config()
+    config = _get_alembic_config(DB_PATH)
 
     # ── Scenario 1: fresh install ──────────────────────────────────────
     if not DB_PATH.exists() or not _has_tables(DB_PATH):
@@ -155,14 +204,26 @@ def run_migrations() -> None:
         logger.info("Database schema is up to date")
         return
 
-    # ── Scenario 2: pre-Alembic database (created by create_all) ──────
+    # ── Scenario 2: pre-Alembic database (no alembic_version) ─────────
     if not _has_alembic_version(DB_PATH):
+        legacy_revision = _infer_legacy_revision(DB_PATH)
         logger.info(
-            "Pre-Alembic database detected (no alembic_version table) — "
-            "stamping at head"
+            "Pre-Alembic database detected — inferred revision: %s",
+            legacy_revision,
         )
-        command.stamp(config, "head")
-        logger.info("Database stamped at head revision")
+
+        backup_path = _backup_database(DB_PATH)
+        try:
+            command.stamp(config, legacy_revision)
+            if legacy_revision != "head":
+                command.upgrade(config, "head")
+            logger.info("Migrations completed successfully")
+        except Exception:
+            logger.exception("Migration failed during legacy upgrade")
+            if backup_path is not None:
+                logger.info("Restoring from backup %s", backup_path)
+                _restore_backup(backup_path, DB_PATH)
+            raise
         return
 
     # ── Scenario 3: Alembic-tracked database ──────────────────────────

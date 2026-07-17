@@ -63,10 +63,12 @@ def test_concurrent_generate_raises_ai_busy(client):
 def test_generate_releases_lock_on_success(client):
     """Lock is released after a successful generate() call."""
     with patch("app.ai.ollama_client.requests.post") as mock_post:
-        mock_resp = mock_post.return_value
+        mock_resp = mock_post.return_value.__enter__.return_value
         mock_resp.status_code = 200
         mock_resp.raise_for_status = lambda: None
-        mock_resp.json.return_value = {"response": "hi", "done": True}
+        mock_resp.iter_lines.return_value = [
+            b'{"response": "hi", "done": true}'
+        ]
 
         client.generate("hello")
         assert not client._generation_lock.locked()
@@ -110,10 +112,12 @@ class TestCircuitBreaker:
 
         # Next successful call should half-close and then close the circuit
         with patch("app.ai.ollama_client.requests.post") as mock_post:
-            mock_resp = mock_post.return_value
+            mock_resp = mock_post.return_value.__enter__.return_value
             mock_resp.status_code = 200
             mock_resp.raise_for_status = lambda: None
-            mock_resp.json.return_value = {"response": "ok", "done": True}
+            mock_resp.iter_lines.return_value = [
+                b'{"response": "ok", "done": true}'
+            ]
 
             result = client.generate("test")
             assert result == "ok"
@@ -121,10 +125,12 @@ class TestCircuitBreaker:
     def test_circuit_does_not_trip_on_success(self, client):
         """Successful calls never trip the circuit."""
         with patch("app.ai.ollama_client.requests.post") as mock_post:
-            mock_resp = mock_post.return_value
+            mock_resp = mock_post.return_value.__enter__.return_value
             mock_resp.status_code = 200
             mock_resp.raise_for_status = lambda: None
-            mock_resp.json.return_value = {"response": "hi", "done": True}
+            mock_resp.iter_lines.return_value = [
+                b'{"response": "hi", "done": true}'
+            ]
 
             for _ in range(10):
                 client.generate("test")

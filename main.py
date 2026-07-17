@@ -5,14 +5,14 @@ import sys
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
-from app.database.engine import init_db
+from app.database.migrate import run_migrations
 from app.logging_config import setup_logging
 from app.ui.main_window import MainWindow
 
 
 def main():
     setup_logging()
-    init_db()
+    run_migrations()
 
     app = QApplication(sys.argv)
     app.setApplicationName("Resume Optimizer")

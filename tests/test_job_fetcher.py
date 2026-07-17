@@ -476,10 +476,11 @@ class TestFetchFromUrl:
     ))
     def test_rejects_too_large_response(self, mock_resolve):
         resp = MagicMock()
-        resp.headers = {"Content-Type": "text/html"}
+        resp.headers = {"Content-Type": "text/html", "Content-Length": str(6 * 1024 * 1024)}
         resp.status_code = 200
         resp.close = MagicMock()
         resp.content = b"x" * (6 * 1024 * 1024)
+        resp.iter_content.return_value = [b"x" * (6 * 1024 * 1024)]
         with patch("app.services.job_fetcher._connect", return_value=resp):
             with pytest.raises(JobFetcherError, match="MB limit"):
                 fetch_from_url("https://example.com/large")
@@ -498,6 +499,7 @@ class TestFetchFromUrl:
         resp.headers = {"Content-Type": "text/html"}
         resp.status_code = 200
         resp.content = html.encode("utf-8")
+        resp.iter_content.return_value = [html.encode("utf-8")]
         resp.close = MagicMock()
         with patch("app.services.job_fetcher._connect", return_value=resp):
             result = fetch_from_url("https://example.com/jobs/123")
@@ -561,6 +563,7 @@ class TestFetchFromUrl:
         resp2.headers = {"Content-Type": "text/html"}
         resp2.status_code = 200
         resp2.content = html.encode("utf-8")
+        resp2.iter_content.return_value = [html.encode("utf-8")]
         resp2.close = MagicMock()
 
         mock_resolve.side_effect = [

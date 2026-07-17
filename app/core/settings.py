@@ -11,6 +11,7 @@ import re
 import shutil
 import tempfile
 import threading
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -140,31 +141,48 @@ def load_settings() -> AppSettings:
 
 
 def _recover_settings(error_detail: str) -> AppSettings:
-    """Try to recover from ``.bak``; fall back to defaults."""
+    """Try to recover from ``.bak``; fall back to defaults.
+
+    Persists the recovered configuration to the live path so that
+    subsequent loads don't fall back to defaults.
+    """
     if _BAK_PATH.exists():
         try:
             raw = _BAK_PATH.read_text(encoding="utf-8")
             settings = AppSettings.model_validate(json.loads(raw))
+            # Persist the recovered settings so next load uses them
+            _atomic_write_json(
+                CONFIG_PATH,
+                settings.model_dump_json(indent=4),
+            )
             logger.warning(
-                "Recovered settings from backup. The corrupted file "
-                "was at %s — reason: %s", CONFIG_PATH, error_detail,
+                "Recovered and restored settings from backup: %s", error_detail,
             )
             return settings
         except Exception:
             logger.warning("Backup also corrupted — falling back to defaults")
 
+    # Persist defaults so the user can edit them in the UI
+    defaults = _DEFAULT.model_copy(deep=True)
+    _atomic_write_json(
+        CONFIG_PATH,
+        defaults.model_dump_json(indent=4),
+    )
     logger.warning(
         "Settings lost. Using defaults. Reason: %s — "
         "your previous settings could not be recovered.", error_detail,
     )
-    return _DEFAULT.model_copy(deep=True)
+    return defaults
 
 
 def _quarantine_settings(error_detail: str) -> None:
     """Rename a broken settings file so it doesn't block future startups."""
     if not CONFIG_PATH.exists():
         return
-    quarantine_path = CONFIG_PATH.with_suffix(".invalid.json")
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    quarantine_path = CONFIG_PATH.with_name(
+        f"{CONFIG_PATH.stem}.{timestamp}.invalid.json"
+    )
     try:
         CONFIG_PATH.rename(quarantine_path)
         logger.warning(
@@ -221,7 +239,7 @@ class SettingsService:
 
     @property
     def settings(self) -> AppSettings:
-        return self._settings
+        return self._settings.model_copy(deep=True)
 
     @property
     def theme(self) -> str:

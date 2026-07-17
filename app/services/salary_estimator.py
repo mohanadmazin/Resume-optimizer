@@ -80,52 +80,70 @@ def _merge_intervals(intervals: list[tuple[date, date]]) -> list[tuple[date, dat
 def estimate_experience(resume: ResumeData) -> ExperienceEstimate:
     """Calculate actual years of experience from date intervals.
 
-    Merges overlapping periods and handles missing dates by assuming
-    the position continues to the present (for the most recent entry).
-    Returns a min/max range to account for uncertainty.
+    Merges overlapping periods and handles missing dates. Only the most
+    recent undated role defaults to today; older undated roles are bounded
+    by the next role's start date.
     """
     today = date.today()
-    intervals: list[tuple[date, date]] = []
-    missing: list[str] = []
+    records: list[tuple[date, date | None, str]] = []
+    unresolved: list[str] = []
 
     for exp in resume.experience:
         start = _parse_date(exp.start_date) if exp.start_date else None
         end = _parse_date(exp.end_date) if exp.end_date else None
 
         if start is None:
-            # Cannot use this entry at all
             if exp.company:
-                missing.append(exp.company)
+                unresolved.append(exp.company)
             continue
 
-        if end is None:
-            # Missing end date — assume still employed (use today)
-            # Track as missing only if it's not the most recent-looking entry
-            end = today
+        # Reject future start dates
+        if start > today:
             if exp.company:
-                missing.append(exp.company)
+                unresolved.append(exp.company)
+            continue
 
-        intervals.append((start, end))
+        # Cap end date at today
+        if end is not None:
+            end = min(end, today)
+            # Reject inverted dates
+            if end < start:
+                if exp.company:
+                    unresolved.append(exp.company)
+                continue
+
+        records.append((start, end, exp.company))
+
+    # Sort by start date
+    records.sort(key=lambda item: item[0])
+
+    intervals: list[tuple[date, date]] = []
+    for index, (start, end, company) in enumerate(records):
+        if end is None:
+            if index == len(records) - 1:
+                # Most recent entry: assume still employed
+                end = today
+            else:
+                # Older entry: bound by next role's start
+                next_start = records[index + 1][0]
+                end = min(next_start, today)
+
+            if company:
+                unresolved.append(company)
+
+        if end >= start:
+            intervals.append((start, end))
 
     merged = _merge_intervals(intervals)
-
     total_months = sum(_months_between(s, e) for s, e in merged)
-    min_years = round(total_months / 12, 1)
-
-    # Apply minimum floor before calculating max
-    if intervals:
-        min_years = max(min_years, 0.5)
-
-    # Maximum: if there are missing dates, add a buffer of 1 year per missing entry
-    max_years = min_years + len(missing) * 1.0
-    max_years = max(min_years, max_years)
+    years = round(total_months / 12, 1)
 
     # Confidence assessment
     total_entries = len(resume.experience)
-    parsed_entries = total_entries - len(missing)
+    parsed_entries = total_entries - len(unresolved)
     if total_entries == 0:
         confidence = "low"
-    elif len(missing) == 0 and total_entries >= 2:
+    elif not unresolved and parsed_entries >= 2:
         confidence = "high"
     elif parsed_entries >= 2:
         confidence = "medium"
@@ -133,19 +151,20 @@ def estimate_experience(resume: ResumeData) -> ExperienceEstimate:
         confidence = "low"
 
     return ExperienceEstimate(
-        minimum_years=min_years,
-        maximum_years=round(max_years, 1),
+        minimum_years=years,
+        maximum_years=years,
         confidence=confidence,
-        missing_dates=missing,
+        missing_dates=list(dict.fromkeys(unresolved)),
     )
 
 
 def _format_experience(est: ExperienceEstimate) -> str:
     """Format the experience estimate for the salary prompt."""
-    if est.minimum_years == est.maximum_years:
-        years_str = f"{est.minimum_years:.0f} years"
+    years = est.minimum_years
+    if years == int(years):
+        years_str = f"{int(years)} years"
     else:
-        years_str = f"{est.minimum_years:.1f} to {est.maximum_years:.1f} years"
+        years_str = f"{years:.1f} years"
 
     parts = [f"{years_str} of professional experience"]
     if est.confidence == "low":

@@ -34,8 +34,17 @@ def clean_ai_text(text: str) -> str:
 
     return text.strip()
 
+
 class OllamaError(Exception):
     """Raised when the Ollama API is unreachable or returns bad data."""
+
+
+class OllamaTransportError(OllamaError):
+    """Network-level failure (connection refused, timeout, etc.)."""
+
+
+class OllamaProtocolError(OllamaError):
+    """The model returned invalid or unparseable output."""
 
 
 class OllamaCancelledError(OllamaError):
@@ -77,7 +86,7 @@ class OllamaClient:
             resp = requests.get(f"{self.base_url}/api/tags", timeout=10)
             resp.raise_for_status()
         except requests.RequestException as exc:
-            raise OllamaError(f"Cannot reach Ollama at {self.base_url}: {exc}") from exc
+            raise OllamaTransportError(f"Cannot reach Ollama at {self.base_url}: {exc}") from exc
         return [m["name"] for m in resp.json().get("models", [])]
 
     def generate(self, prompt: str, system: str | None = None, json_mode: bool = False) -> str:
@@ -87,40 +96,66 @@ class OllamaClient:
             return self._generate_impl(prompt, system=system, json_mode=json_mode)
         except CircuitBreakerError as exc:
             logger.error("Ollama circuit breaker open — too many failures")
-            raise OllamaError(
+            raise OllamaTransportError(
                 "Ollama is unresponsive (circuit breaker open). "
                 "Wait 60 seconds or restart Ollama with 'ollama serve'."
             ) from exc
         except requests.RequestException as exc:
             logger.error("Ollama request failed: %s", exc)
-            raise OllamaError(
+            raise OllamaTransportError(
                 f"Ollama request failed: {exc}. Is Ollama running at {self.base_url}? "
                 f"Start it with 'ollama serve' and pull the model with 'ollama pull {self.model}'."
             ) from exc
         finally:
             self._generation_lock.release()
 
-    @circuit(failure_threshold=5, recovery_timeout=60)
+    @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=requests.RequestException)
     def _generate_impl(self, prompt: str, system: str | None = None, json_mode: bool = False) -> str:
         self._check_cancelled()
         payload = {
             "model": self.model,
             "prompt": prompt,
-            "stream": False,
+            "stream": True,
             "options": {"temperature": self.temperature},
         }
         if system:
             payload["system"] = system
         if json_mode:
             payload["format"] = "json"
-        logger.info("Ollama request: model=%s json_mode=%s", self.model, json_mode)
-        resp = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=120)
-        resp.raise_for_status()
-        data = resp.json()
-        text = data.get("response", "")
-        done = data.get("done", False)
-        if not done:
-            logger.warning("Ollama response marked as not done")
+
+        parts: list[str] = []
+
+        try:
+            logger.info("Ollama request: model=%s json_mode=%s", self.model, json_mode)
+            with requests.post(
+                f"{self.base_url}/api/generate",
+                json=payload,
+                stream=True,
+                timeout=(5, 120),
+            ) as response:
+                response.raise_for_status()
+
+                for line in response.iter_lines():
+                    self._check_cancelled()
+
+                    if not line:
+                        continue
+
+                    event = json.loads(line)
+
+                    if error := event.get("error"):
+                        raise OllamaProtocolError(str(error))
+
+                    parts.append(event.get("response", ""))
+
+                    if event.get("done"):
+                        break
+        except OllamaCancelledError:
+            raise
+        except json.JSONDecodeError as exc:
+            raise OllamaProtocolError("Ollama returned malformed stream data.") from exc
+
+        text = "".join(parts)
         logger.debug("Ollama raw response (first 500 chars): %s", text[:500])
 
         text = clean_ai_text(text)
@@ -130,18 +165,14 @@ class OllamaClient:
 
     def generate_json(self, prompt: str, system: str | None = None) -> dict:
         try:
-            text = self.generate(
-                prompt,
-                system=system,
-                json_mode=True
-            )
-        except OllamaError:
+            text = self.generate(prompt, system=system, json_mode=True)
+        except OllamaCancelledError:
+            raise
+        except OllamaTransportError:
+            raise
+        except OllamaProtocolError:
             logger.warning("JSON mode failed, retrying without format constraint")
-            text = self.generate(
-                prompt,
-                system=system,
-                json_mode=False
-            )
+            text = self.generate(prompt, system=system, json_mode=False)
 
         text = clean_ai_text(text)
         try:
@@ -153,7 +184,7 @@ class OllamaClient:
                     return json.loads(text[start : end + 1])
                 except json.JSONDecodeError:
                     pass
-            raise OllamaError("The model did not return valid JSON. Try again or switch models.")
+            raise OllamaProtocolError("The model did not return valid JSON. Try again or switch models.")
 
     def generate_structured(
         self,
@@ -162,13 +193,21 @@ class OllamaClient:
         system: str | None = None,
         max_retries: int = 2,
     ) -> T:
-        """Generate JSON and validate against a Pydantic model with retry."""
+        """Generate JSON and validate against a Pydantic model with retry.
+
+        Only retries on protocol/validation errors. Transport errors and
+        cancellations are raised immediately.
+        """
         last_error = None
+        current_prompt = prompt
         for attempt in range(max_retries + 1):
+            self._check_cancelled()
             try:
-                data = self.generate_json(prompt, system=system)
+                data = self.generate_json(current_prompt, system=system)
                 return schema.model_validate(data)
-            except (ValidationError, OllamaError) as exc:
+            except (OllamaCancelledError, OllamaTransportError):
+                raise
+            except (ValidationError, OllamaProtocolError) as exc:
                 last_error = exc
                 logger.warning(
                     "Validation attempt %d/%d failed: %s",
@@ -177,12 +216,12 @@ class OllamaClient:
                     exc,
                 )
                 if attempt < max_retries:
-                    prompt = (
+                    current_prompt = (
                         f"{prompt}\n\n"
                         f"Previous response was invalid: {exc}\n"
                         "Please return a valid JSON response matching the required schema."
                     )
-        raise OllamaError(
+        raise OllamaProtocolError(
             f"AI response validation failed after {max_retries + 1} attempts: {last_error}"
         )
 

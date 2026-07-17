@@ -180,6 +180,10 @@ def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
         if fact_result.has_hallucinations:
             for h in fact_result.hallucinated_fields:
                 _strip_hallucinated_field(resume, h)
+            # Remove blanked list items
+            resume.certifications = [c for c in resume.certifications if c]
+            resume.skills = [s for s in resume.skills if s]
+            resume.languages = [l for l in resume.languages if l]
             resume.parse_warnings.extend(fact_result.warnings)
             logger.info(
                 "Parser fact guard stripped %d hallucinated field(s)",
@@ -195,13 +199,26 @@ def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
 
 
 def _strip_hallucinated_field(resume: ResumeData, h: HallucinatedField) -> None:
-    """Set a hallucinated field to its default value."""
+    """Remove or blank a hallucinated field."""
     if h.section == "experience" and h.index < len(resume.experience):
         setattr(resume.experience[h.index], h.field, "")
+    elif h.section.startswith("experience_bullets:") and h.index is not None:
+        parts = h.section.split(":")
+        exp_idx = int(parts[1])
+        if exp_idx < len(resume.experience):
+            exp = resume.experience[exp_idx]
+            if h.index < len(exp.bullets):
+                exp.bullets[h.index] = ""
     elif h.section == "education" and h.index < len(resume.education):
         setattr(resume.education[h.index], h.field, "")
     elif h.section == "certifications" and h.index < len(resume.certifications):
         resume.certifications[h.index] = ""
+    elif h.section == "skills" and h.index < len(resume.skills):
+        resume.skills[h.index] = ""
+    elif h.section == "projects" and h.index < len(resume.projects):
+        setattr(resume.projects[h.index], h.field, "")
+    elif h.section == "languages" and h.index < len(resume.languages):
+        resume.languages[h.index] = ""
 
 
 def _match_section(line: str) -> str | None:

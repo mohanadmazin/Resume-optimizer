@@ -356,7 +356,14 @@ def extract_keywords(text: str, top_n: int = 25) -> list[str]:
     for first, second in zip(words, words[1:]):
         bigrams[f"{first} {second}"] += 1
     top_bigrams = [b for b, c in bigrams.most_common(10) if c >= 2]
-    singles = [w for w, _ in counts.most_common(top_n * 2) if w not in " ".join(top_bigrams)]
+    # Remove unigrams that are part of a kept bigram
+    bigram_parts: set[str] = set()
+    for bg in top_bigrams:
+        bigram_parts.update(bg.split())
+    singles = [
+        w for w, _ in counts.most_common(top_n * 2)
+        if w not in bigram_parts
+    ]
     return (top_bigrams + singles)[:top_n]
 
 
@@ -378,10 +385,10 @@ def extract_required_skills(text: str) -> list[str]:
     bigram_counts: Counter = Counter()
     for first, second in zip(words, words[1:]):
         bigram_counts[f"{first} {second}"] += 1
-    # Keep bigrams that appear at least twice AND match a known skill
+    # Keep bigrams that are known skills (even if mentioned once) or frequent
     bigrams = [
         b for b, c in bigram_counts.most_common(20)
-        if c >= 2 and (_canonicalize(b) in SKILL_ALIASES or b in _KNOWN_SKILLS)
+        if (_canonicalize(b) in SKILL_ALIASES or b in _KNOWN_SKILLS) or c >= 2
     ]
 
     # Single-word candidates — must be known skills
@@ -408,10 +415,13 @@ def _contains(text: str, keyword: str) -> bool:
 
 
 def _resume_text(resume: ResumeData) -> str:
-    parts = [resume.summary, " ".join(resume.skills)]
+    parts = [resume.headline, resume.summary, " ".join(resume.skills), " ".join(resume.languages)]
     for exp in resume.experience:
         parts += [exp.title, exp.company, " ".join(exp.bullets)]
-    parts += [f"{edu.degree} {edu.institution}" for edu in resume.education]
+    for proj in resume.projects:
+        parts += [proj.title, proj.meta, proj.description, " ".join(proj.bullets)]
+    for edu in resume.education:
+        parts.append(f"{edu.degree} {edu.institution}")
     parts += resume.certifications
     return " ".join(p for p in parts if p)
 
@@ -460,7 +470,21 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
     if not any(exp.bullets for exp in resume.experience):
         formatting -= 5
 
-    score = int(round(keyword_pct * 0.5 + skills_pct * 0.25 + structure + formatting))
+    # Normalize all components to 0-100 scale, then apply weights
+    keyword_score = keyword_pct  # already 0-100
+    structure_score = structure / 20 * 100  # max raw = 20 → 100
+    formatting_score = formatting / 10 * 100  # max raw = 10 → 100
+
+    components = [
+        (keyword_score, 0.50),
+        (structure_score, 0.20),
+        (formatting_score, 0.10),
+    ]
+    if required_skills:
+        components.append((skills_pct, 0.20))
+
+    total_weight = sum(w for _, w in components)
+    score = round(sum(v * w for v, w in components) / total_weight)
     score = max(0, min(100, score))
 
     logger.info(
