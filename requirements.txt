@@ -9,3 +9,4 @@ lxml>=5.0,<7
 alembic>=1.15,<1.16
 pytest>=9.1,<10
 playwright>=1.45,<2
+circuitbreaker>=2.0,<3

@@ -6,6 +6,7 @@ import threading
 from typing import TypeVar
 
 import requests
+from circuitbreaker import CircuitBreakerError, circuit
 from pydantic import BaseModel, ValidationError
 
 from app.core.settings import load_settings
@@ -84,9 +85,22 @@ class OllamaClient:
             raise AIBusyError("Another AI generation is already in progress. Please wait.")
         try:
             return self._generate_impl(prompt, system=system, json_mode=json_mode)
+        except CircuitBreakerError as exc:
+            logger.error("Ollama circuit breaker open — too many failures")
+            raise OllamaError(
+                "Ollama is unresponsive (circuit breaker open). "
+                "Wait 60 seconds or restart Ollama with 'ollama serve'."
+            ) from exc
+        except requests.RequestException as exc:
+            logger.error("Ollama request failed: %s", exc)
+            raise OllamaError(
+                f"Ollama request failed: {exc}. Is Ollama running at {self.base_url}? "
+                f"Start it with 'ollama serve' and pull the model with 'ollama pull {self.model}'."
+            ) from exc
         finally:
             self._generation_lock.release()
 
+    @circuit(failure_threshold=5, recovery_timeout=60)
     def _generate_impl(self, prompt: str, system: str | None = None, json_mode: bool = False) -> str:
         self._check_cancelled()
         payload = {
@@ -99,16 +113,9 @@ class OllamaClient:
             payload["system"] = system
         if json_mode:
             payload["format"] = "json"
-        try:
-            logger.info("Ollama request: model=%s json_mode=%s", self.model, json_mode)
-            resp = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=120)
-            resp.raise_for_status()
-        except requests.RequestException as exc:
-            logger.error("Ollama request failed: %s", exc)
-            raise OllamaError(
-                f"Ollama request failed: {exc}. Is Ollama running at {self.base_url}? "
-                f"Start it with 'ollama serve' and pull the model with 'ollama pull {self.model}'."
-            ) from exc
+        logger.info("Ollama request: model=%s json_mode=%s", self.model, json_mode)
+        resp = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=120)
+        resp.raise_for_status()
         data = resp.json()
         text = data.get("response", "")
         done = data.get("done", False)
