@@ -12,6 +12,7 @@ class ATSResult:
     missing_keywords: List[str] = field(default_factory=list)
     missing_skills: List[str] = field(default_factory=list)
     suggestions: List[str] = field(default_factory=list)
+    keyword_weights: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)

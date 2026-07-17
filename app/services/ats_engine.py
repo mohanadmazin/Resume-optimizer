@@ -2,7 +2,7 @@
 import logging
 import re
 from collections import Counter
-from typing import List
+from typing import List, Tuple
 
 from app.domain.analysis import ATSResult
 from app.schemas import ResumeData
@@ -110,6 +110,161 @@ for canonical, aliases in SKILL_ALIASES.items():
         _ALIAS_TO_CANONICAL[alias] = canonical
 
 
+# ── Section-aware extraction ────────────────────────────────────────────────
+
+# Patterns that indicate a high-signal requirements section in a JD
+_SECTION_HEADERS: re.Pattern[str] = re.compile(
+    r"^\s*"
+    r"(?:"
+    r"requirements?"
+    r"|qualifications?"
+    r"|must[\s-]*have"
+    r"|required[\s-]*skills?"
+    r"|technical[\s-]*skills?"
+    r"|what[\s\w-]*need"
+    r"|skills[\s&]+qualifications?"
+    r"|nice[\s-]*to[\s-]*have"
+    r"|preferred[\s-]*qualifications?"
+    r"|key[\s-]*skills?"
+    r"|core[\s-]*skills?"
+    r"|you[\s\w-]*need"
+    r")"
+    r"\s*:?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Weight tiers for keyword importance
+_WEIGHT_SKILL_IN_SECTION: float = 1.0
+_WEIGHT_SKILL_ANYWHERE: float = 0.8
+_WEIGHTInSection: float = 0.5
+_WEIGHT_FREQUENCY: float = 0.2
+
+
+def _extract_section_text(jd_text: str) -> str:
+    """Extract text from high-signal requirements sections of a JD.
+
+    Finds section headers (Requirements, Qualifications, Must Have, etc.)
+    and returns the text from those sections combined.  If no sections are
+    found, returns the full JD text so frequency-based extraction still works.
+    """
+    lines = jd_text.splitlines()
+    section_lines: list[str] = []
+    in_section = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Blank line ends the current section
+        if in_section and not stripped:
+            in_section = False
+            continue
+
+        if _SECTION_HEADERS.match(stripped):
+            in_section = True
+            continue
+        # A new non-empty header-like line (ALL CAPS or short header with colon) ends the section
+        if in_section and stripped:
+            if stripped.upper() == stripped and len(stripped) > 3:
+                in_section = False
+                continue
+            if stripped.endswith(":") and len(stripped) < 60:
+                candidate = stripped.rstrip(":").strip()
+                if candidate and candidate.title() == candidate:
+                    in_section = False
+                    continue
+        if in_section and stripped:
+            section_lines.append(stripped)
+
+    return "\n".join(section_lines) if section_lines else jd_text
+
+
+def _extract_weighted_keywords(jd_text: str, top_n: int = 25) -> list[Tuple[str, float]]:
+    """Extract keywords from a JD with importance weights.
+
+    Priority:
+    1. Known skill in a requirements section → weight 1.0
+    2. Known skill anywhere in JD → weight 0.8
+    3. Any word in a requirements section → weight 0.5
+    4. Frequency-only mention → weight 0.2
+
+    Returns up to *top_n* (keyword, weight) pairs sorted by weight
+    descending, then frequency descending.
+    """
+    section_text = _extract_section_text(jd_text)
+    full_lower = jd_text.lower()
+    section_lower = section_text.lower()
+
+    # Tokenize both
+    def _tokens(text: str) -> list[str]:
+        return [t.strip(".-/") for t in re.findall(r"[a-z][a-z0-9+#.\-/]*", text)]
+
+    section_words = [
+        t for t in _tokens(section_lower)
+        if t and t not in STOPWORDS and (len(t) > 2 or t in SHORT_KEEP)
+    ]
+    full_words = [
+        t for t in _tokens(full_lower)
+        if t and t not in STOPWORDS and (len(t) > 2 or t in SHORT_KEEP)
+    ]
+
+    # Count frequencies
+    section_counts = Counter(section_words)
+    full_counts = Counter(full_words)
+
+    # Bigrams from full text (frequency >= 2)
+    full_bigrams: Counter = Counter()
+    for first, second in zip(full_words, full_words[1:]):
+        full_bigrams[f"{first} {second}"] += 1
+    section_bigrams: Counter = Counter()
+    for first, second in zip(section_words, section_words[1:]):
+        section_bigrams[f"{first} {second}"] += 1
+
+    candidates: dict[str, tuple[float, int]] = {}  # keyword → (weight, freq)
+
+    def _update(word: str, weight: float, freq: int):
+        existing = candidates.get(word)
+        if existing is None or weight > existing[0] or (weight == existing[0] and freq > existing[1]):
+            candidates[word] = (weight, freq)
+
+    # Score bigrams
+    for bg, count in full_bigrams.most_common(30):
+        if count < 2:
+            continue
+        is_known = bg in _KNOWN_SKILLS or _canonicalize(bg) in SKILL_ALIASES
+        in_section = bg in section_bigrams
+        if is_known and in_section:
+            _update(bg, _WEIGHT_SKILL_IN_SECTION, count)
+        elif is_known:
+            _update(bg, _WEIGHT_SKILL_ANYWHERE, count)
+        elif in_section:
+            _update(bg, _WEIGHTInSection, count)
+        else:
+            _update(bg, _WEIGHT_FREQUENCY, count)
+
+    # Score unigrams
+    for word, count in full_counts.most_common(top_n * 3):
+        is_known = word in _KNOWN_SKILLS or _canonicalize(word) in SKILL_ALIASES
+        in_section = word in section_counts
+        if is_known and in_section:
+            _update(word, _WEIGHT_SKILL_IN_SECTION, count)
+        elif is_known:
+            _update(word, _WEIGHT_SKILL_ANYWHERE, count)
+        elif in_section:
+            _update(word, _WEIGHTInSection, count)
+        else:
+            _update(word, _WEIGHT_FREQUENCY, count)
+
+    # Remove unigrams that appear inside a kept bigram
+    kept_bigrams = {kw for kw in candidates if " " in kw}
+    for bg in kept_bigrams:
+        for part in bg.split():
+            candidates.pop(part, None)
+
+    # Sort by weight desc, then frequency desc
+    ranked = sorted(candidates.items(), key=lambda x: (x[1][0], x[1][1]), reverse=True)
+    return [(kw, w) for kw, (w, _) in ranked[:top_n]]
+
+
 def _canonicalize(skill: str) -> str:
     """Return the canonical form of a skill, or the original if unknown."""
     return _ALIAS_TO_CANONICAL.get(skill, skill)
@@ -195,14 +350,22 @@ def _resume_text(resume: ResumeData) -> str:
 
 
 def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
-    keywords = extract_keywords(jd_text)
+    weighted_keywords = _extract_weighted_keywords(jd_text)
+    keywords = [kw for kw, _ in weighted_keywords]
+    weights = {kw: w for kw, w in weighted_keywords}
+
     structured = _resume_text(resume).strip()
     resume_text = structured if structured else resume.raw_text
     resume_text = resume_text.lower()
 
     matched = [k for k in keywords if _contains(resume_text, k)]
-    missing = [k for k in keywords if k not in matched]
-    keyword_pct = round(100 * len(matched) / len(keywords), 1) if keywords else 0.0
+    matched_set = set(matched)
+    missing = [k for k in keywords if k not in matched_set]
+
+    # Weighted keyword score: sum of matched weights / sum of all weights
+    total_weight = sum(weights.values())
+    matched_weight = sum(weights[k] for k in matched)
+    keyword_pct = round(100 * matched_weight / total_weight, 1) if total_weight else 0.0
 
     # Skills match: extract required skills from JD, check which appear in resume
     # Uses alias-aware matching so JS/JavaScript, K8s/Kubernetes etc. are recognized.
@@ -229,7 +392,7 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
     if not any(exp.bullets for exp in resume.experience):
         formatting -= 5
 
-    score = int(round(keyword_pct * 0.5 + skills_pct * 0.2 + structure + formatting))
+    score = int(round(keyword_pct * 0.5 + skills_pct * 0.25 + structure + formatting))
     score = max(0, min(100, score))
 
     logger.info(
@@ -244,14 +407,23 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
         matched_keywords=matched,
         missing_keywords=missing,
         missing_skills=missing_skills,
-        suggestions=_suggestions(resume, missing, keyword_pct, skills_pct),
+        keyword_weights=weights,
+        suggestions=_suggestions(resume, missing, weights, keyword_pct, skills_pct),
     )
 
 
-def _suggestions(resume: ResumeData, missing: list[str], keyword_pct: float, skills_pct: float) -> list[str]:
+def _suggestions(
+    resume: ResumeData,
+    missing: list[str],
+    weights: dict[str, float],
+    keyword_pct: float,
+    skills_pct: float,
+) -> list[str]:
     tips: list[str] = []
     if missing:
-        tips.append(f"Add these missing keywords where truthful: {', '.join(missing[:10])}.")
+        # Sort by weight descending so the most important missing keywords come first
+        sorted_missing = sorted(missing, key=lambda k: weights.get(k, 0), reverse=True)
+        tips.append(f"Add these missing keywords where truthful: {', '.join(sorted_missing[:10])}.")
     if not resume.summary:
         tips.append("Add a professional summary tailored to the job (2-3 sentences).")
     if keyword_pct < 60:

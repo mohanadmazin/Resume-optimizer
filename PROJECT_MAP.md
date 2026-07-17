@@ -328,7 +328,7 @@ Rules:
 | `app/domain/`   | Pydantic schemas (resume, salary, skill gap, pipeline)         |
 | `app/ai/`       | Ollama HTTP client, prompt templates, JSON validation          |
 | `app/database/` | ORM models, engine, session, repositories, legacy CRUD facade  |
-| `app/services/` | ATS engine, optimizer, cover letter, parser, security, HTML extraction, metadata, job fetcher, etc. |
+| `app/services/` | ATS engine (weighted keyword extraction, section-aware scoring), optimizer, cover letter, parser, security, HTML extraction, metadata, job fetcher, etc. |
 | `app/config/`   | Legacy config compatibility shim (delegates to `app/core/`)    |
 | `app/ui/`       | Main window, state, workers, theme, components, pages          |
 | `app/exports/`  | DOCX/PDF/Markdown export (via `app/services/exporter.py`)      |
@@ -440,7 +440,7 @@ resume-optimizer-main/
 │
 └── tests/
     ├── __init__.py
-    ├── test_ats_engine.py             # 15 tests (ATS scoring, skill matching, suggestions)
+    ├── test_ats_engine.py             # 31 tests (scoring, skills, suggestions, weighted extraction)
     ├── test_cover_letter.py           # 11 tests (fact checking, generation, warnings)
     ├── test_exporter.py               # 2 tests
     ├── test_fact_guard.py             # 22 tests (normalization, entities, skills, changes)
@@ -560,7 +560,7 @@ resume-optimizer-main/
 │
 └── tests/
     ├── __init__.py
-    ├── test_ats_engine.py             # 15 tests (scoring, skill matching, suggestions)
+    ├── test_ats_engine.py             # 31 tests (scoring, skills, suggestions, weighted extraction)
     ├── test_cover_letter.py           # 11 tests (fact checking, generation, warnings)
     ├── test_exporter.py               #  2 tests
     ├── test_fact_guard.py             # 22 tests (normalization, entities, skills, changes)
@@ -571,7 +571,7 @@ resume-optimizer-main/
     ├── test_parser_fallback.py        #  8 tests (OllamaError fallback, edge cases)
     ├── test_settings.py               # 29 tests (atomic write, backup, recovery, concurrency)
     └── test_skill_gap_salary.py       #  5 tests
-    # Total: 200 tests across 11 test files
+    # Total: 216 tests across 11 test files
 ```
 
 ---
