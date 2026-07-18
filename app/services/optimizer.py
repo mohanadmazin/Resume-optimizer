@@ -1,8 +1,9 @@
 """AI resume optimization via Ollama with deterministic fact guard.
 
-The AI rewrites summary, headline, and experience bullets.  A FactGuard
-then validates every proposed change against the source resume to catch
-unsupported numbers, entities, and skills before the user sees them.
+The AI rewrites summary, headline, and experience bullets using indexed
+operations (experience_index, bullet_index) instead of text matching.
+A FactGuard then validates every proposed change against the source resume
+to catch unsupported numbers, entities, and skills before the user sees them.
 
 Only safe changes are applied to the optimized resume.  Flagged changes
 are kept as proposals for user review.
@@ -65,7 +66,7 @@ def optimize_resume(
     # Step 2: Generate with constraints
     ai_output = client.generate_structured(prompt, OptimizationAIOutput, system=OPTIMIZE_SYSTEM)
 
-    # Step 3: Build candidate from AI output
+    # Step 3: Build candidate from AI output using indexed operations
     candidate = resume.model_copy(deep=True)
 
     if ai_output.summary.strip():
@@ -74,10 +75,24 @@ def optimize_resume(
     if ai_output.headline.strip():
         candidate.headline = ai_output.headline.strip()
 
-    if len(ai_output.experience) == len(candidate.experience):
-        for original, rewritten in zip(candidate.experience, ai_output.experience):
-            if rewritten.bullets:
-                original.bullets = [b.strip() for b in rewritten.bullets if b.strip()]
+    for operation in ai_output.bullet_rewrites:
+        if operation.experience_index >= len(candidate.experience):
+            logger.warning(
+                "Rejected invalid experience index: %d",
+                operation.experience_index,
+            )
+            continue
+
+        experience = candidate.experience[operation.experience_index]
+
+        if operation.bullet_index >= len(experience.bullets):
+            logger.warning(
+                "Rejected invalid bullet index: %d",
+                operation.bullet_index,
+            )
+            continue
+
+        experience.bullets[operation.bullet_index] = operation.rewritten.strip()
 
     # Step 4: Post-generation validation (safety net)
     fact_result = guard.validate(source=resume, optimized=candidate)
@@ -122,15 +137,17 @@ def _apply_change(resume: ResumeData, change: ProposedChange) -> None:
         resume.headline = change.rewritten
     elif change.change_type in (ChangeType.BULLET, ChangeType.REWRITE,
                                 ChangeType.METRIC_ADD, ChangeType.EMPLOYER_ADD):
-        # Find the matching experience entry and bullet
-        for exp in resume.experience:
-            section_name = f"{exp.title or 'Experience'}"
-            if change.section.startswith(section_name):
-                for i, bullet in enumerate(exp.bullets):
-                    if bullet.strip() == change.original.strip():
-                        exp.bullets[i] = change.rewritten
-                        return
-                break
+        # Apply by immutable coordinates
+        if change.experience_index is not None and change.bullet_index is not None:
+            if change.experience_index < len(resume.experience):
+                experience = resume.experience[change.experience_index]
+                if change.bullet_index < len(experience.bullets):
+                    experience.bullets[change.bullet_index] = change.rewritten
+                    return
+        logger.warning(
+            "Could not apply change: invalid coordinates (exp=%s, bullet=%s)",
+            change.experience_index, change.bullet_index,
+        )
     elif change.change_type == ChangeType.SKILL_ADD:
         # Append the rewritten skill (the original skill entry is replaced)
         if change.original and change.original in resume.skills:

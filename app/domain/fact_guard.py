@@ -25,10 +25,17 @@ class ProposedChange(BaseModel):
     section: str = ""
     original: str = ""
     rewritten: str = ""
+
+    # Immutable coordinates for bullet changes
+    experience_index: int | None = None
+    bullet_index: int | None = None
+
     # Deterministic guard results
     has_new_numbers: bool = False
     has_new_entities: bool = False
     has_new_skills: bool = False
+    requires_review: bool = False
+    review_reason: str = ""
     accepted: bool = False
 
 

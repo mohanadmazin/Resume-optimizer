@@ -1,19 +1,17 @@
 """Optimization domain models — structured AI output for resume optimization."""
-from typing import List
-
 from pydantic import BaseModel, Field
 
 
-class OptimizedExperience(BaseModel):
-    """Single experience entry as returned by the AI optimizer.
+class BulletRewrite(BaseModel):
+    """A single indexed bullet rewrite from the AI optimizer.
 
-    The AI rewrites bullets while preserving metadata (title, company, dates).
+    Uses immutable coordinates (experience_index, bullet_index) instead of
+    text matching, so reordering or duplicate titles/bullets cannot cause
+    wrong assignments.
     """
-    title: str = ""
-    company: str = ""
-    start_date: str = ""
-    end_date: str = ""
-    bullets: List[str] = Field(default_factory=list)
+    experience_index: int = Field(ge=0)
+    bullet_index: int = Field(ge=0)
+    rewritten: str = Field(min_length=1, max_length=2_000)
 
 
 class OptimizationAIOutput(BaseModel):
@@ -25,4 +23,4 @@ class OptimizationAIOutput(BaseModel):
     """
     headline: str = ""
     summary: str = ""
-    experience: List[OptimizedExperience] = Field(default_factory=list)
+    bullet_rewrites: list[BulletRewrite] = Field(default_factory=list)

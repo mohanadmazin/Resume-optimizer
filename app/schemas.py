@@ -6,7 +6,7 @@ New code should import from:
   - app.domain.salary
   - app.domain.optimization
 """
-from app.domain.optimization import OptimizationAIOutput, OptimizedExperience
+from app.domain.optimization import BulletRewrite, OptimizationAIOutput
 from app.domain.resume import (
     ContactInfo,
     EducationItem,
@@ -19,11 +19,11 @@ from app.domain.skill_gap import SkillGapItem, SkillGapResult
 from app.domain.salary import SalaryEstimate
 
 __all__ = [
+    "BulletRewrite",
     "ContactInfo",
     "EducationItem",
     "ExperienceItem",
     "OptimizationAIOutput",
-    "OptimizedExperience",
     "ParseWarning",
     "ProjectItem",
     "ResumeData",

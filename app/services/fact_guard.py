@@ -304,6 +304,7 @@ class FactGuard:
                             change = self._check_text_change(
                                 ChangeType.BULLET, section,
                                 "", new_bullet, source_vocab, source_tech,
+                                experience_index=idx, bullet_index=jb,
                             )
                             all_changes.append(change)
                             if change.has_new_numbers:
@@ -322,6 +323,7 @@ class FactGuard:
                             change = self._check_text_change(
                                 ChangeType.BULLET, section,
                                 old_b, new_b, source_vocab, source_tech,
+                                experience_index=idx, bullet_index=j1 + k,
                             )
                             all_changes.append(change)
                             if change.has_new_numbers:
@@ -381,6 +383,8 @@ class FactGuard:
         rewritten: str,
         source_vocab: set[str],
         source_tech_lower: set[str],
+        experience_index: int | None = None,
+        bullet_index: int | None = None,
     ) -> ProposedChange:
         """Run deterministic checks on a single text change."""
         has_new_numbers = False
@@ -419,6 +423,8 @@ class FactGuard:
             section=section,
             original=original,
             rewritten=rewritten,
+            experience_index=experience_index,
+            bullet_index=bullet_index,
             has_new_numbers=has_new_numbers,
             has_new_entities=has_new_entities,
             has_new_skills=has_new_skills,

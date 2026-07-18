@@ -38,7 +38,7 @@ STRICT RULES
    - projects
    - languages
 
-4. Preserve exactly:
+5. Preserve exactly:
    - names
    - employers
    - dates
@@ -47,12 +47,12 @@ STRICT RULES
    - metrics
    - employment history
 
-5. Only rewrite:
+6. Only rewrite:
    - headline
    - summary
    - experience bullet points
 
-6. Do not modify:
+7. Do not modify:
    - contact information
    - education
    - certifications
@@ -60,34 +60,47 @@ STRICT RULES
    - projects
    - languages
 
-7. Experience entries must remain:
+8. Experience entries must remain:
    - same count
    - same order
 
-8. Maximum 5 bullets per experience entry.
+9. Maximum 5 bullets per experience entry.
 
-9. Each bullet must:
-   - begin with a strong action verb
-   - be ATS friendly
-   - be concise
-   - remain factually accurate
+10. Each bullet must:
+    - begin with a strong action verb
+    - be ATS friendly
+    - be concise
+    - remain factually accurate
 
-10. Headline rules:
-   - 8 to 15 words
-   - ATS friendly
-   - relevant to target role
-   - truthful
-   - no keyword stuffing
+11. Headline rules:
+    - 8 to 15 words
+    - ATS friendly
+    - relevant to target role
+    - truthful
+    - no keyword stuffing
 
-11. Every JSON value must contain plain text only.
+12. Every JSON value must contain plain text only.
 
-12. Return this structure only:
+13. Return this structure only:
 
 {
   "headline": "",
   "summary": "",
-  "experience": []
+  "bullet_rewrites": [
+    {
+      "experience_index": 0,
+      "bullet_index": 0,
+      "rewritten": "optimized bullet text"
+    }
+  ]
 }
+
+14. bullet_rewrites rules:
+    - experience_index is 0-based position in the experience array
+    - bullet_index is 0-based position of the bullet within that experience
+    - Only include bullets that were actually changed
+    - If a bullet was not rewritten, do not include it
+    - Preserve all facts, dates, metrics, and technologies
 """
 
 OPTIMIZE_PROMPT = """
@@ -118,16 +131,11 @@ Return JSON exactly in this format:
 {{
   "headline": "optimized headline",
   "summary": "optimized summary",
-  "experience": [
+  "bullet_rewrites": [
     {{
-      "title": "unchanged",
-      "company": "unchanged",
-      "start_date": "unchanged",
-      "end_date": "unchanged",
-      "bullets": [
-        "optimized bullet",
-        "optimized bullet"
-      ]
+      "experience_index": 0,
+      "bullet_index": 0,
+      "rewritten": "optimized bullet text"
     }}
   ]
 }}
@@ -144,6 +152,9 @@ Requirements:
 - Maximum 5 bullets per company.
 - Keep experience count unchanged.
 - Keep experience order unchanged.
+- Only include bullets that were actually changed.
+- experience_index is 0-based position in the experience array.
+- bullet_index is 0-based position of the bullet within that experience.
 """
 
 # ============================================================
