@@ -6,12 +6,16 @@ import re
 from dataclasses import replace
 from datetime import date
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -27,7 +31,10 @@ from app.domain.fact_guard import FactGuardResult, ProposedChange
 from app.exports.exporter import export_docx, export_markdown, export_pdf, to_markdown
 from app.services.ats_engine import analyze
 from app.services.diff_highlight import resume_diff_html
+from app.services.document_reader import extract_text
+from app.services.job_fetcher import fetch_job
 from app.services.optimizer import optimize_resume
+from app.services.resume_parser import parse_resume, parse_resume_ai
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 
@@ -152,12 +159,15 @@ class OptimizationPage(QWidget):
 
     def _run(self) -> None:
         state = self.window.state
-        if state.resume is None or not state.job_text.strip():
-            QMessageBox.warning(
-                self,
-                "Missing input",
-                "Import a resume and add a job description first (then run an ATS analysis).",
-            )
+
+        # Prompt for resume if not loaded
+        if state.resume is None:
+            self._prompt_import_resume()
+            return
+
+        # Prompt for job description if not loaded
+        if not state.job_text.strip():
+            self._prompt_job_description()
             return
 
         # Calculate before score if not already available
@@ -192,6 +202,149 @@ class OptimizationPage(QWidget):
         self._worker.result.connect(self._on_done)
         self._worker.error.connect(self._on_error)
         self._worker.start()
+
+    # ── Resume import prompt ─────────────────────────────────────────────
+
+    def _prompt_import_resume(self) -> None:
+        """Open a file dialog to import a resume, then re-run optimization."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Resume", "", "Documents (*.pdf *.docx *.txt)"
+        )
+        if not path:
+            return
+
+        self._pending_resume_path = path
+        self.run_btn.setEnabled(False)
+        self._overlay.show(self, "Extracting text from document...")
+        self._extract_worker = Worker(extract_text, path)
+        self._extract_worker.result.connect(self._on_resume_text_extracted)
+        self._extract_worker.error.connect(self._on_resume_import_error)
+        self._extract_worker.start()
+
+    def _on_resume_text_extracted(self, text: str) -> None:
+        self._overlay.hide(self)
+        if not text.strip():
+            self.run_btn.setEnabled(True)
+            QMessageBox.warning(self, "Empty document", "No text could be extracted from the file.")
+            return
+        self._raw_text = text
+        self._overlay.show(self, "Parsing resume...")
+        self._parse_worker = Worker(parse_resume, text)
+        self._parse_worker.result.connect(self._on_resume_parsed)
+        self._parse_worker.error.connect(self._on_resume_import_error)
+        self._parse_worker.start()
+
+    def _on_resume_parsed(self, resume) -> None:
+        self._overlay.hide(self)
+        self.run_btn.setEnabled(True)
+        resume.raw_text = self._raw_text
+
+        state = self.window.state
+        resume_id = db.save_resume(
+            resume.contact.name or "Resume",
+            resume.model_dump_json(),
+            self._raw_text,
+            source_type="import",
+            source_filename=getattr(self, "_pending_resume_path", ""),
+        )
+        state.resume = resume
+        state.resume_id = resume_id
+        state.ats = None
+        self.window.notify(f"Resume imported — {resume.contact.name or 'Resume'}")
+
+        # Continue with optimization
+        self._run()
+
+    def _on_resume_import_error(self, message: str) -> None:
+        self._overlay.hide(self)
+        self.run_btn.setEnabled(True)
+        QMessageBox.critical(self, "Import failed", message)
+
+    # ── Job description prompt ───────────────────────────────────────────
+
+    def _prompt_job_description(self) -> None:
+        """Open a dialog to paste job description text or a URL."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add Job Description")
+        dialog.setMinimumWidth(520)
+        dialog.setMinimumHeight(400)
+
+        dlg_layout = QVBoxLayout(dialog)
+        dlg_layout.setSpacing(10)
+
+        dlg_layout.addWidget(QLabel("Paste the job description text, or enter a URL to fetch it:"))
+
+        # URL row
+        url_row = QHBoxLayout()
+        url_edit = QLineEdit()
+        url_edit.setPlaceholderText("https://linkedin.com/jobs/view/...")
+        url_row.addWidget(url_edit, 1)
+        fetch_btn = QPushButton("Fetch")
+        url_row.addWidget(fetch_btn)
+        dlg_layout.addLayout(url_row)
+
+        # Text area
+        text_edit = QTextEdit()
+        text_edit.setPlaceholderText("Paste the full job description here...")
+        dlg_layout.addWidget(text_edit, 1)
+
+        # Buttons
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        dlg_layout.addWidget(buttons)
+
+        # Wire up fetch button
+        def _fetch():
+            url = url_edit.text().strip()
+            if not url:
+                QMessageBox.warning(dialog, "Missing URL", "Enter a URL first.")
+                return
+            fetch_btn.setEnabled(False)
+            fetch_btn.setText("Fetching...")
+
+            class _FetchThread(QThread):
+                done = Signal(object)
+                def run(self):
+                    self.done.emit(fetch_job(url))
+
+            thread = _FetchThread(dialog)
+            thread.done.connect(lambda result: _on_fetched(result, thread))
+            thread.start()
+
+        def _on_fetched(result, thread):
+            fetch_btn.setEnabled(True)
+            fetch_btn.setText("Fetch")
+            if result.requires_manual_input:
+                QMessageBox.information(
+                    dialog, "Could not fetch",
+                    "Could not fetch the job description. Please paste it manually.",
+                )
+            else:
+                text_edit.setPlainText(result.text)
+
+        fetch_btn.clicked.connect(_fetch)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        text = text_edit.toPlainText().strip()
+        if not text:
+            return
+
+        state = self.window.state
+        title = url_edit.text().strip() or "Job from Optimizer"
+        job_id = db.save_job(title, text)
+        state.job_text = text
+        state.job_title = title
+        state.job_id = job_id
+        state.ats = None
+        self.window.notify(f"Job description added — {title}")
+
+        # Continue with optimization
+        self._run()
 
     def _on_done(self, result) -> None:
         self._overlay.hide(self)
