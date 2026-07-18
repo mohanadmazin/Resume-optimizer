@@ -66,7 +66,8 @@ class OllamaClient:
         if not self._generation_lock.acquire(blocking=False):
             raise AIBusyError("Another AI generation is already in progress. Please wait.")
         try:
-            return self._generate_impl(prompt, system=system, json_mode=json_mode)
+            json_schema = "json" if json_mode else None
+            return self._generate_impl(prompt, system=system, json_schema=json_schema)
         except CircuitBreakerError as exc:
             logger.error("Ollama circuit breaker open — too many failures")
             raise OllamaTransportError(
@@ -83,23 +84,33 @@ class OllamaClient:
             self._generation_lock.release()
 
     @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=requests.RequestException)
-    def _generate_impl(self, prompt: str, system: str | None = None, json_mode: bool = False) -> str:
+    def _generate_impl(
+        self,
+        prompt: str,
+        system: str | None = None,
+        json_schema: dict | str | None = None,
+    ) -> str:
         self._check_cancelled()
-        payload = {
+
+        payload: dict = {
             "model": self.model,
             "prompt": prompt,
             "stream": True,
-            "options": {"temperature": self.temperature},
+            "options": {
+                "temperature": self.temperature,
+            },
         }
+
         if system:
             payload["system"] = system
-        if json_mode:
-            payload["format"] = "json"
 
-        parts: list[str] = []
+        if json_schema is not None:
+            payload["format"] = json_schema
+
+        pieces: list[str] = []
 
         try:
-            logger.info("Ollama request: model=%s json_mode=%s", self.model, json_mode)
+            logger.info("Ollama request: model=%s json_schema=%s", self.model, json_schema is not None)
             with requests.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
@@ -116,22 +127,21 @@ class OllamaClient:
 
                     event = json.loads(line)
 
-                    if error := event.get("error"):
-                        raise OllamaProtocolError(str(error))
+                    if error_message := event.get("error"):
+                        raise OllamaProtocolError(str(error_message))
 
-                    parts.append(event.get("response", ""))
+                    pieces.append(str(event.get("response", "")))
 
                     if event.get("done"):
                         break
         except OllamaCancelledError:
             raise
         except json.JSONDecodeError as exc:
-            raise OllamaProtocolError("Ollama returned malformed stream data.") from exc
+            raise OllamaProtocolError("Ollama returned malformed NDJSON.") from exc
 
-        text = "".join(parts)
+        text = "".join(pieces)
         logger.debug("Ollama raw response (first 500 chars): %s", text[:500])
 
-        # Post-process: strip thinking blocks and formatting
         text = self._post.clean_for_resume(text)
         return text.strip()
 
@@ -156,39 +166,50 @@ class OllamaClient:
         prompt: str,
         schema: type[T],
         system: str | None = None,
-        max_retries: int = 2,
+        max_validation_attempts: int = 2,
     ) -> T:
         """Generate JSON and validate against a Pydantic model with retry.
 
+        Uses Ollama's JSON-schema structured output for reliable parsing.
         Only retries on protocol/validation errors. Transport errors and
         cancellations are raised immediately.
         """
+        schema_definition = schema.model_json_schema()
         last_error = None
         current_prompt = prompt
-        for attempt in range(max_retries + 1):
+
+        for attempt in range(max_validation_attempts + 1):
             self._check_cancelled()
+
             try:
-                data = self.generate_json(current_prompt, system=system)
-                return schema.model_validate(data)
+                raw = self._generate_impl(
+                    current_prompt,
+                    system=system,
+                    json_schema=schema_definition,
+                )
+                return schema.model_validate_json(raw)
             except (OllamaCancelledError, OllamaTransportError):
                 raise
-            except (ValidationError, OllamaProtocolError) as exc:
+            except (OllamaProtocolError, ValidationError) as exc:
                 last_error = exc
                 logger.warning(
                     "Validation attempt %d/%d failed: %s",
                     attempt + 1,
-                    max_retries + 1,
+                    max_validation_attempts + 1,
                     exc,
                 )
-                if attempt < max_retries:
-                    current_prompt = (
-                        f"{prompt}\n\n"
-                        f"Previous response was invalid: {exc}\n"
-                        "Please return a valid JSON response matching the required schema."
-                    )
-        raise OllamaProtocolError(
-            f"AI response validation failed after {max_retries + 1} attempts: {last_error}"
-        )
+                if attempt >= max_validation_attempts:
+                    raise OllamaProtocolError(
+                        f"Invalid structured output: {exc}"
+                    ) from exc
+
+                current_prompt = (
+                    f"{prompt}\n\n"
+                    "Return only data matching the supplied JSON schema. "
+                    f"Previous validation error: {exc}"
+                )
+
+        raise AssertionError("Unreachable")
 
     def pre_warm(self) -> bool:
         """Send a minimal prompt to load the model into VRAM."""
