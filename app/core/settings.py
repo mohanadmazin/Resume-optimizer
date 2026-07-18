@@ -11,9 +11,11 @@ import re
 import shutil
 import tempfile
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
+
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -46,7 +48,7 @@ class AISettings(BaseModel):
 
 
 class AppearanceSettings(BaseModel):
-    theme: str = "dark"
+    theme: Literal["dark", "light", "system"] = "dark"
 
 
 class AppSettings(BaseModel):
@@ -179,12 +181,12 @@ def _quarantine_settings(error_detail: str) -> None:
     """Rename a broken settings file so it doesn't block future startups."""
     if not CONFIG_PATH.exists():
         return
-    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
     quarantine_path = CONFIG_PATH.with_name(
         f"{CONFIG_PATH.stem}.{timestamp}.invalid.json"
     )
     try:
-        CONFIG_PATH.rename(quarantine_path)
+        CONFIG_PATH.replace(quarantine_path)
         logger.warning(
             "Moved broken settings to %s — reason: %s", quarantine_path, error_detail,
         )
