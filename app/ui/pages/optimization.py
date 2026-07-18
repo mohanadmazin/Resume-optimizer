@@ -137,21 +137,8 @@ class OptimizationPage(QWidget):
 
     def on_show(self) -> None:
         state = self.window.state
-        if state.resume is None:
-            row = db.latest_resume()
-            if row:
-                from app.schemas import ResumeData
-                state.resume = ResumeData.model_validate_json(row["data_json"])
-                state.resume_id = row["id"]
-        if not state.job_text:
-            row = db.latest_job()
-            if row:
-                state.job_text = row["content"]
-                state.job_title = row["title"]
-                state.job_id = row["id"]
-        if state.resume is not None:
-            self.before.setPlainText(to_markdown(state.resume))
         if state.optimized is not None and state.resume is not None:
+            self.before.setPlainText(to_markdown(state.resume))
             self.after.setHtml(resume_diff_html(state.resume, state.optimized))
             self._update_score_display()
         if state.fact_guard is not None:
