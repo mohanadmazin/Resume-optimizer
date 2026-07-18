@@ -148,7 +148,7 @@ def _connect(target: ResolvedTarget, url: str, config: FetchConfig) -> requests.
 
             session = requests.Session()
             session.headers.update(headers)
-            return session.get(url, timeout=config.timeout, allow_redirects=False)
+            return session.get(url, timeout=config.timeout, allow_redirects=False, stream=True)
         finally:
             socket.getaddrinfo = original_getaddrinfo
 
