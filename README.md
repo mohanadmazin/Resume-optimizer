@@ -31,14 +31,24 @@ python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 # 2. Install dependencies
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install .
 
 # 3. Pull at least one model
 ollama pull qwen3
 ollama pull llama3.1             # optional
 
 # 4. Install browser for fetching job URLs (optional)
-playwright install chromium
+python -m playwright install chromium
+```
+
+### Development installation
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+python -m playwright install chromium
+pytest
 ```
 
 ## Run
@@ -140,7 +150,7 @@ User data (SQLite database and settings) is stored in `~/.resume_optimizer/`.
 ## Build a desktop executable (PyInstaller)
 
 ```bash
-pip install pyinstaller
+python -m pip install pyinstaller
 pyinstaller --name ResumeOptimizer --windowed --onefile main.py
 ```
 
