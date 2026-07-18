@@ -33,7 +33,7 @@ from app.services.ats_engine import analyze
 from app.services.diff_highlight import resume_diff_html
 from app.services.document_reader import extract_text
 from app.services.job_fetcher import fetch_job
-from app.services.optimizer import optimize_resume
+from app.services.optimizer import apply_accepted_changes, optimize_resume
 from app.services.resume_parser import parse_resume, parse_resume_ai
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
@@ -183,8 +183,11 @@ class OptimizationPage(QWidget):
         model = settings_service.model
         self.window.notify(f"Optimizing with {model} - this may take a minute...")
         self._overlay.show(self, f"Optimizing resume with {model}...")
+        # Use the current optimized resume as source if re-running after accepting changes
+        # so FactGuard doesn't re-flag already-accepted changes
+        source_resume = state.optimized if state.optimized is not None else state.resume
         self._worker = Worker(
-            optimize_resume, state.resume, state.job_text, ats_for_optimizer, OllamaClient()
+            optimize_resume, source_resume, state.job_text, ats_for_optimizer, OllamaClient()
         )
         self._worker.result.connect(self._on_done)
         self._worker.error.connect(self._on_error)
@@ -545,6 +548,10 @@ class OptimizationPage(QWidget):
                 "Please accept or reject all flagged changes before applying.",
             )
             return
+
+        # Apply accepted changes to the current optimized resume so they
+        # persist and the FactGuard won't re-flag them on re-run
+        state.optimized = apply_accepted_changes(state.optimized or state.resume, state.fact_guard)
 
         # Collect accepted keywords from flagged changes
         accepted_keywords = []

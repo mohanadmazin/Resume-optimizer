@@ -87,7 +87,7 @@ class Worker(QThread):
 
 
 class PipelineWorker(QThread):
-    """Runs the full optimization pipeline: ATS -> Optimize -> Cover Letter."""
+    """Runs the full optimization pipeline: ATS -> Optimize -> Cover Letter -> Skill Gap -> Salary."""
 
     progress = Signal(str, int)   # (step_name, percentage 0-100)
     result = Signal(object)       # PipelineResult
@@ -99,6 +99,7 @@ class PipelineWorker(QThread):
         resume,
         job_text: str,
         job_title: str,
+        job_location: str,
         job_id: int | None,
         resume_id: int | None,
         parent=None,
@@ -107,6 +108,7 @@ class PipelineWorker(QThread):
         self.resume = resume
         self.job_text = job_text
         self.job_title = job_title
+        self.job_location = job_location
         self.job_id = job_id
         self.resume_id = resume_id
         self._cancel_event = threading.Event()
@@ -130,6 +132,7 @@ class PipelineWorker(QThread):
                 self.resume,
                 self.job_text,
                 self.job_title,
+                self.job_location,
                 self.resume_id,
                 self.job_id,
                 client,

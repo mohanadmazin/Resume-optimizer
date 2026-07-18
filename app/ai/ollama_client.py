@@ -1,7 +1,6 @@
 """Thin client for the local Ollama HTTP API."""
 import json
 import logging
-import re
 import threading
 from typing import TypeVar
 
@@ -9,30 +8,12 @@ import requests
 from circuitbreaker import CircuitBreakerError, circuit
 from pydantic import BaseModel, ValidationError
 
+from app.ai.post_processor import PostProcessor
 from app.core.settings import load_settings
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
-
-
-def clean_ai_text(text: str) -> str:
-    """
-    Remove unwanted AI formatting.
-    """
-
-    replacements = [
-        ("**", ""),
-        ("__", ""),
-        ("`", ""),
-        ("<b>", ""),
-        ("</b>", ""),
-    ]
-
-    for old, new in replacements:
-        text = text.replace(old, new)
-
-    return text.strip()
 
 
 class OllamaError(Exception):
@@ -63,6 +44,7 @@ class OllamaClient:
         self.temperature = settings.ai.temperature
         self._cancel_event: threading.Event | None = None
         self._generation_lock = threading.Lock()
+        self._post = PostProcessor()
 
     def set_cancel_event(self, event: threading.Event | None) -> None:
         """Set a threading.Event to check for cancellation."""
@@ -71,15 +53,6 @@ class OllamaClient:
     def _check_cancelled(self) -> None:
         if self._cancel_event is not None and self._cancel_event.is_set():
             raise OllamaCancelledError("Request cancelled by user")
-
-    def is_available(self) -> bool:
-        try:
-            available = requests.get(f"{self.base_url}/api/tags", timeout=3).ok
-            logger.debug("Ollama availability check: %s", available)
-            return available
-        except requests.RequestException:
-            logger.debug("Ollama not reachable at %s", self.base_url)
-            return False
 
     def list_models(self) -> list[str]:
         try:
@@ -158,9 +131,8 @@ class OllamaClient:
         text = "".join(parts)
         logger.debug("Ollama raw response (first 500 chars): %s", text[:500])
 
-        text = clean_ai_text(text)
-        # Strip reasoning blocks emitted by thinking models such as qwen3.
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
+        # Post-process: strip thinking blocks and formatting
+        text = self._post.clean_for_resume(text)
         return text.strip()
 
     def generate_json(self, prompt: str, system: str | None = None) -> dict:
@@ -174,17 +146,10 @@ class OllamaClient:
             logger.warning("JSON mode failed, retrying without format constraint")
             text = self.generate(prompt, system=system, json_mode=False)
 
-        text = clean_ai_text(text)
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            start, end = text.find("{"), text.rfind("}")
-            if start != -1 and end > start:
-                try:
-                    return json.loads(text[start : end + 1])
-                except json.JSONDecodeError:
-                    pass
+        result = self._post.extract_json(text)
+        if not result:
             raise OllamaProtocolError("The model did not return valid JSON. Try again or switch models.")
+        return result
 
     def generate_structured(
         self,

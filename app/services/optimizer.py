@@ -14,6 +14,7 @@ from app.ai.ollama_client import OllamaClient
 from app.ai.prompts import OPTIMIZE_PROMPT, OPTIMIZE_SYSTEM
 from app.domain.analysis import ATSResult
 from app.domain.fact_guard import ChangeType, FactGuardResult, ProposedChange
+from app.domain.optimization import OptimizationAIOutput
 from app.schemas import ResumeData
 from app.services.fact_guard import FactGuard
 
@@ -28,12 +29,23 @@ def optimize_resume(
 ) -> tuple[ResumeData, FactGuardResult]:
     """Optimize resume via AI and validate changes with FactGuard.
 
+    Uses preventive constraints (extracted immutable facts) injected into
+    the prompt BEFORE generation to reduce hallucinations.  Post-generation
+    validation still runs as a safety net.
+
     Returns:
         A tuple of (optimized_resume, fact_guard_result).
         Only safe changes are applied to optimized_resume.  Flagged changes
         are kept in fact_guard_result for user review.
     """
     logger.info("Optimizing resume for ATS (missing_keywords=%d)", len(ats.missing_keywords))
+
+    guard = FactGuard()
+
+    # Step 1: Extract immutable facts and inject into prompt (preventive)
+    constraints = guard.create_constraints(resume)
+    logger.info("FactGuard constraints: %d chars", len(constraints))
+
     payload = {
         "summary": resume.summary,
         "headline": resume.headline,
@@ -46,29 +58,28 @@ def optimize_resume(
         missing_keywords=", ".join(ats.missing_keywords[:15]) or "(none)",
         resume_json=json.dumps(payload, indent=2),
     )
-    data = client.generate_json(prompt, system=OPTIMIZE_SYSTEM)
 
-    # Build a candidate with ALL AI changes applied
+    # Inject constraints into prompt
+    prompt = guard.inject_into_prompt(prompt, constraints)
+
+    # Step 2: Generate with constraints
+    ai_output = client.generate_structured(prompt, OptimizationAIOutput, system=OPTIMIZE_SYSTEM)
+
+    # Step 3: Build candidate from AI output
     candidate = resume.model_copy(deep=True)
-    summary = data.get("summary")
-    if isinstance(summary, str) and summary.strip():
-        candidate.summary = summary.strip()
 
-    experience = data.get("experience")
-    if isinstance(experience, list) and len(experience) == len(candidate.experience):
-        for original, rewritten in zip(candidate.experience, experience):
-            if not isinstance(rewritten, dict):
-                continue
-            bullets = rewritten.get("bullets")
-            if isinstance(bullets, list) and bullets:
-                original.bullets = [str(b).strip() for b in bullets if str(b).strip()]
+    if ai_output.summary.strip():
+        candidate.summary = ai_output.summary.strip()
 
-    headline = data.get("headline")
-    if isinstance(headline, str) and headline.strip():
-        candidate.headline = headline.strip()
+    if ai_output.headline.strip():
+        candidate.headline = ai_output.headline.strip()
 
-    # Run deterministic fact guard on the candidate
-    guard = FactGuard()
+    if len(ai_output.experience) == len(candidate.experience):
+        for original, rewritten in zip(candidate.experience, ai_output.experience):
+            if rewritten.bullets:
+                original.bullets = [b.strip() for b in rewritten.bullets if b.strip()]
+
+    # Step 4: Post-generation validation (safety net)
     fact_result = guard.validate(source=resume, optimized=candidate)
 
     # Build optimized resume: apply only safe changes

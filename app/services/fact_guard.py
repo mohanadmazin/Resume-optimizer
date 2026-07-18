@@ -152,7 +152,7 @@ def _source_tech_vocab(resume: ResumeData) -> set[str]:
 
 
 class FactGuard:
-    """Deterministic post-generation validator for AI resume changes."""
+    """Deterministic fact guard — preventive constraints + post-generation validation."""
 
     def __init__(self, max_bullet_change_ratio: float = 0.6):
         """Args:
@@ -161,6 +161,87 @@ class FactGuard:
                 0.6 means "if more than 60% of bullets changed, flag it."
         """
         self.max_bullet_change_ratio = max_bullet_change_ratio
+
+    # ── Preventive: inject constraints before generation ──────────────
+
+    def create_constraints(self, resume: ResumeData) -> str:
+        """Extract immutable facts from the resume as constraint lines.
+
+        These are injected into the AI prompt BEFORE generation to
+        prevent hallucinations rather than catching them after the fact.
+        """
+        lines: list[str] = []
+
+        # Dates
+        dates = set()
+        for exp in resume.experience:
+            if exp.start_date:
+                dates.add(exp.start_date)
+            if exp.end_date:
+                dates.add(exp.end_date)
+        if dates:
+            lines.append(f"IMMUTABLE DATES: {', '.join(sorted(dates))}")
+
+        # Employers
+        employers = [exp.company for exp in resume.experience if exp.company]
+        if employers:
+            lines.append(f"IMMUTABLE EMPLOYERS: {', '.join(employers)}")
+
+        # Job titles
+        titles = [exp.title for exp in resume.experience if exp.title]
+        if titles:
+            lines.append(f"IMMUTABLE TITLES: {', '.join(titles)}")
+
+        # Education
+        edu_items = [
+            f"{edu.degree} from {edu.institution}"
+            for edu in resume.education
+            if edu.degree or edu.institution
+        ]
+        if edu_items:
+            lines.append(f"IMMUTABLE EDUCATION: {'; '.join(edu_items)}")
+
+        # Certifications
+        if resume.certifications:
+            lines.append(f"IMMUTABLE CERTIFICATIONS: {', '.join(resume.certifications)}")
+
+        # Skills — list exactly, do not add/remove
+        if resume.skills:
+            lines.append(f"IMMUTABLE SKILLS: {', '.join(resume.skills)}")
+
+        # Numbers found in bullets — preserve exactly
+        all_numbers: set[str] = set()
+        for exp in resume.experience:
+            for bullet in exp.bullets:
+                all_numbers.update(_extract_numbers(bullet))
+        if all_numbers:
+            lines.append(f"IMMUTABLE NUMBERS: {', '.join(sorted(all_numbers))}")
+
+        # Entities found in bullets — preserve exactly
+        all_entities: set[str] = set()
+        for exp in resume.experience:
+            for bullet in exp.bullets:
+                all_entities.update(_extract_entities(bullet))
+        if all_entities:
+            lines.append(f"IMMUTABLE ENTITIES: {', '.join(sorted(all_entities))}")
+
+        return "\n".join(lines)
+
+    def inject_into_prompt(self, prompt: str, constraints: str) -> str:
+        """Prepend factual constraints to the optimization prompt.
+
+        The constraints appear AFTER the system rules but BEFORE the
+        user data, so the LLM sees them as authoritative instructions.
+        """
+        if not constraints:
+            return prompt
+        return (
+            "CRITICAL FACTUAL CONSTRAINTS — DO NOT VIOLATE:\n"
+            "<<<CONSTRAINTS>>>\n"
+            f"{constraints}\n"
+            "<<<END_CONSTRAINTS>>>\n\n"
+            f"{prompt}"
+        )
 
     def validate(
         self,

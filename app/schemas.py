@@ -4,7 +4,9 @@ New code should import from:
   - app.domain.resume
   - app.domain.skill_gap
   - app.domain.salary
+  - app.domain.optimization
 """
+from app.domain.optimization import OptimizationAIOutput, OptimizedExperience
 from app.domain.resume import (
     ContactInfo,
     EducationItem,
@@ -20,6 +22,8 @@ __all__ = [
     "ContactInfo",
     "EducationItem",
     "ExperienceItem",
+    "OptimizationAIOutput",
+    "OptimizedExperience",
     "ParseWarning",
     "ProjectItem",
     "ResumeData",

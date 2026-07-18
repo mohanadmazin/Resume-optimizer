@@ -175,6 +175,9 @@ def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
 
         resume = ResumeData.model_validate(fields)
 
+        # Normalize skills: deduplicate and clean
+        resume.skills = _normalize_skills(resume.skills)
+
         # ── Parser fact guard: strip hallucinated fields ────────────────
         fact_result = verify_parse(resume, text)
         if fact_result.has_hallucinations:
@@ -292,6 +295,24 @@ def _parse_skills(lines: list[str]) -> list[str]:
                 seen.add(skill.lower())
                 skills.append(skill)
     return skills
+
+
+def _normalize_skills(skills: list[str]) -> list[str]:
+    """Deduplicate and clean skills from AI parser output.
+
+    Preserves original case for display but deduplicates by lowercased form.
+    """
+    seen: set[str] = set()
+    result: list[str] = []
+    for skill in skills:
+        cleaned = skill.strip(" .")
+        if not cleaned or len(cleaned) >= 40:
+            continue
+        key = cleaned.lower()
+        if key not in seen:
+            seen.add(key)
+            result.append(cleaned)
+    return result
 
 
 def _parse_experience(lines: list[str]) -> tuple[list[ExperienceItem], list[ParseWarning]]:

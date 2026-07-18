@@ -142,6 +142,7 @@ class DashboardPage(QWidget):
             resume=state.resume,
             job_text=state.job_text,
             job_title=state.job_title,
+            job_location=state.job_location,
             job_id=state.job_id,
             resume_id=state.resume_id,
             parent=self,
@@ -310,6 +311,8 @@ class DashboardPage(QWidget):
         state.optimized = result.optimized
         state.cover_letter_text = result.cover_letter
         state.fact_guard = result.fact_guard
+        state.skill_gap = result.skill_gap
+        state.salary_estimate = result.salary_estimate
         state.pipeline_result = result
         state.pipeline_running = False
 

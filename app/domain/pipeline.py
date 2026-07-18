@@ -4,6 +4,8 @@ from datetime import datetime
 
 from app.domain.analysis import ATSResult
 from app.domain.fact_guard import FactGuardResult
+from app.domain.salary import SalaryEstimate
+from app.domain.skill_gap import SkillGapResult
 from app.schemas import ResumeData
 
 
@@ -17,6 +19,8 @@ class PipelineResult:
     cover_letter_warnings: list[str] = field(default_factory=list)
     fact_guard: FactGuardResult | None = None
     ats_after_score: int = 0
+    skill_gap: SkillGapResult | None = None
+    salary_estimate: SalaryEstimate | None = None
     duration_seconds: float = 0.0
     completed_at: datetime = field(default_factory=datetime.now)
     requires_review: bool = False

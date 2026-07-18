@@ -166,21 +166,23 @@ def test_apply_accepted_changes_does_not_mutate_original():
 @patch("app.services.optimizer.OllamaClient")
 def test_optimize_resume_only_applies_safe_changes(mock_client_cls, mock_guard_cls):
     """The optimizer should apply safe changes but leave flagged ones as proposals."""
-    # Mock AI response
-    ai_data = {
-        "summary": "Expert Python developer with 10 years.",
-        "experience": [
-            {
-                "bullets": [
+    from app.domain.optimization import OptimizationAIOutput, OptimizedExperience
+
+    # Mock AI response as structured output
+    ai_output = OptimizationAIOutput(
+        summary="Expert Python developer with 10 years.",
+        experience=[
+            OptimizedExperience(
+                bullets=[
                     "Built Django APIs serving 2M users daily",
                     "Managed team of 5 engineers",
                     "Increased revenue by 40%",  # New number → flagged
                 ]
-            }
+            )
         ],
-    }
+    )
     mock_client = mock_client_cls.return_value
-    mock_client.generate_json.return_value = ai_data
+    mock_client.generate_structured.return_value = ai_output
 
     # Mock FactGuard to return one safe and one flagged change
     safe_change = ProposedChange(

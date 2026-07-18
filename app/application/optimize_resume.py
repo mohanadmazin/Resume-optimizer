@@ -34,13 +34,14 @@ class OptimizeResumeUseCase:
 
 
 class RunPipelineUseCase:
-    """Full optimization pipeline: ATS -> Optimize -> Cover Letter -> Save."""
+    """Full optimization pipeline: ATS -> Optimize -> Cover Letter -> Skill Gap -> Salary -> Save."""
 
     def run(
         self,
         resume: ResumeData,
         jd_text: str,
         job_title: str,
+        job_location: str,
         resume_id: int | None,
         job_id: int | None,
         client=None,
@@ -68,12 +69,35 @@ class RunPipelineUseCase:
 
         optimized, fact_result = optimize_resume(resume, jd_text, ats_result, client)
 
-        _emit("Generating cover letter", 70)
+        _emit("Generating cover letter", 55)
         _checkpoint(cancel_event)
 
         cover_letter_result = generate_cover_letter(optimized, jd_text, client)
 
-        _emit("Running post-optimization ATS", 85)
+        _emit("Analyzing skill gap", 70)
+        _checkpoint(cancel_event)
+
+        skill_gap_result = None
+        if job_title:
+            from app.services.skill_gap import analyze_skill_gap
+            try:
+                skill_gap_result = analyze_skill_gap(resume, job_title)
+            except Exception:
+                logger.warning("Skill gap analysis failed, continuing pipeline", exc_info=True)
+
+        _emit("Estimating salary range", 80)
+        _checkpoint(cancel_event)
+
+        salary_result = None
+        location = job_location or "Not specified"
+        if job_title:
+            from app.services.salary_estimator import estimate_salary
+            try:
+                salary_result = estimate_salary(resume, job_title, location)
+            except Exception:
+                logger.warning("Salary estimation failed, continuing pipeline", exc_info=True)
+
+        _emit("Running post-optimization ATS", 90)
         _checkpoint(cancel_event)
 
         ats_after = analyze(optimized, jd_text)
@@ -101,6 +125,8 @@ class RunPipelineUseCase:
             cover_letter_warnings=cover_letter_result.warnings,
             fact_guard=fact_result,
             ats_after_score=ats_after.ats_score,
+            skill_gap=skill_gap_result,
+            salary_estimate=salary_result,
             duration_seconds=round(duration, 1),
             requires_review=requires_review,
         )
