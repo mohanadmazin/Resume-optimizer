@@ -56,7 +56,7 @@ class AppSettings(BaseModel):
 
 _DEFAULT = AppSettings()
 
-_settings_lock = threading.Lock()
+_settings_lock = threading.RLock()
 
 
 # ── Atomic write ────────────────────────────────────────────────────────────
@@ -204,12 +204,13 @@ def save_settings(settings: AppSettings) -> None:
 
 
 def update_settings(patch: dict) -> AppSettings:
-    settings = load_settings()
-    merged = settings.model_dump()
-    _deep_merge(merged, patch)
-    updated = AppSettings.model_validate(merged)
-    save_settings(updated)
-    return updated
+    with _settings_lock:
+        settings = load_settings()
+        merged = settings.model_dump()
+        _deep_merge(merged, patch)
+        updated = AppSettings.model_validate(merged)
+        save_settings(updated)
+        return updated
 
 
 def _deep_merge(base: dict, patch: dict) -> None:
@@ -234,41 +235,51 @@ class SettingsService:
     """
 
     def __init__(self) -> None:
-        self._settings = load_settings()
+        with _settings_lock:
+            self._settings = load_settings()
         self._on_changed_callbacks: list = []
 
     @property
     def settings(self) -> AppSettings:
-        return self._settings.model_copy(deep=True)
+        with _settings_lock:
+            return self._settings.model_copy(deep=True)
 
     @property
     def theme(self) -> str:
-        return self._settings.appearance.theme
+        with _settings_lock:
+            return self._settings.appearance.theme
 
     @property
     def model(self) -> str:
-        return self._settings.ai.model
+        with _settings_lock:
+            return self._settings.ai.model
 
     @property
     def ollama_url(self) -> str:
-        return self._settings.ai.ollama_url
+        with _settings_lock:
+            return self._settings.ai.ollama_url
 
     @property
     def temperature(self) -> float:
-        return self._settings.ai.temperature
+        with _settings_lock:
+            return self._settings.ai.temperature
 
     def save(self, settings: AppSettings) -> None:
         """Persist *settings* to disk and notify all listeners."""
+        with _settings_lock:
+            self._settings = settings
         save_settings(settings)
-        self._settings = settings
         self._notify()
 
     def update(self, patch: dict) -> AppSettings:
         """Merge *patch* into current settings, save, and notify."""
-        merged = self._settings.model_dump()
-        _deep_merge(merged, patch)
-        updated = AppSettings.model_validate(merged)
-        self.save(updated)
+        with _settings_lock:
+            merged = self._settings.model_dump()
+            _deep_merge(merged, patch)
+            updated = AppSettings.model_validate(merged)
+            self._settings = updated
+        save_settings(updated)
+        self._notify()
         return updated
 
     def on_changed(self, callback) -> None:

@@ -22,6 +22,52 @@ from app.services.resume_parser import parse_resume, parse_resume_ai
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 
+_MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+
+_PDF_MAGIC = b"%PDF"
+_DOCX_MAGIC = b"PK"
+_TXT_EXTENSIONS = {".txt"}
+
+# PDF/DOCX signature bytes for validation
+_PDF_MAGIC_OFFSETS = [0, 1, 2, 3]
+_DOCX_MAGIC_OFFSETS = [0, 1]
+
+
+def _validate_file(path: str) -> str | None:
+    """Return an error message if *path* is invalid, else None."""
+    p = Path(path)
+    suffix = p.suffix.lower()
+    if suffix not in {".pdf", ".docx", ".txt"}:
+        return f"Unsupported file type: {suffix}. Use PDF, DOCX, or TXT."
+
+    try:
+        size = p.stat().st_size
+    except OSError:
+        return "Cannot read file."
+
+    if size > _MAX_UPLOAD_SIZE:
+        return f"File too large ({size // (1024 * 1024)} MB). Maximum is 10 MB."
+    if size == 0:
+        return "File is empty."
+
+    if suffix == ".txt":
+        return None
+
+    try:
+        with open(path, "rb") as f:
+            header = f.read(8)
+    except OSError:
+        return "Cannot read file."
+
+    if suffix == ".pdf":
+        if not header.startswith(_PDF_MAGIC):
+            return "File does not appear to be a valid PDF."
+    elif suffix == ".docx":
+        if not header.startswith(_DOCX_MAGIC):
+            return "File does not appear to be a valid DOCX (ZIP archive)."
+
+    return None
+
 
 class ResumeUploadPage(QWidget):
     def __init__(self, window):
@@ -70,6 +116,12 @@ class ResumeUploadPage(QWidget):
         )
         if not path:
             return
+
+        error = _validate_file(path)
+        if error:
+            QMessageBox.warning(self, "Invalid file", error)
+            return
+
         self._raw_text = ""
         self._source_filename = Path(path).name
         if not self.name_edit.text():

@@ -19,13 +19,15 @@ dependencies = [
     "beautifulsoup4>=4.12,<4.13",
     "lxml>=5.0,<7",
     "alembic>=1.15,<1.16",
-    "playwright>=1.45,<2",
     "circuitbreaker>=2.0,<3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=9.1,<10",
+]
+browser = [
+    "playwright>=1.45,<2",
 ]
 
 [tool.pytest.ini_options]

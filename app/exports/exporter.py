@@ -337,7 +337,21 @@ def export_docx(resume: ResumeData, path: str) -> None:
 
 _PDF_SIZES = {"h1": 26.0, "h2": 10.5, "h3": 10.5, "li": 9.5, "p": 9.5, "meta": 9.0}
 _PDF_COLORS = {"h1": _NAVY_F, "h2": _NAVY_F, "h3": _DARK_F, "li": _DARK_F, "p": _DARK_F, "meta": _GREY_F}
-_PDF_FONTS = {"h1": "tibo", "h2": "tibo", "h3": "tibo", "li": "tiro", "p": "tiro", "meta": "tiro"}
+
+
+def _resolve_pdf_font(name: str) -> str:
+    """Return *name* if it is a valid built-in font, else fall back to helv."""
+    try:
+        fitz.get_text_length("x", fontname=name, fontsize=10)
+        return name
+    except Exception:
+        logger.debug("PyMuPDF font %r unavailable, falling back to helv", name)
+        return "helv"
+
+
+# Resolve bold/regular PDF fonts once at module load.
+_PDF_BOLD = _resolve_pdf_font("tibo")
+_PDF_REGULAR = _resolve_pdf_font("tiro")
 
 
 def export_pdf(resume: ResumeData, path: str) -> None:
@@ -363,13 +377,13 @@ def export_pdf(resume: ResumeData, path: str) -> None:
 
     def draw_text(x, text, *, size=9.5, color=_DARK_F, bold=False):
         nonlocal y
-        fontname = "tibo" if bold else "tiro"
+        fontname = _PDF_BOLD if bold else _PDF_REGULAR
         page.insert_text((x, y), text, fontsize=size, fontname=fontname, color=color)
         y += size * 1.5
 
     def draw_centered(text, *, size=9.5, color=_DARK_F, bold=False):
         nonlocal y
-        fontname = "tibo" if bold else "tiro"
+        fontname = _PDF_BOLD if bold else _PDF_REGULAR
         w = fitz.get_text_length(text, fontname=fontname, fontsize=size)
         x = (page.rect.width - w) / 2
         page.insert_text((x, y), text, fontsize=size, fontname=fontname, color=color)
@@ -385,7 +399,7 @@ def export_pdf(resume: ResumeData, path: str) -> None:
         y += 8
 
     def wrap_text(text, size, bold=False):
-        fontname = "tibo" if bold else "tiro"
+        fontname = _PDF_BOLD if bold else _PDF_REGULAR
         max_w = right - left
         words = text.split()
         lines, current = [], ""
@@ -431,24 +445,24 @@ def export_pdf(resume: ResumeData, path: str) -> None:
         for exp in resume.experience:
             check_page(24)
             dates = " \u2013 ".join(filter(None, [exp.start_date, exp.end_date]))
-            title_w = fitz.get_text_length(exp.title, fontname="tibo", fontsize=10.5)
+            title_w = fitz.get_text_length(exp.title, fontname=_PDF_BOLD, fontsize=10.5)
             draw_text(left, exp.title, size=10.5, color=_DARK_F, bold=True)
             if exp.company:
                 page.insert_text(
                     (left + title_w + 4, y - 10.5 * 1.5),
                     EXP_SEP + exp.company,
-                    fontsize=10, fontname="tiro", color=_GREY_F,
+                    fontsize=10, fontname=_PDF_REGULAR, color=_GREY_F,
                 )
             if dates:
-                dw = fitz.get_text_length(dates, fontname="tiro", fontsize=9.5)
-                page.insert_text((right - dw, y - 10.5 * 1.5), dates, fontsize=9.5, fontname="tiro", color=_GREY_F)
+                dw = fitz.get_text_length(dates, fontname=_PDF_REGULAR, fontsize=9.5)
+                page.insert_text((right - dw, y - 10.5 * 1.5), dates, fontsize=9.5, fontname=_PDF_REGULAR, color=_GREY_F)
             for bullet in exp.bullets:
                 check_page(12)
                 lines = wrap_text(bullet, 9.5)
                 for i, bl in enumerate(lines):
                     draw_text(left + 12, bl, size=9.5)
                     if i == 0:
-                        page.insert_text((left + 3, y - 9.5 * 1.5), "\u2022", fontsize=9.5, fontname="tiro", color=_DARK_F)
+                        page.insert_text((left + 3, y - 9.5 * 1.5), "\u2022", fontsize=9.5, fontname=_PDF_REGULAR, color=_DARK_F)
             y += 4
 
     if resume.projects:
@@ -458,20 +472,20 @@ def export_pdf(resume: ResumeData, path: str) -> None:
             dates = proj.meta or ""
             draw_text(left, proj.title, size=10.5, color=_DARK_F, bold=True)
             if dates:
-                dw = fitz.get_text_length(dates, fontname="tiro", fontsize=9.5)
-                page.insert_text((right - dw, y - 10.5 * 1.5), dates, fontsize=9.5, fontname="tiro", color=_GREY_F)
+                dw = fitz.get_text_length(dates, fontname=_PDF_REGULAR, fontsize=9.5)
+                page.insert_text((right - dw, y - 10.5 * 1.5), dates, fontsize=9.5, fontname=_PDF_REGULAR, color=_GREY_F)
             for bullet in proj.bullets:
                 check_page(12)
                 lines = wrap_text(bullet, 9.5)
                 for i, bl in enumerate(lines):
                     draw_text(left + 12, bl, size=9.5)
                     if i == 0:
-                        page.insert_text((left + 3, y - 9.5 * 1.5), "\u2022", fontsize=9.5, fontname="tiro", color=_DARK_F)
+                        page.insert_text((left + 3, y - 9.5 * 1.5), "\u2022", fontsize=9.5, fontname=_PDF_REGULAR, color=_DARK_F)
             y += 4
 
     if resume.skills:
         section_title("Technical Skills")
-        skill_font = "tiro"
+        skill_font = _PDF_REGULAR
         skill_size = 9.5
         page_w = right - left
         num_cols = 6
@@ -535,8 +549,8 @@ def export_pdf(resume: ResumeData, path: str) -> None:
             line = ", ".join(filter(None, [edu.degree, edu.institution]))
             draw_text(left, line, size=10, color=_DARK_F, bold=True)
             if edu.year:
-                dw = fitz.get_text_length(edu.year, fontname="tiro", fontsize=9)
-                page.insert_text((right - dw, y - 10 * 1.5), edu.year, fontsize=9, fontname="tiro", color=_GREY_F)
+                dw = fitz.get_text_length(edu.year, fontname=_PDF_REGULAR, fontsize=9)
+                page.insert_text((right - dw, y - 10 * 1.5), edu.year, fontsize=9, fontname=_PDF_REGULAR, color=_GREY_F)
             y += 4
 
     if resume.certifications:
@@ -545,7 +559,7 @@ def export_pdf(resume: ResumeData, path: str) -> None:
             check_page(12)
             parts = [p.strip() for p in cert.split("|")]
             display = " \u00b7 ".join(filter(None, parts))
-            page.insert_text((left + 3, y), "\u2022", fontsize=9.5, fontname="tiro", color=_DARK_F)
+            page.insert_text((left + 3, y), "\u2022", fontsize=9.5, fontname=_PDF_REGULAR, color=_DARK_F)
             draw_text(left + 12, display, size=9.5)
 
     if resume.languages:
