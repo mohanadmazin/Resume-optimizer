@@ -97,14 +97,20 @@ class OptimizationPage(QWidget):
         columns.addLayout(right, 1)
         layout.addLayout(columns, 1)
 
-        # Fact Guard review panel (hidden by default)
+        # Fact Guard review panel (hidden by default) — wrapped in a scroll area
+        self.review_scroll = QScrollArea()
+        self.review_scroll.setWidgetResizable(True)
+        self.review_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.review_scroll.setMaximumHeight(350)
+        self.review_scroll.setVisible(False)
+
         self.review_panel = QWidget()
         self.review_panel.setObjectName("reviewPanel")
         self.review_layout = QVBoxLayout(self.review_panel)
         self.review_layout.setContentsMargins(0, 0, 0, 0)
         self.review_layout.setSpacing(8)
-        self.review_panel.setVisible(False)
-        layout.addWidget(self.review_panel)
+        self.review_scroll.setWidget(self.review_panel)
+        layout.addWidget(self.review_scroll)
 
         # Apply button for accepted flagged changes
         self.apply_btn = QPushButton("Apply Accepted Changes")
@@ -175,7 +181,7 @@ class OptimizationPage(QWidget):
         self.before.setPlainText(to_markdown(state.resume))
         self.run_btn.setEnabled(False)
         self.fact_banner.setVisible(False)
-        self.review_panel.setVisible(False)
+        self.review_scroll.setVisible(False)
         model = settings_service.model
         self.window.notify(f"Optimizing with {model} - this may take a minute...")
         self._overlay.show(self, f"Optimizing resume with {model}...")
@@ -246,7 +252,7 @@ class OptimizationPage(QWidget):
 
         if total == 0:
             self.fact_banner.setVisible(False)
-            self.review_panel.setVisible(False)
+            self.review_scroll.setVisible(False)
             self.apply_btn.setVisible(False)
             return
 
@@ -295,7 +301,7 @@ class OptimizationPage(QWidget):
             for idx, change in enumerate(result.flagged_changes):
                 self._add_change_card(idx, change)
 
-        self.review_panel.setVisible(flagged > 0)
+        self.review_scroll.setVisible(flagged > 0)
         self.apply_btn.setVisible(flagged > 0)
 
     def _add_change_card(self, idx: int, change: ProposedChange) -> None:
@@ -409,7 +415,7 @@ class OptimizationPage(QWidget):
                 state.optimized.model_dump_json(),
             )
 
-        self.review_panel.setVisible(False)
+        self.review_scroll.setVisible(False)
         self.apply_btn.setVisible(False)
         self.fact_banner.setText("All changes reviewed and applied.")
         self.fact_banner.setStyleSheet(
