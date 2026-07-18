@@ -483,6 +483,19 @@ def test_wal_mode_enabled(tmp_path, monkeypatch):
         assert row[0] == "wal"
 
 
+def test_engine_enforces_foreign_keys(tmp_path):
+    from app.database.engine import create_sqlite_engine
+
+    engine = create_sqlite_engine(tmp_path / "application.db")
+
+    with engine.connect() as connection:
+        enabled = connection.exec_driver_sql(
+            "PRAGMA foreign_keys"
+        ).scalar_one()
+
+    assert enabled == 1
+
+
 # ── Cascade delete via ORM ─────────────────────────────────────────────────
 
 

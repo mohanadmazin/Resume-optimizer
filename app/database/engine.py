@@ -17,7 +17,7 @@ def create_sqlite_engine(path: Path = DB_PATH) -> Engine:
     Enables foreign keys, WAL mode, busy timeout, and normal synchronous
     mode on every new connection.
     """
-    engine = create_engine(
+    database_engine = create_engine(
         f"sqlite:///{path}",
         echo=False,
         pool_pre_ping=True,
@@ -27,18 +27,31 @@ def create_sqlite_engine(path: Path = DB_PATH) -> Engine:
         },
     )
 
-    @event.listens_for(engine, "connect")
+    @event.listens_for(database_engine, "connect")
     def configure_sqlite(dbapi_connection, _connection_record) -> None:
-        cursor = dbapi_connection.cursor()
-        try:
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.execute("PRAGMA busy_timeout=5000")
-            cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA synchronous=NORMAL")
-        finally:
-            cursor.close()
+        previous_autocommit = getattr(
+            dbapi_connection,
+            "autocommit",
+            None,
+        )
 
-    return engine
+        try:
+            if previous_autocommit is not None:
+                dbapi_connection.autocommit = True
+
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.execute("PRAGMA busy_timeout=5000")
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+            finally:
+                cursor.close()
+        finally:
+            if previous_autocommit is not None:
+                dbapi_connection.autocommit = previous_autocommit
+
+    return database_engine
 
 
 engine = create_sqlite_engine()
