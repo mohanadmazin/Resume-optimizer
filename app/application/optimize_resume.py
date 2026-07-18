@@ -81,7 +81,7 @@ class RunPipelineUseCase:
         if job_title:
             from app.services.skill_gap import analyze_skill_gap
             try:
-                skill_gap_result = analyze_skill_gap(resume, job_title)
+                skill_gap_result = analyze_skill_gap(resume, jd_text, job_title)
             except Exception:
                 logger.warning("Skill gap analysis failed, continuing pipeline", exc_info=True)
 

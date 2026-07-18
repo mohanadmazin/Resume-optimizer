@@ -1,4 +1,4 @@
-"""Skill Gap Analysis page — compare skills vs market demand for a role."""
+"""Skill Gap Analysis page — compare skills vs job description requirements."""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
@@ -52,14 +52,14 @@ class SkillGapPage(QWidget):
         layout.addWidget(title)
 
         desc = QLabel(
-            "Enter a target role to compare your resume skills against market demand."
+            "Compare your resume skills against the requirements "
+            "in your loaded job description."
         )
         layout.addWidget(desc)
 
         disclaimer = QLabel(
-            "Note: Market skills are AI-generated and not grounded in an actual "
-            "job-posting corpus, dated skills dataset, or citations. The missing "
-            "skills list reflects the AI's training data, not verified market evidence."
+            "Note: Required skills are extracted from the job description text. "
+            "The AI interprets the posting — always verify against the original."
         )
         disclaimer.setWordWrap(True)
         disclaimer.setStyleSheet("color: #9CA3AF; font-size: 11px; font-style: italic;")
@@ -78,7 +78,7 @@ class SkillGapPage(QWidget):
         cards = QHBoxLayout()
         card1, self.matched_value = _card("Matched Skills")
         card2, self.missing_value = _card("Missing Skills")
-        card3, self.total_value = _card("Market Skills")
+        card3, self.total_value = _card("Required Skills")
         for c in (card1, card2, card3):
             cards.addWidget(c)
         layout.addLayout(cards)
@@ -151,10 +151,19 @@ class SkillGapPage(QWidget):
                 )
             return
 
+        if not state.job_text.strip():
+            if not silent:
+                QMessageBox.warning(
+                    self,
+                    "Missing input",
+                    "Load a job description first.",
+                )
+            return
+
         self.analyze_btn.setEnabled(False)
         self.window.notify("Analyzing skill gap — this may take a minute...")
         self._overlay.show(self, "Analyzing skill gap...")
-        self._worker = Worker(analyze_skill_gap, resume, role)
+        self._worker = Worker(analyze_skill_gap, resume, state.job_text, role)
         self._worker.result.connect(self._on_done)
         self._worker.error.connect(self._on_error)
         self._worker.start()
