@@ -16,6 +16,7 @@ class ATSResult:
     suggestions: List[str] = field(default_factory=list)
     keyword_weights: dict = field(default_factory=dict)
     score_report: ResumeScoreReport | None = None
+    keyword_targets: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = asdict(self)

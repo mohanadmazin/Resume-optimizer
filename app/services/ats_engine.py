@@ -504,6 +504,39 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
         score, keyword_pct, skills_pct, len(missing), score_report.overall_score,
     )
 
+    # --- Keyword Targeting new workflow ---
+    from app.services.keyword_targeting import match_requirement
+    from app.domain.keyword_targeting import JobRequirement, ResumeTextIndex
+    job_requirements = [JobRequirement(
+        name=kw,
+        aliases=[],
+        importance=weights.get(kw, 0.5),
+        frequency=max(1, int(weights.get(kw, 0.5) * 2)),
+        source_phrases=[kw],
+    ) for kw in keywords]
+    # Build resume text index
+    parts = []
+    parts.append(("headline", resume.headline.lower() if resume.headline else ""))
+    parts.append(("summary", resume.summary.lower() if resume.summary else ""))
+    for i, skill in enumerate(resume.skills):
+        parts.append((f"skills[{i}]", skill.lower()))
+    for i, exp in enumerate(resume.experience):
+        if exp.title:
+            parts.append((f"experience[{i}].title", exp.title.lower()))
+        if exp.company:
+            parts.append((f"experience[{i}].company", exp.company.lower()))
+        for j, b in enumerate(exp.bullets):
+            parts.append((f"experience[{i}].bullets[{j}]", b.lower()))
+    for i, proj in enumerate(resume.projects):
+        if proj.title:
+            parts.append((f"projects[{i}].title", proj.title.lower()))
+        if proj.description:
+            parts.append((f"projects[{i}].description", proj.description.lower()))
+        for j, b in enumerate(proj.bullets):
+            parts.append((f"projects[{i}].bullets[{j}]", b.lower()))
+    resume_index = ResumeTextIndex(path_text=parts)
+    keyword_targets = [match_requirement(req, resume_index) for req in job_requirements]
+
     return ATSResult(
         ats_score=score,
         keyword_match_pct=keyword_pct,
@@ -514,6 +547,7 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
         keyword_weights=weights,
         suggestions=_suggestions(resume, missing, weights, keyword_pct, skills_pct),
         score_report=score_report,
+        keyword_targets=keyword_targets,
     )
 
 
