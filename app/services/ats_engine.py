@@ -446,7 +446,6 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
     keyword_pct = round(100 * matched_weight / total_weight, 1) if total_weight else 0.0
 
     # Skills match: extract required skills from JD, check which appear in resume
-    # Uses alias-aware matching so JS/JavaScript, K8s/Kubernetes etc. are recognized.
     required_skills = extract_required_skills(jd_text)
     matched_required = [s for s in required_skills if _skill_matches(resume_text, s)]
     missing_skills = [s for s in required_skills if s not in matched_required]
@@ -487,9 +486,22 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
     score = round(sum(v * w for v, w in components) / total_weight)
     score = max(0, min(100, score))
 
+    # Build the versioned rule-engine score report
+    from app.services.scoring_engine import build_score_report
+    from app.domain.scoring import LayoutMetrics
+
+    has_bullets = any(exp.bullets for exp in resume.experience)
+    resume_words = _resume_text(resume)
+    layout = LayoutMetrics(
+        word_count=len(resume_words.split()),
+        has_bullets=has_bullets,
+        line_count=resume_words.count("\n") + 1,
+    )
+    score_report = build_score_report(resume, jd_text, layout)
+
     logger.info(
-        "ATS analysis: score=%d keyword_pct=%.1f skills_pct=%.1f missing=%d",
-        score, keyword_pct, skills_pct, len(missing),
+        "ATS analysis: score=%d keyword_pct=%.1f skills_pct=%.1f missing=%d rulescore=%d",
+        score, keyword_pct, skills_pct, len(missing), score_report.overall_score,
     )
 
     return ATSResult(
@@ -501,6 +513,7 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
         missing_skills=missing_skills,
         keyword_weights=weights,
         suggestions=_suggestions(resume, missing, weights, keyword_pct, skills_pct),
+        score_report=score_report,
     )
 
 

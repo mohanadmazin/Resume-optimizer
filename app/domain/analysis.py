@@ -2,6 +2,8 @@
 from dataclasses import asdict, dataclass, field
 from typing import List
 
+from app.domain.scoring import ResumeScoreReport
+
 
 @dataclass
 class ATSResult:
@@ -13,6 +15,10 @@ class ATSResult:
     missing_skills: List[str] = field(default_factory=list)
     suggestions: List[str] = field(default_factory=list)
     keyword_weights: dict = field(default_factory=dict)
+    score_report: ResumeScoreReport | None = None
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d.get("score_report") is not None:
+            d["score_report"] = self.score_report.model_dump()
+        return d
