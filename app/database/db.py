@@ -8,7 +8,7 @@ New code should import from:
 import json
 import logging
 
-from app.database.engine import engine, init_db
+from app.database.engine import engine
 from app.database.session import SessionLocal, get_session
 from app.database.models import Base, Resume, JobDescription, Analysis, Optimization
 

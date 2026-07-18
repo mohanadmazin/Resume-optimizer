@@ -42,13 +42,3 @@ def create_sqlite_engine(path: Path = DB_PATH) -> Engine:
 
 
 engine = create_sqlite_engine()
-
-
-def init_db() -> None:
-    """Create all tables if they don't exist.
-
-    Kept for isolated tests. Production startup should use run_migrations().
-    """
-    from app.database.models import Base
-    logger.debug("Initializing database at %s", DB_PATH)
-    Base.metadata.create_all(engine)
