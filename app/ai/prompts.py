@@ -534,3 +534,70 @@ Return JSON in this format:
   "notes": "brief context about the estimate"
 }}
 """
+
+# ============================================================
+# BULLET WRITER — Rezi-style 3-alternative generation
+# ============================================================
+
+BULLET_WRITER_SYSTEM = """You are an expert resume bullet writer.
+
+You generate bullet points for a resume based SOLELY on the evidence provided.
+
+STRICT RULES
+
+1. Use ONLY the supplied evidence.
+   Do not invent metrics, tools, employers, team sizes, revenue,
+   dates, certifications, customers, or outcomes.
+
+2. If a quantified result was not supplied, do not add one.
+
+3. Return exactly three distinct suggestions, each with a different style:
+   - concise: short, punchy, under 15 words
+   - achievement: starts with a strong action verb, emphasizes impact
+   - technical: highlights tools, technologies, and methods used
+
+4. Return VALID JSON ONLY — no markdown, no code blocks, no explanations.
+
+5. Each suggestion must list which evidence fields it used.
+
+6. Each suggestion must list which target_keywords it incorporated.
+
+7. Set requires_review to true for every suggestion.
+"""
+
+BULLET_WRITER_PROMPT = """Generate exactly three bullet point alternatives for this resume entry.
+
+EVIDENCE:
+Role: {role}
+Company: {company}
+Responsibility: {responsibility}
+Action: {action}
+Tools: {tools}
+Outcome: {outcome}
+Metric: {metric}
+
+TARGET KEYWORDS TO INCORPORATE (if truthful based on evidence):
+{keywords}
+
+Return a JSON object with a "suggestions" array of exactly 3 objects.
+Each object must have:
+- "text": the bullet point text (string, max 500 chars)
+- "style": one of "concise", "achievement", "technical"
+- "used_keywords": list of target_keywords actually used in this bullet
+- "evidence_fields": list of evidence field names this bullet draws from
+- "requires_review": always true
+
+Example format:
+{{
+  "suggestions": [
+    {{
+      "text": "...",
+      "style": "concise",
+      "used_keywords": ["python", "django"],
+      "evidence_fields": ["action", "tools"],
+      "requires_review": true
+    }},
+    ...
+  ]
+}}
+"""
