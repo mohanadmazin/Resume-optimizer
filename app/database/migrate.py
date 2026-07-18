@@ -167,7 +167,15 @@ def _backup_database(db_path: Path) -> Path | None:
     with sqlite3.connect(source_uri, uri=True) as source:
         with sqlite3.connect(backup_path) as destination:
             source.backup(destination)
-            destination.execute("PRAGMA integrity_check")
+
+            integrity = destination.execute(
+                "PRAGMA integrity_check"
+            ).fetchone()
+
+            if not integrity or integrity[0] != "ok":
+                raise RuntimeError(
+                    "SQLite backup failed integrity verification."
+                )
 
     logger.info("Created consistent database backup at %s", backup_path)
     _prune_backups()
