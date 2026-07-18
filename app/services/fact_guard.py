@@ -283,11 +283,16 @@ class FactGuard:
             all_changes.append(change)
 
         # --- Experience bullets ---
+        # Track per-experience change counts for ratio enforcement
+        exp_change_counts: dict[int, int] = {}
+        exp_total_bullets: dict[int, int] = {}
         if len(source.experience) == len(optimized.experience):
             for idx, (src_exp, opt_exp) in enumerate(zip(source.experience, optimized.experience)):
                 section = f"{src_exp.title or 'Experience'} #{idx + 1}"
                 src_bullets = src_exp.bullets
                 opt_bullets = opt_exp.bullets
+                exp_total_bullets[idx] = len(src_bullets)
+                exp_change_counts[idx] = 0
 
                 # Use SequenceMatcher to detect inserted, deleted, rewritten bullets
                 matcher = SequenceMatcher(None, src_bullets, opt_bullets)
@@ -295,8 +300,21 @@ class FactGuard:
                     if tag == "equal":
                         continue
                     elif tag == "delete":
-                        # Bullets removed — no change to flag in the optimized output
-                        continue
+                        # Bullets removed — flag for review since the user may want them back
+                        for ib in range(i1, i2):
+                            old_b = src_bullets[ib]
+                            change = ProposedChange(
+                                change_type=ChangeType.BULLET_DELETED,
+                                section=section,
+                                original=old_b,
+                                rewritten="",
+                                experience_index=idx,
+                                bullet_index=ib,
+                                requires_review=True,
+                                review_reason="bullet was deleted by the AI",
+                            )
+                            all_changes.append(change)
+                            exp_change_counts[idx] += 1
                     elif tag == "insert":
                         # New bullets inserted by AI — must be checked
                         for jb in range(j1, j2):
@@ -307,6 +325,7 @@ class FactGuard:
                                 experience_index=idx, bullet_index=jb,
                             )
                             all_changes.append(change)
+                            exp_change_counts[idx] += 1
                             if change.has_new_numbers:
                                 all_unsupported_numbers.extend(_extract_numbers(new_bullet))
                             if change.has_new_entities:
@@ -326,6 +345,7 @@ class FactGuard:
                                 experience_index=idx, bullet_index=j1 + k,
                             )
                             all_changes.append(change)
+                            exp_change_counts[idx] += 1
                             if change.has_new_numbers:
                                 all_unsupported_numbers.extend(
                                     _extract_numbers(new_b) - _extract_numbers(old_b)
@@ -344,10 +364,30 @@ class FactGuard:
         all_unsupported_entities = list(dict.fromkeys(all_unsupported_entities))
         all_unsupported_skills = list(dict.fromkeys(all_unsupported_skills))
 
+        # Enforce per-experience change ratio
+        ratio_exceeded_indices: set[int] = set()
+        for idx, changed in exp_change_counts.items():
+            total = exp_total_bullets.get(idx, 0)
+            if total > 0 and changed / total > self.max_bullet_change_ratio:
+                ratio_exceeded_indices.add(idx)
+
         safe: list[ProposedChange] = []
         flagged: list[ProposedChange] = []
         for c in all_changes:
-            if c.has_new_skills:
+            # Flag all changes for experiences that exceeded the ratio
+            if c.experience_index is not None and c.experience_index in ratio_exceeded_indices:
+                if not c.requires_review:
+                    c.requires_review = True
+                    c.review_reason = (
+                        f"too many bullets changed in experience #{c.experience_index + 1} "
+                        f"({exp_change_counts.get(c.experience_index, 0)}/"
+                        f"{exp_total_bullets.get(c.experience_index, 0)} > "
+                        f"{self.max_bullet_change_ratio:.0%})"
+                    )
+                flagged.append(c)
+            elif c.change_type == ChangeType.BULLET_DELETED:
+                flagged.append(c)
+            elif c.has_new_skills:
                 c.change_type = ChangeType.SKILL_ADD
                 flagged.append(c)
             elif c.has_new_numbers:

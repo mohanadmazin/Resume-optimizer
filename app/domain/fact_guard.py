@@ -11,6 +11,7 @@ class ChangeType(str, Enum):
     SUMMARY = "summary"
     HEADLINE = "headline"
     BULLET = "bullet"
+    BULLET_DELETED = "bullet_deleted"
     GRAMMAR = "grammar"
     REWRITE = "rewrite"
     SKILL_ADD = "skill_add"

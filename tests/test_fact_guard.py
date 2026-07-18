@@ -201,10 +201,12 @@ def test_inserted_bullet_gets_checked():
 
 def test_inserted_bullet_without_facts_is_safe():
     source = _resume()
-    source.experience[0].bullets = ["Built REST APIs"]
+    source.experience[0].bullets = ["Built REST APIs", "Wrote documentation", "Fixed bugs"]
     optimized = _resume()
     optimized.experience[0].bullets = [
         "Built REST APIs",
+        "Wrote documentation",
+        "Fixed bugs",
         "improved code quality and test coverage",  # lowercase to avoid _TECH_RE
     ]
     result = FactGuard().validate(source, optimized)
@@ -219,9 +221,17 @@ def test_inserted_bullet_without_facts_is_safe():
 def test_existing_skill_not_flagged():
     """Rewriting a bullet that mentions a skill already in the resume is safe."""
     source = _resume(skills=["Python", "Django"])
-    source.experience[0].bullets = ["Used python for backend"]
+    source.experience[0].bullets = [
+        "Used python for backend",
+        "Built REST APIs serving 1M requests",
+        "Led team of 5 engineers",
+    ]
     optimized = _resume(skills=["Python", "Django"])
-    optimized.experience[0].bullets = ["worked with python for backend"]
+    optimized.experience[0].bullets = [
+        "worked with python for backend",
+        "Built REST APIs serving 1M requests",
+        "Led team of 5 engineers",
+    ]
     result = FactGuard().validate(source, optimized)
     assert len(result.flagged_changes) == 0
 
