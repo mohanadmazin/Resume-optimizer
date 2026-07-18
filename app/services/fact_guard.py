@@ -151,6 +151,61 @@ def _source_tech_vocab(resume: ResumeData) -> set[str]:
     return {t.lower() for t in tech}
 
 
+# ── Semantic review helpers ───────────────────────────────────────────────
+
+_NEGATIONS = {
+    "not",
+    "never",
+    "no",
+    "without",
+    "unable",
+    "failed",
+}
+
+
+def _words(value: str) -> set[str]:
+    """Extract all lowercase word tokens from text."""
+    return set(
+        re.findall(
+            r"[a-z0-9+#.]+",
+            value.lower(),
+        )
+    )
+
+
+def _semantic_review_reason(
+    original: str,
+    rewritten: str,
+) -> str | None:
+    """Detect negation flips and extreme rewrites.
+
+    Returns a review reason string if the change needs manual review,
+    otherwise ``None``.
+    """
+    original_words = _words(original)
+    rewritten_words = _words(rewritten)
+
+    original_negation = bool(original_words & _NEGATIONS)
+    rewritten_negation = bool(rewritten_words & _NEGATIONS)
+
+    if original_negation != rewritten_negation:
+        return "Claim polarity or negation changed."
+
+    similarity = SequenceMatcher(
+        None,
+        original.casefold(),
+        rewritten.casefold(),
+    ).ratio()
+
+    if original and similarity < 0.45:
+        return (
+            "The rewrite differs substantially "
+            "from the source statement."
+        )
+
+    return None
+
+
 class FactGuard:
     """Deterministic fact guard — preventive constraints + post-generation validation."""
 
@@ -284,37 +339,45 @@ class FactGuard:
 
         # --- Experience bullets ---
         # Track per-experience change counts for ratio enforcement
-        exp_change_counts: dict[int, int] = {}
-        exp_total_bullets: dict[int, int] = {}
+        exp_entry_exceeds_ratio: set[int] = set()
         if len(source.experience) == len(optimized.experience):
             for idx, (src_exp, opt_exp) in enumerate(zip(source.experience, optimized.experience)):
                 section = f"{src_exp.title or 'Experience'} #{idx + 1}"
                 src_bullets = src_exp.bullets
                 opt_bullets = opt_exp.bullets
-                exp_total_bullets[idx] = len(src_bullets)
-                exp_change_counts[idx] = 0
 
                 # Use SequenceMatcher to detect inserted, deleted, rewritten bullets
                 matcher = SequenceMatcher(None, src_bullets, opt_bullets)
+
+                # Count changed source bullets for ratio enforcement
+                changed_source_bullets = sum(
+                    i2 - i1
+                    for tag, i1, i2, _j1, _j2 in matcher.get_opcodes()
+                    if tag != "equal"
+                )
+                change_ratio = changed_source_bullets / max(1, len(src_bullets))
+                if change_ratio > self.max_bullet_change_ratio:
+                    exp_entry_exceeds_ratio.add(idx)
+
                 for tag, i1, i2, j1, j2 in matcher.get_opcodes():
                     if tag == "equal":
                         continue
                     elif tag == "delete":
-                        # Bullets removed — flag for review since the user may want them back
-                        for ib in range(i1, i2):
-                            old_b = src_bullets[ib]
-                            change = ProposedChange(
-                                change_type=ChangeType.BULLET_DELETED,
-                                section=section,
-                                original=old_b,
-                                rewritten="",
-                                experience_index=idx,
-                                bullet_index=ib,
-                                requires_review=True,
-                                review_reason="bullet was deleted by the AI",
+                        for source_index in range(i1, i2):
+                            all_changes.append(
+                                ProposedChange(
+                                    change_type=ChangeType.BULLET,
+                                    section=section,
+                                    original=src_bullets[source_index],
+                                    rewritten="",
+                                    experience_index=idx,
+                                    bullet_index=source_index,
+                                    requires_review=True,
+                                    review_reason=(
+                                        "The AI removed an existing bullet."
+                                    ),
+                                )
                             )
-                            all_changes.append(change)
-                            exp_change_counts[idx] += 1
                     elif tag == "insert":
                         # New bullets inserted by AI — must be checked
                         for jb in range(j1, j2):
@@ -325,7 +388,6 @@ class FactGuard:
                                 experience_index=idx, bullet_index=jb,
                             )
                             all_changes.append(change)
-                            exp_change_counts[idx] += 1
                             if change.has_new_numbers:
                                 all_unsupported_numbers.extend(_extract_numbers(new_bullet))
                             if change.has_new_entities:
@@ -345,7 +407,6 @@ class FactGuard:
                                 experience_index=idx, bullet_index=j1 + k,
                             )
                             all_changes.append(change)
-                            exp_change_counts[idx] += 1
                             if change.has_new_numbers:
                                 all_unsupported_numbers.extend(
                                     _extract_numbers(new_b) - _extract_numbers(old_b)
@@ -364,40 +425,34 @@ class FactGuard:
         all_unsupported_entities = list(dict.fromkeys(all_unsupported_entities))
         all_unsupported_skills = list(dict.fromkeys(all_unsupported_skills))
 
-        # Enforce per-experience change ratio
-        ratio_exceeded_indices: set[int] = set()
-        for idx, changed in exp_change_counts.items():
-            total = exp_total_bullets.get(idx, 0)
-            if total > 0 and changed / total > self.max_bullet_change_ratio:
-                ratio_exceeded_indices.add(idx)
-
         safe: list[ProposedChange] = []
         flagged: list[ProposedChange] = []
         for c in all_changes:
-            # Flag all changes for experiences that exceeded the ratio
-            if c.experience_index is not None and c.experience_index in ratio_exceeded_indices:
-                if not c.requires_review:
+            entry_exceeds_ratio = (
+                c.experience_index is not None
+                and c.experience_index in exp_entry_exceeds_ratio
+            )
+
+            must_review = any((
+                c.requires_review,
+                c.has_new_numbers,
+                c.has_new_entities,
+                c.has_new_skills,
+                entry_exceeds_ratio,
+            ))
+
+            if must_review:
+                if entry_exceeds_ratio and not c.requires_review:
                     c.requires_review = True
-                    c.review_reason = (
-                        f"too many bullets changed in experience #{c.experience_index + 1} "
-                        f"({exp_change_counts.get(c.experience_index, 0)}/"
-                        f"{exp_total_bullets.get(c.experience_index, 0)} > "
-                        f"{self.max_bullet_change_ratio:.0%})"
-                    )
-                flagged.append(c)
-            elif c.change_type == ChangeType.BULLET_DELETED:
-                flagged.append(c)
-            elif c.has_new_skills:
-                c.change_type = ChangeType.SKILL_ADD
-                flagged.append(c)
-            elif c.has_new_numbers:
-                c.change_type = ChangeType.METRIC_ADD
-                flagged.append(c)
-            elif c.has_new_entities:
-                c.change_type = ChangeType.EMPLOYER_ADD
+                    c.review_reason = "entry exceeds max bullet change ratio"
+                if c.has_new_skills:
+                    c.change_type = ChangeType.SKILL_ADD
+                elif c.has_new_numbers:
+                    c.change_type = ChangeType.METRIC_ADD
+                elif c.has_new_entities:
+                    c.change_type = ChangeType.EMPLOYER_ADD
                 flagged.append(c)
             else:
-                # Pure language improvement — no factual additions
                 if c.change_type == ChangeType.BULLET:
                     c.change_type = ChangeType.REWRITE
                 safe.append(c)
@@ -458,6 +513,9 @@ class FactGuard:
         if truly_new_tech:
             has_new_skills = True
 
+        # Semantic review: negation flips and extreme rewrites
+        semantic_reason = _semantic_review_reason(original, rewritten)
+
         return ProposedChange(
             change_type=change_type,
             section=section,
@@ -468,4 +526,6 @@ class FactGuard:
             has_new_numbers=has_new_numbers,
             has_new_entities=has_new_entities,
             has_new_skills=has_new_skills,
+            requires_review=bool(semantic_reason),
+            review_reason=semantic_reason or "",
         )
