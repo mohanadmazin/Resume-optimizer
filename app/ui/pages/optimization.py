@@ -39,6 +39,7 @@ class OptimizationPage(QWidget):
         self._worker = None
         self._overlay = LoadingOverlayManager()
         self._change_cards: dict[int, tuple[ProposedChange, QFrame]] = {}
+        self._reviewed_indices: set[int] = set()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -249,6 +250,7 @@ class OptimizationPage(QWidget):
 
         # Clear old change cards
         self._change_cards.clear()
+        self._reviewed_indices.clear()
 
         if total == 0:
             self.fact_banner.setVisible(False)
@@ -360,6 +362,7 @@ class OptimizationPage(QWidget):
 
         def _on_accept(change_idx=idx, sl=status_label, ab=accept_btn, rb=reject_btn):
             self.window.state.fact_guard.flagged_changes[change_idx].accepted = True
+            self._reviewed_indices.add(change_idx)
             sl.setText("Accepted")
             sl.setStyleSheet("color: #22C55E; font-size: 11px; font-weight: bold;")
             ab.setEnabled(False)
@@ -367,6 +370,7 @@ class OptimizationPage(QWidget):
 
         def _on_reject(change_idx=idx, sl=status_label, ab=accept_btn, rb=reject_btn):
             self.window.state.fact_guard.flagged_changes[change_idx].accepted = False
+            self._reviewed_indices.add(change_idx)
             sl.setText("Rejected")
             sl.setStyleSheet("color: #EF4444; font-size: 11px; font-weight: bold;")
             ab.setEnabled(False)
@@ -390,8 +394,8 @@ class OptimizationPage(QWidget):
             return
 
         all_reviewed = all(
-            c.accepted or not any([c.has_new_numbers, c.has_new_entities, c.has_new_skills])
-            for c in state.fact_guard.flagged_changes
+            i in self._reviewed_indices
+            for i in range(len(state.fact_guard.flagged_changes))
         )
 
         if not all_reviewed:
