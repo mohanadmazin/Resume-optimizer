@@ -27,7 +27,7 @@ from app.domain.fact_guard import FactGuardResult, ProposedChange
 from app.exports.exporter import export_docx, export_markdown, export_pdf, to_markdown
 from app.services.ats_engine import analyze
 from app.services.diff_highlight import resume_diff_html
-from app.services.optimizer import apply_accepted_changes, optimize_resume
+from app.services.optimizer import optimize_resume
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 
@@ -388,7 +388,7 @@ class OptimizationPage(QWidget):
         self.review_layout.addWidget(card)
 
     def _apply_accepted(self) -> None:
-        """Apply all accepted flagged changes and rebuild the optimized resume."""
+        """Collect accepted keywords and re-run optimization with them."""
         state = self.window.state
         if state.fact_guard is None or state.resume is None:
             return
@@ -406,35 +406,37 @@ class OptimizationPage(QWidget):
             )
             return
 
-        state.optimized = apply_accepted_changes(state.resume, state.fact_guard)
+        # Collect accepted keywords from flagged changes
+        accepted_keywords = []
+        for change in state.fact_guard.flagged_changes:
+            if change.accepted:
+                if change.has_new_skills:
+                    accepted_keywords.append(change.rewritten.strip())
+                if change.has_new_numbers:
+                    accepted_keywords.append(change.rewritten.strip())
+                if change.has_new_entities:
+                    accepted_keywords.append(change.rewritten.strip())
+
+        # Add accepted keywords to the ATS missing_keywords so the
+        # re-optimization prompt includes them
+        if state.ats is not None:
+            for kw in accepted_keywords:
+                if kw and kw not in state.ats.missing_keywords:
+                    state.ats.missing_keywords.append(kw)
+
+        # Merge into selected_keywords so the re-run includes them
+        if state.selected_keywords is None:
+            state.selected_keywords = list(state.ats.missing_keywords) if state.ats else []
+        state.selected_keywords.extend(k for k in accepted_keywords if k and k not in state.selected_keywords)
+
+        # Clear fact guard state before re-running
         state.fact_guard = None
-
-        self.after.setHtml(resume_diff_html(state.resume, state.optimized))
-
-        # Save to database now that all changes are reviewed
-        if state.resume_id is not None and state.job_id is not None:
-            db.save_optimization(
-                state.resume_id, state.job_id,
-                settings_service.model,
-                state.optimized.model_dump_json(),
-            )
-
         self.review_scroll.setVisible(False)
         self.apply_btn.setVisible(False)
-        self.fact_banner.setText("All changes reviewed and applied.")
-        self.fact_banner.setStyleSheet(
-            "background-color: rgba(34, 197, 94, 0.15); color: #22C55E; "
-            "padding: 10px; border-radius: 6px; font-weight: bold;"
-        )
-        self.fact_banner.setVisible(True)
+        self.fact_banner.setVisible(False)
 
-        # Recalculate score
-        new_result = analyze(state.optimized, state.job_text)
-        old_score = state.ats.ats_score if state.ats else 0
-        self.after_score_label.setText(f"Optimized ATS Score: {new_result.ats_score} / 100")
-        self._style_after_score(old_score, new_result.ats_score)
-
-        self.window.notify("Accepted changes applied and saved.")
+        self.window.notify(f"Re-optimizing with {len(accepted_keywords)} accepted keyword(s)...")
+        self._run()
 
     # ── Score styling ──────────────────────────────────────────────────────
 
