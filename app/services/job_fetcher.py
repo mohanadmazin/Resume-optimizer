@@ -134,9 +134,9 @@ def _connect(target: ResolvedTarget, url: str, config: FetchConfig) -> requests.
     concurrent networking threads.
     """
     parsed = urlparse(url)
-    original_getaddrinfo = socket.getaddrinfo
 
     with _DNS_PATCH_LOCK:
+        original_getaddrinfo = socket.getaddrinfo
         socket.getaddrinfo = _pinned_getaddrinfo(
             original_getaddrinfo, target.ip, target.hostname, target.port
         )
