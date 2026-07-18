@@ -1,17 +1,22 @@
 """Dashboard: one-click pipeline, latest scores and recent analyses."""
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -115,17 +120,11 @@ class DashboardPage(QWidget):
         state = self.window.state
 
         if state.resume is None:
-            QMessageBox.warning(
-                self, "Missing Resume",
-                "Please import a resume before running the pipeline.",
-            )
+            self._prompt_import_resume()
             return
 
         if not state.job_text.strip():
-            QMessageBox.warning(
-                self, "Missing Job Description",
-                "Please add a job description before running the pipeline.",
-            )
+            self._prompt_job_description()
             return
 
         # Disable controls
@@ -151,6 +150,140 @@ class DashboardPage(QWidget):
         self._pipeline_worker.result.connect(self._on_pipeline_done)
         self._pipeline_worker.error.connect(self._on_pipeline_error)
         self._pipeline_worker.start()
+
+    # ── Resume import prompt ─────────────────────────────────────────────
+
+    def _prompt_import_resume(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Resume", "", "Documents (*.pdf *.docx *.txt)"
+        )
+        if not path:
+            return
+
+        self._pending_resume_path = path
+        self.pipeline_btn.setEnabled(False)
+
+        from app.services.document_reader import extract_text
+        from app.ui.workers import Worker
+        self._overlay_label = "Extracting text..."
+        self._extract_worker = Worker(extract_text, path)
+        self._extract_worker.result.connect(self._on_resume_text_extracted)
+        self._extract_worker.error.connect(self._on_resume_import_error)
+        self._extract_worker.start()
+
+    def _on_resume_text_extracted(self, text: str) -> None:
+        if not text.strip():
+            self.pipeline_btn.setEnabled(True)
+            QMessageBox.warning(self, "Empty document", "No text could be extracted from the file.")
+            return
+
+        self._raw_text = text
+        from app.services.resume_parser import parse_resume
+        from app.ui.workers import Worker
+        self._parse_worker = Worker(parse_resume, text)
+        self._parse_worker.result.connect(self._on_resume_parsed)
+        self._parse_worker.error.connect(self._on_resume_import_error)
+        self._parse_worker.start()
+
+    def _on_resume_parsed(self, resume) -> None:
+        self.pipeline_btn.setEnabled(True)
+        resume.raw_text = self._raw_text
+
+        state = self.window.state
+        resume_id = db.save_resume(
+            resume.contact.name or "Resume",
+            resume.model_dump_json(),
+            self._raw_text,
+            source_type="import",
+            source_filename=getattr(self, "_pending_resume_path", ""),
+        )
+        state.resume = resume
+        state.resume_id = resume_id
+        self.window.notify(f"Resume imported — {resume.contact.name or 'Resume'}")
+        self._run_pipeline()
+
+    def _on_resume_import_error(self, message: str) -> None:
+        self.pipeline_btn.setEnabled(True)
+        QMessageBox.critical(self, "Import failed", message)
+
+    # ── Job description prompt ───────────────────────────────────────────
+
+    def _prompt_job_description(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add Job Description")
+        dialog.setMinimumWidth(520)
+        dialog.setMinimumHeight(400)
+
+        dlg_layout = QVBoxLayout(dialog)
+        dlg_layout.setSpacing(10)
+
+        dlg_layout.addWidget(QLabel("Paste the job description text, or enter a URL to fetch it:"))
+
+        url_row = QHBoxLayout()
+        url_edit = QLineEdit()
+        url_edit.setPlaceholderText("https://linkedin.com/jobs/view/...")
+        url_row.addWidget(url_edit, 1)
+        fetch_btn = QPushButton("Fetch")
+        url_row.addWidget(fetch_btn)
+        dlg_layout.addLayout(url_row)
+
+        text_edit = QTextEdit()
+        text_edit.setPlaceholderText("Paste the full job description here...")
+        dlg_layout.addWidget(text_edit, 1)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        dlg_layout.addWidget(buttons)
+
+        def _fetch():
+            url = url_edit.text().strip()
+            if not url:
+                QMessageBox.warning(dialog, "Missing URL", "Enter a URL first.")
+                return
+            fetch_btn.setEnabled(False)
+            fetch_btn.setText("Fetching...")
+
+            class _FetchThread(QThread):
+                done = Signal(object)
+                def run(self):
+                    from app.services.job_fetcher import fetch_job
+                    self.done.emit(fetch_job(url))
+
+            thread = _FetchThread(dialog)
+            thread.done.connect(lambda result: _on_fetched(result, thread))
+            thread.start()
+
+        def _on_fetched(result, thread):
+            fetch_btn.setEnabled(True)
+            fetch_btn.setText("Fetch")
+            if result.requires_manual_input:
+                QMessageBox.information(
+                    dialog, "Could not fetch",
+                    "Could not fetch the job description. Please paste it manually.",
+                )
+            else:
+                text_edit.setPlainText(result.text)
+
+        fetch_btn.clicked.connect(_fetch)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        text = text_edit.toPlainText().strip()
+        if not text:
+            return
+
+        state = self.window.state
+        title = url_edit.text().strip() or "Job from Pipeline"
+        job_id = db.save_job(title, text)
+        state.job_text = text
+        state.job_title = title
+        state.job_id = job_id
+        self.window.notify(f"Job description added — {title}")
+        self._run_pipeline()
 
     def _cancel_pipeline(self) -> None:
         if self._pipeline_worker and self._pipeline_worker.isRunning():
