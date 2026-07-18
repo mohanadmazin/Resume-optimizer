@@ -1,12 +1,18 @@
 """Extract plain text from PDF, DOCX and text files."""
 import logging
 import re
+import zipfile
 from pathlib import Path
 
 import fitz  # PyMuPDF
 from docx import Document
 
 logger = logging.getLogger(__name__)
+
+MAX_DOCUMENT_BYTES = 15 * 1024 * 1024
+MAX_PDF_PAGES = 60
+MAX_DOCX_EXPANDED_BYTES = 75 * 1024 * 1024
+MAX_DOCX_COMPRESSION_RATIO = 100
 
 _SECTION_HEADERS = {
     "summary", "professional summary",
@@ -26,17 +32,52 @@ _DATE_PREFIX_RE = re.compile(r"([a-zA-Z])(" + _MONTHS + r")")
 def extract_text(path: str) -> str:
     suffix = Path(path).suffix.lower()
     logger.info("Reading document: %s (type=%s)", path, suffix)
+    _validate_input_size(Path(path))
     if suffix == ".pdf":
         return _read_pdf(path)
     if suffix == ".docx":
+        _validate_docx_archive(Path(path))
         return _read_docx(path)
     if suffix in (".txt", ".md"):
         return Path(path).read_text(encoding="utf-8", errors="replace")
     raise ValueError(f"Unsupported file type: {suffix}. Use PDF, DOCX or TXT.")
 
 
+def _validate_input_size(path: Path) -> None:
+    if path.stat().st_size > MAX_DOCUMENT_BYTES:
+        raise ValueError(
+            "Document exceeds the 15 MB safety limit."
+        )
+
+
+def _validate_docx_archive(path: Path) -> None:
+    with zipfile.ZipFile(path) as archive:
+        compressed = 0
+        expanded = 0
+
+        for entry in archive.infolist():
+            compressed += max(entry.compress_size, 1)
+            expanded += entry.file_size
+
+            if expanded > MAX_DOCX_EXPANDED_BYTES:
+                raise ValueError(
+                    "DOCX expands beyond the safety limit."
+                )
+
+        if expanded / max(compressed, 1) > (
+            MAX_DOCX_COMPRESSION_RATIO
+        ):
+            raise ValueError(
+                "Suspicious DOCX compression ratio."
+            )
+
+
 def _read_pdf(path: str) -> str:
     with fitz.open(path) as doc:
+        if doc.page_count > MAX_PDF_PAGES:
+            raise ValueError(
+                f"PDF exceeds {MAX_PDF_PAGES} pages."
+            )
         parts: list[str] = []
         for page in doc:
             blocks = page.get_text("blocks")

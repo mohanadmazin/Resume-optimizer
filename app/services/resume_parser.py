@@ -15,6 +15,8 @@ from app.schemas import ContactInfo, EducationItem, ExperienceItem, ParseWarning
 
 logger = logging.getLogger(__name__)
 
+MAX_AI_PARSE_CHARACTERS = 40_000
+
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 PHONE_RE = re.compile(r"(\+?\d[\d\s().-]{7,}\d)")
 LINKEDIN_RE = re.compile(r"(?:https?://)?(?:www\.)?linkedin\.com/[^\s|,]+", re.I)
@@ -141,8 +143,10 @@ def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
     """AI-based parser using Ollama; falls back to the heuristic parser."""
     logger.info("Parsing resume with AI parser (%d chars)", len(text))
 
+    bounded_text = text[:MAX_AI_PARSE_CHARACTERS]
+
     try:
-        data = client.generate_json(PARSE_PROMPT.format(text=text), system=PARSE_SYSTEM)
+        data = client.generate_json(PARSE_PROMPT.format(text=bounded_text), system=PARSE_SYSTEM)
 
         if "contact" not in data:
             data["contact"] = {
@@ -183,14 +187,37 @@ def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
         if fact_result.has_hallucinations:
             for h in fact_result.hallucinated_fields:
                 _strip_hallucinated_field(resume, h)
+            # Delete invalid certifications by reverse-sorted index
+            invalid_cert_indexes = sorted(
+                {
+                    field.index
+                    for field in fact_result.hallucinated_fields
+                    if field.section == "certifications"
+                },
+                reverse=True,
+            )
+            for index in invalid_cert_indexes:
+                if 0 <= index < len(resume.certifications):
+                    del resume.certifications[index]
             # Remove blanked list items
-            resume.certifications = [c for c in resume.certifications if c]
             resume.skills = [s for s in resume.skills if s]
             resume.languages = [l for l in resume.languages if l]
             resume.parse_warnings.extend(fact_result.warnings)
             logger.info(
                 "Parser fact guard stripped %d hallucinated field(s)",
                 len(fact_result.hallucinated_fields),
+            )
+
+        if len(text) > MAX_AI_PARSE_CHARACTERS:
+            resume.parse_warnings.append(
+                ParseWarning(
+                    section="document",
+                    line=0,
+                    message=(
+                        "The document was truncated before AI "
+                        "parsing because it exceeded the safe limit."
+                    ),
+                )
             )
 
     except (OllamaError, ValidationError, ValueError, TypeError) as exc:
