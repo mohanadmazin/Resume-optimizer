@@ -138,6 +138,19 @@ def _source_vocabulary(resume: ResumeData) -> set[str]:
     return vocab
 
 
+def _source_tech_vocab(resume: ResumeData) -> set[str]:
+    """Build a lowercase set of all known tech tokens from skills and experience."""
+    tech: set[str] = set()
+    for s in resume.skills:
+        norm = _normalize_skill(s)
+        tech.add(norm)
+        tech.update(_extract_tech_tokens(s))
+    for exp in resume.experience:
+        for b in exp.bullets:
+            tech.update(_extract_tech_tokens(b))
+    return {t.lower() for t in tech}
+
+
 class FactGuard:
     """Deterministic post-generation validator for AI resume changes."""
 
@@ -160,11 +173,15 @@ class FactGuard:
         all_unsupported_entities: list[str] = []
         all_unsupported_skills: list[str] = []
 
+        # Pre-compute expensive vocabulary once for all change checks
+        source_vocab = _source_vocabulary(source)
+        source_tech = _source_tech_vocab(source)
+
         # --- Summary ---
         if source.summary.strip() != optimized.summary.strip():
             change = self._check_text_change(
                 ChangeType.SUMMARY, "Summary",
-                source.summary, optimized.summary, source,
+                source.summary, optimized.summary, source_vocab, source_tech,
             )
             all_changes.append(change)
             if change.has_new_numbers:
@@ -180,7 +197,7 @@ class FactGuard:
         if source.headline.strip() != optimized.headline.strip():
             change = self._check_text_change(
                 ChangeType.HEADLINE, "Headline",
-                source.headline, optimized.headline, source,
+                source.headline, optimized.headline, source_vocab, source_tech,
             )
             all_changes.append(change)
 
@@ -205,7 +222,7 @@ class FactGuard:
                             new_bullet = opt_bullets[jb]
                             change = self._check_text_change(
                                 ChangeType.BULLET, section,
-                                "", new_bullet, source,
+                                "", new_bullet, source_vocab, source_tech,
                             )
                             all_changes.append(change)
                             if change.has_new_numbers:
@@ -223,7 +240,7 @@ class FactGuard:
                                 continue
                             change = self._check_text_change(
                                 ChangeType.BULLET, section,
-                                old_b, new_b, source,
+                                old_b, new_b, source_vocab, source_tech,
                             )
                             all_changes.append(change)
                             if change.has_new_numbers:
@@ -281,7 +298,8 @@ class FactGuard:
         section: str,
         original: str,
         rewritten: str,
-        source: ResumeData,
+        source_vocab: set[str],
+        source_tech_lower: set[str],
     ) -> ProposedChange:
         """Run deterministic checks on a single text change."""
         has_new_numbers = False
@@ -297,7 +315,6 @@ class FactGuard:
         # Check for new entities (multi-word proper nouns not in source)
         orig_entities = _extract_entities(original)
         new_entities = _extract_entities(rewritten)
-        source_vocab = _source_vocabulary(source)
         truly_new = {
             e for e in (new_entities - orig_entities)
             if e.lower() not in source_vocab
@@ -309,16 +326,6 @@ class FactGuard:
         # Uses normalized lowercase comparison to catch python/Python, etc.
         orig_tech = _extract_tech_tokens(original)
         new_tech = _extract_tech_tokens(rewritten)
-        source_tech: set[str] = set()
-        for s in source.skills:
-            norm = _normalize_skill(s)
-            source_tech.add(norm)
-            source_tech.update(_extract_tech_tokens(s))
-        for exp in source.experience:
-            for b in exp.bullets:
-                source_tech.update(_extract_tech_tokens(b))
-        # Also add lowercase matches
-        source_tech_lower = {t.lower() for t in source_tech}
         truly_new_tech = {
             t for t in (new_tech - orig_tech)
             if t.lower() not in source_tech_lower

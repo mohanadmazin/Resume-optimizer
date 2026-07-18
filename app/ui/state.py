@@ -52,8 +52,6 @@ class AppState:
     @resume.setter
     def resume(self, value):
         self._resume_cache = value
-        if value is not None and self.active_resume_id is None:
-            self.active_resume_id = None  # caller must set separately
 
     @property
     def resume_id(self):

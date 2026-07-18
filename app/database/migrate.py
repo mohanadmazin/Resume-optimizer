@@ -80,6 +80,8 @@ def _has_alembic_version(db_path: Path) -> bool:
 
 def _table_columns(db_path: Path, table: str) -> set[str]:
     """Return the set of column names for *table*."""
+    if table not in _INTROSPECTABLE_TABLES:
+        raise ValueError(f"Table {table!r} is not in the introspectable tables whitelist")
     conn = sqlite3.connect(str(db_path))
     try:
         rows = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
@@ -94,6 +96,10 @@ def _has_cascade_fk(
     referenced_table: str,
 ) -> bool:
     """Check whether *table* has an ON DELETE CASCADE FK to *referenced_table*."""
+    if table not in _INTROSPECTABLE_TABLES or referenced_table not in _INTROSPECTABLE_TABLES:
+        raise ValueError(
+            f"Tables must be in the whitelist: {table!r}, {referenced_table!r}"
+        )
     conn = sqlite3.connect(str(db_path))
     try:
         rows = conn.execute(f"PRAGMA foreign_key_list({table})").fetchall()  # noqa: S608
@@ -112,6 +118,10 @@ _TRACKING_COLUMNS = {
     "source_hash",
     "is_original",
 }
+
+# Whitelist of tables that may be introspected by PRAGMA queries.
+# PRAGMAs do not support parameterized queries, so we validate against this set.
+_INTROSPECTABLE_TABLES = frozenset({"resumes", "analyses", "optimizations"})
 
 
 def _infer_legacy_revision(db_path: Path) -> str:

@@ -109,7 +109,8 @@ def _apply_change(resume: ResumeData, change: ProposedChange) -> None:
         resume.summary = change.rewritten
     elif change.change_type == ChangeType.HEADLINE:
         resume.headline = change.rewritten
-    elif change.change_type == ChangeType.BULLET:
+    elif change.change_type in (ChangeType.BULLET, ChangeType.REWRITE,
+                                ChangeType.METRIC_ADD, ChangeType.EMPLOYER_ADD):
         # Find the matching experience entry and bullet
         for exp in resume.experience:
             section_name = f"{exp.title or 'Experience'}"
@@ -118,5 +119,11 @@ def _apply_change(resume: ResumeData, change: ProposedChange) -> None:
                     if bullet.strip() == change.original.strip():
                         exp.bullets[i] = change.rewritten
                         return
-                # If not found by exact match, check by index
                 break
+    elif change.change_type == ChangeType.SKILL_ADD:
+        # Append the rewritten skill (the original skill entry is replaced)
+        if change.original and change.original in resume.skills:
+            idx = resume.skills.index(change.original)
+            resume.skills[idx] = change.rewritten
+        elif change.rewritten and change.rewritten not in resume.skills:
+            resume.skills.append(change.rewritten)

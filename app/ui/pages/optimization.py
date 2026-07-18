@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app import config
+from app.core.settings import settings_service
 from app.ai.ollama_client import OllamaClient
 from app.database import db
 from app.domain.fact_guard import FactGuardResult, ProposedChange
@@ -176,7 +176,7 @@ class OptimizationPage(QWidget):
         self.run_btn.setEnabled(False)
         self.fact_banner.setVisible(False)
         self.review_panel.setVisible(False)
-        model = config.load_config()["model"]
+        model = settings_service.model
         self.window.notify(f"Optimizing with {model} - this may take a minute...")
         self._overlay.show(self, f"Optimizing resume with {model}...")
         self._worker = Worker(
@@ -205,7 +205,7 @@ class OptimizationPage(QWidget):
         if fact_result.flagged_count == 0:
             if state.resume_id is not None and state.job_id is not None:
                 db.save_optimization(
-                    state.resume_id, state.job_id, config.load_config()["model"], optimized.model_dump_json()
+                    state.resume_id, state.job_id, settings_service.model, optimized.model_dump_json()
                 )
 
         # Update score display
@@ -405,7 +405,7 @@ class OptimizationPage(QWidget):
         if state.resume_id is not None and state.job_id is not None:
             db.save_optimization(
                 state.resume_id, state.job_id,
-                config.load_config()["model"],
+                settings_service.model,
                 state.optimized.model_dump_json(),
             )
 
