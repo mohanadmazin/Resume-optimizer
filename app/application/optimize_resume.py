@@ -29,8 +29,8 @@ class OptimizeResumeUseCase:
     def run(self, resume: ResumeData, jd_text: str, ats_result: ATSResult, client):
         return optimize_resume(resume, jd_text, ats_result, client)
 
-    def generate_cover_letter(self, resume: ResumeData, jd_text: str, client):
-        return generate_cover_letter(resume, jd_text, client)
+    def generate_cover_letter(self, resume: ResumeData, jd_text: str, client, target_company: str | None = None):
+        return generate_cover_letter(resume, jd_text, client, target_company=target_company)
 
 
 class RunPipelineUseCase:
@@ -47,6 +47,7 @@ class RunPipelineUseCase:
         client=None,
         cancel_event: threading.Event | None = None,
         progress=None,
+        job_company: str | None = None,
     ) -> PipelineResult:
         import time
         start = time.monotonic()
@@ -72,7 +73,7 @@ class RunPipelineUseCase:
         _emit("Generating cover letter", 55)
         _checkpoint(cancel_event)
 
-        cover_letter_result = generate_cover_letter(optimized, jd_text, client)
+        cover_letter_result = generate_cover_letter(optimized, jd_text, client, target_company=job_company)
 
         _emit("Analyzing skill gap", 70)
         _checkpoint(cancel_event)

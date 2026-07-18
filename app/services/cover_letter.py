@@ -25,15 +25,19 @@ _NUMBER_RE = re.compile(
 class CoverLetterResult:
     """Structured cover letter output with warnings kept separate."""
     text: str
-    warnings: list[str] = field(default_factory=list)
+    warnings: tuple[str, ...] = ()
 
 
 def _check_cover_letter_facts(
     letter: str,
     resume: ResumeData,
     allowed_organizations: set[str] | None = None,
-) -> list[str]:
-    """Return a list of warnings for unsupported claims in the cover letter."""
+) -> tuple[str, ...]:
+    """Return a tuple of warnings for unsupported claims in the cover letter.
+
+    The target employer is always included in *allowed_organizations* so
+    it is never flagged as suspicious.
+    """
     warnings: list[str] = []
 
     # Check for new numbers not in the resume
@@ -55,35 +59,56 @@ def _check_cover_letter_facts(
     }
     known_orgs = resume_companies | resume_institutions
 
-    # Add allowed organizations (target employer)
+    # Add allowed organizations (target employer, hiring manager's company, etc.)
     if allowed_organizations:
         known_orgs.update(org.strip().lower() for org in allowed_organizations if org.strip())
 
     # Candidate's own name should not be flagged
     candidate_name = (resume.contact.name or "").lower()
 
-    # Look for capitalized multi-word proper nouns that might be company names
+    # Generic phrases that should never be flagged
+    _SAFE_PHRASES = {
+        "dear hiring manager", "your company", "the team",
+        "your organization", "your team", "the company",
+        "dear recruitment", "dear recruiter", "hiring team",
+    }
+
+    # Look for capitalized multi-word proper nouns that might be company names.
+    # Also catch single-word orgs that start with a capital letter followed by
+    # a known suffix (Corp, Inc, etc.) or standalone proper nouns that are
+    # clearly organization names.
     company_pattern = re.compile(
-        r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+(?:\s+(?:Corp|Inc|Ltd|LLC|Co|Company|Group|"
-        r"Technologies|Systems))?)\b"
+        r"\b([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*)+"
+        r"(?:\s+(?:Corp|Inc|Ltd|LLC|Co|Company|Group|Technologies|"
+        r"Systems|Labs|Studio|Associates|Partners))?)\b"
     )
     letter_orgs = set(company_pattern.findall(letter))
     for org in letter_orgs:
-        if org.lower() not in known_orgs and org.lower() not in {
-            "dear hiring manager", "your company", "the team",
-        } and org.lower() != candidate_name:
+        org_lower = org.lower()
+        if (
+            org_lower not in known_orgs
+            and org_lower not in _SAFE_PHRASES
+            and org_lower != candidate_name
+            and not any(word in org_lower for word in candidate_name.split())
+        ):
             warnings.append(f"Cover letter mentions organization not in resume: {org}")
 
-    return warnings
+    return tuple(warnings)
 
 
 def generate_cover_letter(
-    resume,
-    jd_text,
-    client,
+    resume: ResumeData,
+    jd_text: str,
+    client: OllamaClient,
     target_company: str | None = None,
+    job_title: str | None = None,
 ) -> CoverLetterResult:
-    """Generate a cover letter and return structured result with separate warnings."""
+    """Generate a cover letter and return structured result with separate warnings.
+
+    *target_company* is the employer from the job description.  It is always
+    added to the allowed-organizations set so the fact-checker does not flag
+    the target employer as suspicious.
+    """
     logger.info("Generating cover letter for %s", resume.contact.name or "unknown")
     data = resume.model_dump()
     data.pop("raw_text", None)
@@ -113,8 +138,12 @@ def generate_cover_letter(
         flags=re.S | re.M,
     )
 
-    # Fact-check the generated cover letter
-    allowed = {target_company} if target_company else None
+    # Fact-check the generated cover letter — always include the target employer
+    # so it is never flagged as an unknown organization.
+    allowed: set[str] = set()
+    if target_company and target_company.strip():
+        allowed.add(target_company.strip())
+
     warnings = _check_cover_letter_facts(letter, resume, allowed_organizations=allowed)
 
     if warnings:

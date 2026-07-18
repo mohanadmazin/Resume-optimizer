@@ -16,7 +16,7 @@ class PipelineResult:
     ats_before: ATSResult
     optimized: ResumeData
     cover_letter: str
-    cover_letter_warnings: list[str] = field(default_factory=list)
+    cover_letter_warnings: tuple[str, ...] = ()
     fact_guard: FactGuardResult | None = None
     ats_after_score: int = 0
     skill_gap: SkillGapResult | None = None

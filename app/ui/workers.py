@@ -112,6 +112,7 @@ class PipelineWorker(QThread):
         job_id: int | None,
         resume_id: int | None,
         parent=None,
+        job_company: str | None = None,
     ):
         super().__init__(parent)
         self.resume = resume
@@ -120,6 +121,7 @@ class PipelineWorker(QThread):
         self.job_location = job_location
         self.job_id = job_id
         self.resume_id = resume_id
+        self.job_company = job_company
         self._token = CancellationToken()
 
     def cancel(self) -> None:
@@ -147,6 +149,7 @@ class PipelineWorker(QThread):
                     name,
                     percent,
                 ),
+                job_company=self.job_company,
             )
             self._token.raise_if_cancelled()
             self.result.emit(result)

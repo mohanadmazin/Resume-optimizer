@@ -145,6 +145,7 @@ class DashboardPage(QWidget):
             job_location=state.job_location,
             job_id=state.job_id,
             resume_id=state.resume_id,
+            job_company=state.job_company or None,
             parent=self,
         )
         self._pipeline_worker.progress.connect(self._on_pipeline_progress)

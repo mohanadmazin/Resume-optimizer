@@ -88,6 +88,7 @@ class CoverLetterPage(QWidget):
         self._overlay.show(self, "Generating cover letter...")
         self._worker = Worker(
             generate_cover_letter, resume, state.job_text, OllamaClient(),
+            target_company=state.job_company or None,
         )
         self._worker.result.connect(self._on_done)
         self._worker.error.connect(self._on_error)
