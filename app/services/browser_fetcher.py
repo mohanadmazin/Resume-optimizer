@@ -51,14 +51,16 @@ def requires_browser_render(url: str) -> bool:
     )
 
 
-def _secure_route(route, request) -> None:
+def _secure_route(route) -> None:
     """Playwright route handler: enforce SSRF checks on every browser request."""
+    request = route.request
+
     try:
         validate_scheme(request.url)
         validate_port(request.url)
         resolve_and_validate(request.url)
     except SSRFError:
-        logger.warning("Blocked browser request to unsafe target: %s", request.url)
+        logger.warning("Blocked unsafe browser request: %s", request.url)
         route.abort("blockedbyclient")
         return
 
@@ -69,15 +71,15 @@ def _secure_route(route, request) -> None:
     route.continue_()
 
 
-def fetch_rendered_page(url: str, timeout: int = 30_000) -> str:
-    """Open *url* in headless Chromium and return the rendered HTML.
+def fetch_rendered_page(url: str, timeout: int = 30_000) -> tuple[str, str]:
+    """Open *url* in headless Chromium and return the rendered HTML and final URL.
 
     Args:
         url: The URL to fetch.
         timeout: Navigation timeout in milliseconds.
 
     Returns:
-        The fully rendered HTML string.
+        A tuple of (rendered HTML, final URL after redirects).
 
     Raises:
         BrowserFetchError: If Playwright is unavailable or rendering fails.
@@ -116,7 +118,7 @@ def fetch_rendered_page(url: str, timeout: int = 30_000) -> str:
 
                 html = page.content()
                 logger.info("Browser-rendered page: %d chars of HTML", len(html))
-                return html
+                return html, final_url
             finally:
                 browser.close()
 

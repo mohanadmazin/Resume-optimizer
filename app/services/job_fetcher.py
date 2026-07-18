@@ -297,7 +297,8 @@ def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResul
                 if requires_browser_render(current_url):
                     logger.info("Static extraction thin (%d chars); trying browser render", len(text) if text else 0)
                     try:
-                        rendered_html = fetch_rendered_page(current_url)
+                        rendered_html, rendered_url = fetch_rendered_page(current_url)
+                        current_url = rendered_url
                         from bs4 import BeautifulSoup as _BS
                         browser_soup = _BS(rendered_html, "lxml")
                         text = extract_text_from_soup(browser_soup)

@@ -65,10 +65,11 @@ class TestFetchRenderedPage:
             patch("app.services.browser_fetcher.resolve_and_validate"),
         ):
             mock_sync.return_value.__enter__.return_value = mock_pw
-            html = fetch_rendered_page("https://example.com")
+            html, final_url = fetch_rendered_page("https://example.com")
 
         assert "<html" in html
         assert "Job content here" in html
+        assert final_url == "https://example.com"
         mock_page.goto.assert_called_once()
 
     def test_browser_error_wrapped(self):
@@ -109,7 +110,7 @@ class TestBrowserFallbackIntegration:
             patch("app.services.job_fetcher.resolve_and_validate") as mock_resolve,
             patch("app.services.job_fetcher._connect", return_value=mock_response),
             patch("app.services.job_fetcher.requires_browser_render", return_value=True),
-            patch("app.services.job_fetcher.fetch_rendered_page", return_value=rich_html),
+            patch("app.services.job_fetcher.fetch_rendered_page", return_value=(rich_html, "https://www.linkedin.com/jobs/view/123")),
         ):
             mock_resolve.return_value = MagicMock(
                 hostname="linkedin.com", port=443, ip="1.2.3.4"
