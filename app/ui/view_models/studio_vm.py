@@ -157,6 +157,8 @@ class ResumeStudioViewModel(QObject):
             self._resume.contact = value
         elif section == "Summary":
             self._resume.summary = value
+        elif section == "Headline":
+            self._resume.headline = value
         elif section == "Experience":
             self._resume.experience = value
         elif section == "Projects":
@@ -178,6 +180,7 @@ class ResumeStudioViewModel(QObject):
         mapping = {
             "Contact": self._resume.contact,
             "Summary": self._resume.summary,
+            "Headline": self._resume.headline,
             "Experience": self._resume.experience,
             "Projects": self._resume.projects,
             "Education": self._resume.education,

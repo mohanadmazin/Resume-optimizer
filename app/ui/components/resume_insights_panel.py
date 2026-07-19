@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain.analysis import ATSResult
+from app.domain.keyword_targeting import KeywordTarget
 from app.domain.scoring import ResumeScoreReport
 
 
@@ -40,6 +41,8 @@ class ResumeInsightsPanel(QWidget):
     """Right-hand panel showing ATS score breakdown, missing keywords, and issues."""
 
     issue_selected = Signal(str)
+    suggestion_accepted = Signal(str)
+    suggestion_rejected = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -92,6 +95,22 @@ class ResumeInsightsPanel(QWidget):
         self._keywords_area.setWidget(self._keywords_container)
         root.addWidget(self._keywords_area, 1)
 
+        # ── Skill suggestions ────────────────────────────────────────
+        sug_label = QLabel("Skill Suggestions")
+        sug_label.setObjectName("sectionLabel")
+        root.addWidget(sug_label)
+
+        self._suggestions_scroll = QScrollArea()
+        self._suggestions_scroll.setWidgetResizable(True)
+        self._suggestions_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._suggestions_container = QWidget()
+        self._suggestions_layout = QVBoxLayout(self._suggestions_container)
+        self._suggestions_layout.setContentsMargins(0, 0, 0, 0)
+        self._suggestions_layout.setSpacing(4)
+        self._suggestions_layout.addStretch()
+        self._suggestions_scroll.setWidget(self._suggestions_container)
+        root.addWidget(self._suggestions_scroll, 1)
+
         # ── Issues list ──────────────────────────────────────────────
         issues_label = QLabel("Issues")
         issues_label.setObjectName("sectionLabel")
@@ -131,8 +150,82 @@ class ResumeInsightsPanel(QWidget):
         self._clear_layout(self._cat_layout)
         self._clear_layout(self._keywords_layout)
         self._keywords_layout.addStretch()
+        self._clear_layout(self._suggestions_layout)
+        self._suggestions_layout.addStretch()
         self._clear_layout(self._issues_layout)
         self._issues_layout.addStretch()
+
+    def update_from_suggestions(self, targets: list[KeywordTarget]) -> None:
+        """Show keyword suggestions with Accept/Reject buttons."""
+        self._clear_layout(self._suggestions_layout)
+        missing = [t for t in targets if t.status.value in ("missing", "partial")]
+        if not missing:
+            lbl = QLabel("No suggestions available")
+            lbl.setStyleSheet("color: #888; font-style: italic; font-size: 11px;")
+            self._suggestions_layout.addWidget(lbl)
+            self._suggestions_layout.addStretch()
+            return
+        for target in missing[:10]:
+            row = QFrame()
+            row.setObjectName("suggestionRow")
+            row.setStyleSheet(
+                "QFrame{suggestionRow}{border: 1px solid #444; border-radius: 3px;"
+                "padding: 4px; background: #1e1e1e;}"
+            )
+            inner = QVBoxLayout(row)
+            inner.setContentsMargins(4, 4, 4, 4)
+            inner.setSpacing(2)
+
+            name_row = QHBoxLayout()
+            status_color = "#e6a817" if target.status.value == "partial" else "#ff5c5c"
+            name_lbl = QLabel(
+                f"<b>{target.canonical_name}</b> "
+                f"<span style='color:{status_color};font-size:10px;'>"
+                f"{target.status.value.upper()}</span>"
+            )
+            name_lbl.setStyleSheet("font-size: 11px;")
+            name_row.addWidget(name_lbl)
+            name_row.addStretch()
+            inner.addLayout(name_row)
+
+            if target.suggested_paths:
+                path_lbl = QLabel(f"Add to: {', '.join(target.suggested_paths[:2])}")
+                path_lbl.setStyleSheet("color: #999; font-size: 10px;")
+                inner.addWidget(path_lbl)
+
+            btn_row = QHBoxLayout()
+            accept_btn = QPushButton("Accept")
+            accept_btn.setFixedHeight(22)
+            accept_btn.setStyleSheet(
+                "QPushButton{font-size:10px;padding:2px 8px;border:1px solid #5a5;"
+                "border-radius:3px;background:transparent;}"
+                "QPushButton:hover{background:#2a4a2a;}"
+            )
+            accept_btn.clicked.connect(
+                lambda checked=False, name=target.canonical_name: (
+                    self.suggestion_accepted.emit(name)
+                )
+            )
+            btn_row.addWidget(accept_btn)
+
+            reject_btn = QPushButton("Reject")
+            reject_btn.setFixedHeight(22)
+            reject_btn.setStyleSheet(
+                "QPushButton{font-size:10px;padding:2px 8px;border:1px solid #555;"
+                "border-radius:3px;background:transparent;}"
+                "QPushButton:hover{background:#3a2a2a;}"
+            )
+            reject_btn.clicked.connect(
+                lambda checked=False, name=target.canonical_name: (
+                    self.suggestion_rejected.emit(name)
+                )
+            )
+            btn_row.addWidget(reject_btn)
+            btn_row.addStretch()
+            inner.addLayout(btn_row)
+
+            self._suggestions_layout.addWidget(row)
+        self._suggestions_layout.addStretch()
 
     # ── Internal ─────────────────────────────────────────────────────
 

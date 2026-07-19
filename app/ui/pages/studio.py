@@ -65,6 +65,8 @@ class ResumeStudioPage(QWidget):
         self._tabs = QTabWidget()
         self._editor = SectionEditor()
         self._editor.section_edited.connect(self._on_section_edited)
+        self._editor.generate_summary_requested.connect(self._on_generate_summary)
+        self._editor.generate_headline_requested.connect(self._on_generate_headline)
 
         self._preview = ResumePreview()
 
@@ -77,6 +79,7 @@ class ResumeStudioPage(QWidget):
         # ── Right: insights ──────────────────────────────────────────
         self._insights = ResumeInsightsPanel()
         self._insights.issue_selected.connect(self._on_issue_selected)
+        self._insights.suggestion_accepted.connect(self._on_suggestion_accepted)
         splitter.addWidget(self._insights)
 
         splitter.setSizes([180, 600, 280])
@@ -219,6 +222,19 @@ class ResumeStudioPage(QWidget):
         self._editor.load(internal, copy.deepcopy(value))
         self._editor.scroll_to_field(internal)
 
+    # ── Skill suggestion accept ──────────────────────────────────
+
+    def _on_suggestion_accepted(self, keyword: str) -> None:
+        resume = self._vm.resume
+        if resume is None:
+            return
+        old_skills = list(resume.skills)
+        if keyword.lower() not in [s.lower() for s in old_skills]:
+            new_skills = old_skills + [keyword]
+            self._vm.update_section("Skills", old_skills, new_skills)
+            self._analysis_timer.start()
+            self._auto_save_timer.start()
+
     # ── Section reorder ──────────────────────────────────────────
 
     def _on_section_reorder(self, section: str, direction: int) -> None:
@@ -286,3 +302,57 @@ class ResumeStudioPage(QWidget):
                 )
         except Exception:
             logger.exception("Auto-save failed")
+
+    # ── AI generation (summary / headline) ───────────────────────
+
+    def _on_generate_summary(self) -> None:
+        resume = self._vm.resume
+        if resume is None:
+            return
+        old_summary = resume.summary
+        jd_text = self._vm.job_text()
+
+        def _do_generate():
+            from app.services.summary_generator import generate_summary
+            result = generate_summary(resume, jd_text)
+            return result.summary
+
+        def _on_generated(new_summary):
+            self._vm.update_section("Summary", old_summary, new_summary)
+            self._editor.load("Summary", new_summary)
+            self._analysis_timer.start()
+            self._auto_save_timer.start()
+
+        from app.ui.workers import Worker
+        self._gen_worker = Worker(_do_generate)
+        self._gen_worker.result.connect(_on_generated)
+        self._gen_worker.error.connect(
+            lambda e: logger.warning("Summary generation failed: %s", e)
+        )
+        self._gen_worker.start()
+
+    def _on_generate_headline(self) -> None:
+        resume = self._vm.resume
+        if resume is None:
+            return
+        old_headline = resume.headline
+        jd_text = self._vm.job_text()
+
+        def _do_generate():
+            from app.services.headline_generator import generate_headline
+            result = generate_headline(resume, jd_text)
+            return result.headline
+
+        def _on_generated(new_headline):
+            self._vm.update_section("Headline", old_headline, new_headline)
+            self._recalculate()
+            self._analysis_timer.start()
+            self._auto_save_timer.start()
+
+        from app.ui.workers import Worker
+        self._gen_worker = Worker(_do_generate)
+        self._gen_worker.result.connect(_on_generated)
+        self._gen_worker.error.connect(
+            lambda e: logger.warning("Headline generation failed: %s", e)
+        )
+        self._gen_worker.start()

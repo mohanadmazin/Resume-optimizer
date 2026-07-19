@@ -44,6 +44,7 @@ class OptimizationPage(QWidget):
         self._worker = None
         self._overlay = LoadingOverlayManager()
         self._change_cards: dict[int, tuple[ProposedChange, QFrame]] = {}
+        self._original_resume = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -123,6 +124,16 @@ class OptimizationPage(QWidget):
         self.apply_btn.setVisible(False)
         layout.addWidget(self.apply_btn)
 
+        # Revert button
+        self.revert_btn = QPushButton("Revert to Original")
+        self.revert_btn.clicked.connect(self._revert_to_original)
+        self.revert_btn.setVisible(False)
+        self.revert_btn.setStyleSheet(
+            "QPushButton { color: #ff5c5c; }"
+            "QPushButton:hover { color: #ff8888; }"
+        )
+        layout.addWidget(self.revert_btn)
+
         # Exports
         exports = QHBoxLayout()
         for label, fmt in (("Export DOCX", "docx"), ("Export PDF", "pdf"), ("Export Markdown", "md")):
@@ -177,6 +188,10 @@ class OptimizationPage(QWidget):
         self.run_btn.setEnabled(False)
         self.fact_banner.setVisible(False)
         self.review_scroll.setVisible(False)
+        self.revert_btn.setVisible(False)
+        # Save original resume for rollback
+        import copy
+        self._original_resume = copy.deepcopy(state.resume)
         model = settings_service.model
         self.window.notify(f"Optimizing with {model} - this may take a minute...")
         self._overlay.show(self, f"Optimizing resume with {model}...")
@@ -344,6 +359,7 @@ class OptimizationPage(QWidget):
 
         self.after.setHtml(resume_diff_html(state.resume, optimized))
         self.run_btn.setEnabled(True)
+        self.revert_btn.setVisible(True)
 
         # Calculate after score
         new_result = analyze(optimized, state.job_text)
@@ -530,6 +546,34 @@ class OptimizationPage(QWidget):
 
         self._change_cards[idx] = (change, card)
         self.review_layout.addWidget(card)
+
+    def _revert_to_original(self) -> None:
+        """Revert to the pre-optimization resume with confirmation."""
+        if self._original_resume is None:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Revert to Original",
+            "This will discard all AI-optimizations and restore your original resume. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        state = self.window.state
+        state.resume = self._original_resume
+        state.optimized = None
+        state.fact_guard = None
+        self.before.setPlainText(to_markdown(self._original_resume))
+        self._original_resume = None
+        self.after.clear()
+        self.fact_banner.setVisible(False)
+        self.review_scroll.setVisible(False)
+        self.apply_btn.setVisible(False)
+        self.revert_btn.setVisible(False)
+        self.after_score_label.setText("Optimized ATS Score: -- / 100")
+        self._change_cards.clear()
+        self.window.notify("Reverted to original resume.")
 
     def _apply_accepted(self) -> None:
         """Collect accepted keywords and re-run optimization with them."""

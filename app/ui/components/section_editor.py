@@ -35,6 +35,8 @@ class SectionEditor(QWidget):
     """
 
     section_edited = Signal(str, object, object)
+    generate_summary_requested = Signal()
+    generate_headline_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -119,6 +121,11 @@ class SectionEditor(QWidget):
             form.addRow(field_name.capitalize() + ":", le)
         self._container_layout.addLayout(form)
 
+        gen_btn = QPushButton("Generate Headline with AI")
+        gen_btn.setObjectName("generateHeadlineBtn")
+        gen_btn.clicked.connect(self.generate_headline_requested.emit)
+        self._container_layout.addWidget(gen_btn)
+
     def _on_contact_field(self, field_name: str) -> None:
         old_contact = copy.deepcopy(self._old_value)
         new_contact = copy.deepcopy(self._current_value)
@@ -147,6 +154,12 @@ class SectionEditor(QWidget):
 
         te.focusOutEvent = _on_focus_out  # type: ignore[assignment]
         self._container_layout.addWidget(te)
+
+        if field_name == "summary":
+            gen_btn = QPushButton("Generate with AI")
+            gen_btn.setObjectName("generateSummaryBtn")
+            gen_btn.clicked.connect(self.generate_summary_requested.emit)
+            self._container_layout.addWidget(gen_btn)
 
     def _build_list_editor(self, label: str, items: list[str]) -> None:
         self._list_widget = QListWidget()

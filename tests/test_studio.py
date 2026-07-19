@@ -681,3 +681,213 @@ def test_resume_repository_update_nonexistent():
     with get_session() as session:
         repo = ResumeRepository(session)
         assert repo.update(99999, '{"x": 1}') is False
+
+
+# ── Phase 3: Task 17 — Summary generator prompts and service ───────────────
+
+
+def test_generate_summary_prompt_has_placeholders():
+    from app.ai.prompts import GENERATE_SUMMARY_PROMPT
+    assert "{candidate_name}" in GENERATE_SUMMARY_PROMPT
+    assert "{skills}" in GENERATE_SUMMARY_PROMPT
+    assert "{experience}" in GENERATE_SUMMARY_PROMPT
+    assert "{job_description}" in GENERATE_SUMMARY_PROMPT
+
+
+def test_generate_summary_system_delimiter():
+    from app.ai.prompts import GENERATE_SUMMARY_SYSTEM
+    assert "<<<USER_INPUT>>>" in GENERATE_SUMMARY_SYSTEM
+
+
+def test_summary_generator_output_model():
+    from app.services.summary_generator import SummaryAIOutput
+    out = SummaryAIOutput(summary="Senior engineer with 5 years experience.")
+    assert out.summary == "Senior engineer with 5 years experience."
+
+
+# ── Phase 3: Task 18 — Headline generator prompts and service ──────────────
+
+
+def test_generate_headline_prompt_has_placeholders():
+    from app.ai.prompts import GENERATE_HEADLINE_PROMPT
+    assert "{candidate_name}" in GENERATE_HEADLINE_PROMPT
+    assert "{current_headline}" in GENERATE_HEADLINE_PROMPT
+    assert "{skills}" in GENERATE_HEADLINE_PROMPT
+    assert "{job_description}" in GENERATE_HEADLINE_PROMPT
+
+
+def test_generate_headline_system_delimiter():
+    from app.ai.prompts import GENERATE_HEADLINE_SYSTEM
+    assert "<<<USER_INPUT>>>" in GENERATE_HEADLINE_SYSTEM
+
+
+def test_headline_generator_output_model():
+    from app.services.headline_generator import HeadlineAIOutput
+    out = HeadlineAIOutput(headline="Senior Software Engineer | Python & Cloud")
+    assert "Senior" in out.headline
+
+
+# ── Phase 3: Task 18 — Headline support in ViewModel ───────────────────────
+
+
+def test_vm_headline_section():
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.resume = _make_resume()
+    old = vm.resume.headline
+    vm.update_section("Headline", old, "New Headline")
+    assert vm.resume.headline == "New Headline"
+
+
+def test_vm_get_section_value_headline():
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.resume = _make_resume()
+    assert vm.get_section_value("Headline") == vm.resume.headline
+
+
+# ── Phase 3: Task 19 — Skill suggestions UI ────────────────────────────────
+
+
+def test_insights_panel_has_suggestions_section():
+    from app.ui.components.resume_insights_panel import ResumeInsightsPanel
+    panel = ResumeInsightsPanel()
+    assert hasattr(panel, "_suggestions_scroll")
+    assert hasattr(panel, "_suggestions_container")
+    assert hasattr(panel, "_suggestions_layout")
+
+
+def test_insights_panel_update_from_suggestions():
+    from app.ui.components.resume_insights_panel import ResumeInsightsPanel
+    from app.domain.keyword_targeting import KeywordTarget, KeywordStatus
+    panel = ResumeInsightsPanel()
+    targets = [
+        KeywordTarget(
+            canonical_name="kubernetes",
+            source_phrases=["k8s"],
+            importance=0.9,
+            frequency_in_job=3,
+            status=KeywordStatus.MISSING,
+            suggested_paths=["skills"],
+        ),
+    ]
+    panel.update_from_suggestions(targets)
+    from PySide6.QtWidgets import QPushButton
+    btns = panel._suggestions_container.findChildren(QPushButton)
+    assert len(btns) == 2  # Accept + Reject
+
+
+def test_insights_panel_suggestion_accept_signal():
+    from app.ui.components.resume_insights_panel import ResumeInsightsPanel
+    from app.domain.keyword_targeting import KeywordTarget, KeywordStatus
+    panel = ResumeInsightsPanel()
+    spy = MagicMock()
+    panel.suggestion_accepted.connect(spy)
+    targets = [
+        KeywordTarget(
+            canonical_name="docker",
+            source_phrases=["containers"],
+            importance=0.8,
+            frequency_in_job=2,
+            status=KeywordStatus.MISSING,
+            suggested_paths=["skills"],
+        ),
+    ]
+    panel.update_from_suggestions(targets)
+    from PySide6.QtWidgets import QPushButton
+    btns = panel._suggestions_container.findChildren(QPushButton)
+    btns[0].click()  # Accept
+    spy.assert_called_once_with("docker")
+
+
+def test_insights_panel_suggestion_reject_signal():
+    from app.ui.components.resume_insights_panel import ResumeInsightsPanel
+    from app.domain.keyword_targeting import KeywordTarget, KeywordStatus
+    panel = ResumeInsightsPanel()
+    spy = MagicMock()
+    panel.suggestion_rejected.connect(spy)
+    targets = [
+        KeywordTarget(
+            canonical_name="kubernetes",
+            source_phrases=["k8s"],
+            importance=0.9,
+            frequency_in_job=3,
+            status=KeywordStatus.PARTIAL,
+            suggested_paths=["skills"],
+        ),
+    ]
+    panel.update_from_suggestions(targets)
+    from PySide6.QtWidgets import QPushButton
+    btns = panel._suggestions_container.findChildren(QPushButton)
+    btns[1].click()  # Reject
+    spy.assert_called_once_with("kubernetes")
+
+
+def test_insights_panel_no_missing_suggestions():
+    from app.ui.components.resume_insights_panel import ResumeInsightsPanel
+    from app.domain.keyword_targeting import KeywordTarget, KeywordStatus
+    panel = ResumeInsightsPanel()
+    targets = [
+        KeywordTarget(
+            canonical_name="python",
+            source_phrases=[],
+            importance=1.0,
+            frequency_in_job=5,
+            status=KeywordStatus.PRESENT,
+        ),
+    ]
+    panel.update_from_suggestions(targets)
+    from PySide6.QtWidgets import QLabel
+    labels = [
+        w for w in panel._suggestions_container.findChildren(QLabel)
+        if "No suggestions" in (w.text() or "")
+    ]
+    assert len(labels) == 1
+
+
+# ── Phase 3: Task 19 — Section editor generate buttons ─────────────────────
+
+
+def test_editor_summary_has_generate_button():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    spy = MagicMock()
+    editor.generate_summary_requested.connect(spy)
+    editor.load("Summary", "Test summary")
+    from PySide6.QtWidgets import QPushButton
+    btns = editor.findChildren(QPushButton)
+    gen_btns = [b for b in btns if b.objectName() == "generateSummaryBtn"]
+    assert len(gen_btns) == 1
+    gen_btns[0].click()
+    spy.assert_called_once()
+
+
+def test_editor_contact_has_generate_headline_button():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    spy = MagicMock()
+    editor.generate_headline_requested.connect(spy)
+    resume = _make_resume()
+    editor.load("Contact", resume.contact)
+    from PySide6.QtWidgets import QPushButton
+    btns = editor.findChildren(QPushButton)
+    gen_btns = [b for b in btns if b.objectName() == "generateHeadlineBtn"]
+    assert len(gen_btns) == 1
+    gen_btns[0].click()
+    spy.assert_called_once()
+
+
+# ── Phase 3: Task 21 — Rollback button exists in optimization page ─────────
+
+
+def test_optimization_page_has_revert_button():
+    from app.ui.pages.optimization import OptimizationPage
+    window = MagicMock()
+    page = OptimizationPage(window)
+    assert hasattr(page, "revert_btn")
+    assert not page.revert_btn.isVisible()  # hidden by default
+
+
+def test_optimization_page_original_resume_none_by_default():
+    from app.ui.pages.optimization import OptimizationPage
+    window = MagicMock()
+    page = OptimizationPage(window)
+    assert page._original_resume is None
