@@ -146,6 +146,26 @@ def test_export_recovers_embedded_skills_section(tmp_path):
     assert any(text.startswith("SD-WAN: Huawei") for text in paragraphs)
 
 
+def test_exported_pdf_text_matches_resume_model(tmp_path):
+    resume = _resume()
+    path = tmp_path / "resume.pdf"
+    export_pdf(resume, str(path))
+    with fitz.open(path) as pdf:
+        full_text = " ".join(
+            word[4] for page in pdf for word in page.get_text("words")
+        )
+    full_lower = full_text.lower()
+    assert "jane" in full_lower
+    assert "doe" in full_lower
+    assert "jane@example.com" in full_text
+    assert "python" in full_lower
+    assert "acme" in full_lower
+    assert "developer" in full_lower
+    assert "built" in full_lower
+    assert "mit" in full_lower
+    assert "aws" in full_lower
+
+
 def test_summary_is_capped_at_300_words():
     resume = ResumeData(
         contact=ContactInfo(name="Jane Doe"),

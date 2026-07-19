@@ -291,6 +291,39 @@ def test_change_ratio_is_enforced():
     assert len(result.flagged_changes) >= 2
 
 
+def test_duplicate_job_titles_use_indexed_operations():
+    source = ResumeData(
+        experience=[
+            ExperienceItem(
+                title="Developer",
+                company="Acme",
+                start_date="2020",
+                end_date="2022",
+                bullets=["First role bullet"],
+            ),
+            ExperienceItem(
+                title="Developer",
+                company="Acme",
+                start_date="2022",
+                end_date="Present",
+                bullets=["Second role bullet"],
+            ),
+        ],
+    )
+    optimized = source.model_copy(deep=True)
+    optimized.experience[0].bullets[0] = "Rewrote first role"
+    result = FactGuard().validate(source, optimized)
+    assert any(
+        c.experience_index == 0 and c.bullet_index == 0
+        for c in result.all_changes
+    )
+    assert not any(
+        c.experience_index == 1 and c.bullet_index == 0
+        for c in result.all_changes
+        if c.rewritten == "Rewrote first role"
+    )
+
+
 # ── FactGuard.validate — headline ────────────────────────────────────────────
 
 

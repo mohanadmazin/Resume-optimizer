@@ -1,3 +1,4 @@
+from app.domain.resume import ContactInfo, ExperienceItem, ResumeData
 from app.services.resume_parser import parse_resume
 
 SAMPLE = """John Smith
@@ -89,6 +90,75 @@ Bachelor of Science · Another University · GPA: 3.8
 """)
     assert len(resume.education) == 2
     assert [item.year for item in resume.education] == ["2019 – 2021", "2015 – 2019"]
+
+
+def test_parser_fact_guard_flags_hallucinated_contact():
+    from app.services.parser_fact_guard import verify_parse
+
+    resume = ResumeData(
+        contact=ContactInfo(
+            name="Alice Smith",
+            email="alice@example.com",
+            phone="+1-555-123-4567",
+        ),
+        skills=["Python"],
+        experience=[
+            ExperienceItem(
+                title="Engineer",
+                company="Acme",
+                start_date="2020",
+                end_date="Present",
+                bullets=["Built APIs for internal tools"],
+            )
+        ],
+    )
+    raw_text = (
+        "Alice Smith\n"
+        "alice@example.com | +1-555-123-4567\n"
+        "Built APIs for internal tools\n"
+        "Acme\n"
+        "Engineer\n"
+        "2020 - Present\n"
+        "Python"
+    )
+    result = verify_parse(resume, raw_text)
+    assert not result.hallucinated_fields
+
+    resume2 = ResumeData(
+        contact=ContactInfo(
+            name="Alice Smith",
+            email="alice@example.com",
+            phone="+1-555-999-0000",
+        ),
+        skills=["Python"],
+        experience=[
+            ExperienceItem(
+                title="Engineer",
+                company="Acme",
+                start_date="2020",
+                end_date="Present",
+                bullets=["Built APIs for internal tools"],
+            )
+        ],
+    )
+    result2 = verify_parse(resume2, raw_text)
+    assert any(f.field == "phone" for f in result2.hallucinated_fields)
+
+
+def test_parser_removes_hallucinated_certifications():
+    from app.services.parser_fact_guard import verify_parse
+
+    resume = ResumeData(
+        contact=ContactInfo(name="Alice"),
+        certifications=["AWS SAA", "FAKE-CERT-XYZ-999"],
+        skills=[],
+    )
+    raw_text = "Alice\nAWS SAA\n"
+    result = verify_parse(resume, raw_text)
+    assert any(
+        f.section == "certifications" and f.extracted_value == "FAKE-CERT-XYZ-999"
+        for f in result.hallucinated_fields
+    )
 
 
 def test_table_style_certification_fields_are_grouped():
