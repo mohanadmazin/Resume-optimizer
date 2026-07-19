@@ -2,11 +2,12 @@
 import json
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from app.ai.ollama_client import OllamaClient
 from app.ai.prompts import COVER_LETTER_PROMPT, COVER_LETTER_SYSTEM
 from app.schemas import ResumeData
+from app.services.job_context import select_job_context
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ def _check_cover_letter_facts(
     letter: str,
     resume: ResumeData,
     allowed_organizations: set[str] | None = None,
+    allowed_text: str = "",
 ) -> tuple[str, ...]:
     """Return a tuple of warnings for unsupported claims in the cover letter.
 
@@ -43,8 +45,8 @@ def _check_cover_letter_facts(
     # Check for new numbers not in the resume
     resume_text = resume.model_dump_json().lower()
     letter_numbers = set(_NUMBER_RE.findall(letter))
-    resume_numbers = set(_NUMBER_RE.findall(resume_text))
-    new_numbers = letter_numbers - resume_numbers
+    supported_numbers = set(_NUMBER_RE.findall(resume_text + " " + allowed_text.lower()))
+    new_numbers = letter_numbers - supported_numbers
     if new_numbers:
         warnings.append(
             f"Cover letter contains numbers not found in resume: {', '.join(sorted(new_numbers))}"
@@ -58,6 +60,8 @@ def _check_cover_letter_facts(
         edu.institution.lower() for edu in resume.education if edu.institution
     }
     known_orgs = resume_companies | resume_institutions
+    normalized_resume = resume.model_dump_json().casefold()
+    normalized_allowed_text = allowed_text.casefold()
 
     # Add allowed organizations (target employer, hiring manager's company, etc.)
     if allowed_organizations:
@@ -87,6 +91,8 @@ def _check_cover_letter_facts(
         org_lower = org.lower()
         if (
             org_lower not in known_orgs
+            and org_lower not in normalized_resume
+            and org_lower not in normalized_allowed_text
             and org_lower not in _SAFE_PHRASES
             and org_lower != candidate_name
             and not any(word in org_lower for word in candidate_name.split())
@@ -121,7 +127,7 @@ def generate_cover_letter(
 
     prompt = COVER_LETTER_PROMPT.format(
         resume_json=json.dumps(data, indent=2),
-        job_description=jd_text[:6000],
+        job_description=select_job_context(jd_text),
         candidate_name=candidate_name,
         headline=resume.headline or "",
     )
@@ -144,7 +150,12 @@ def generate_cover_letter(
     if target_company and target_company.strip():
         allowed.add(target_company.strip())
 
-    warnings = _check_cover_letter_facts(letter, resume, allowed_organizations=allowed)
+    warnings = _check_cover_letter_facts(
+        letter,
+        resume,
+        allowed_organizations=allowed,
+        allowed_text=jd_text,
+    )
 
     if warnings:
         for w in warnings:

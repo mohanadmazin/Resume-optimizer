@@ -29,7 +29,24 @@ from app.services.job_fetcher import (
     JobFetcherError,
     fetch_from_url,
     fetch_job,
+    _build_host_header,
+    _pinned_getaddrinfo,
 )
+
+
+def test_http_host_header_uses_http_default_port():
+    assert _build_host_header("example.com", 80, "http") == "example.com"
+
+
+def test_ipv6_pinned_resolution_has_valid_sockaddr():
+    pinned = _pinned_getaddrinfo(MagicMock(), "2001:db8::1", "example.com", 443)
+    assert pinned("example.com", 443)[0][4] == ("2001:db8::1", 443, 0, 0)
+
+
+def test_unexpected_fetch_exception_is_not_silenced():
+    with patch("app.services.job_fetcher.fetch_from_url", side_effect=RuntimeError("bug")):
+        with pytest.raises(RuntimeError, match="bug"):
+            fetch_job("https://example.com/job")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -611,7 +628,7 @@ class TestFetchJob:
         assert result.title == "LinkedIn"
 
     def test_fetch_error_returns_requires_manual_input(self):
-        with patch("app.services.job_fetcher.fetch_from_url", side_effect=Exception("timeout")):
+        with patch("app.services.job_fetcher.fetch_from_url", side_effect=JobFetcherError("timeout")):
             result = fetch_job("https://example.com/jobs/1")
 
         assert result.requires_manual_input is True
@@ -634,7 +651,7 @@ class TestFetchJob:
         assert result.company == "Google"
 
     def test_source_url_preserved(self):
-        with patch("app.services.job_fetcher.fetch_from_url", side_effect=Exception("fail")):
+        with patch("app.services.job_fetcher.fetch_from_url", side_effect=JobFetcherError("fail")):
             result = fetch_job("https://example.com/jobs/99")
 
         assert result.source_url == "https://example.com/jobs/99"

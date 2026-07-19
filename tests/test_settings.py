@@ -11,14 +11,24 @@ from pydantic import ValidationError
 
 from app.core.settings import (
     AISettings,
+    AppearanceSettings,
     AppSettings,
     _DEFAULT,
     _atomic_write_json,
-    _backup_settings,
     load_settings,
     save_settings,
     update_settings,
 )
+
+
+def test_invalid_theme_is_rejected():
+    with pytest.raises(ValidationError):
+        AppearanceSettings(theme="neon")
+
+
+def test_ollama_url_rejects_api_paths():
+    with pytest.raises(ValidationError):
+        AISettings(ollama_url="http://localhost:11434/api")
 
 
 @pytest.fixture()

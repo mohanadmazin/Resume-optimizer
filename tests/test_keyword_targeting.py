@@ -2,7 +2,6 @@
 from app.domain.keyword_targeting import (
     JobRequirement,
     KeywordStatus,
-    KeywordTarget,
     ResumeTextIndex,
     normalize,
 )

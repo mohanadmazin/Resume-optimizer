@@ -1,5 +1,5 @@
 """Scoring domain models — versioned rule engine with individual findings."""
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field

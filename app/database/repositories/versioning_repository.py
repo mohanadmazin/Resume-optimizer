@@ -1,5 +1,4 @@
 """Repository for resume versioning, targeting sessions, and suggestions."""
-import json
 import logging
 
 from sqlalchemy import func

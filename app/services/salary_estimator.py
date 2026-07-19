@@ -31,6 +31,7 @@ class ExperienceEstimate:
     maximum_years: float = 0.0
     confidence: str = "low"
     missing_dates: list[str] = field(default_factory=list)
+    future_start: bool = False
 
 
 def _parse_date(text: str) -> date | None:
@@ -87,6 +88,7 @@ def estimate_experience(resume: ResumeData) -> ExperienceEstimate:
     today = date.today()
     records: list[tuple[date, date | None, str]] = []
     unresolved: list[str] = []
+    has_future_start = False
 
     for exp in resume.experience:
         start = _parse_date(exp.start_date) if exp.start_date else None
@@ -99,6 +101,7 @@ def estimate_experience(resume: ResumeData) -> ExperienceEstimate:
 
         # Reject future start dates
         if start > today:
+            has_future_start = True
             if exp.company:
                 unresolved.append(exp.company)
             continue
@@ -155,6 +158,7 @@ def estimate_experience(resume: ResumeData) -> ExperienceEstimate:
         maximum_years=years,
         confidence=confidence,
         missing_dates=list(dict.fromkeys(unresolved)),
+        future_start=has_future_start,
     )
 
 
@@ -183,9 +187,11 @@ def estimate_salary(
     resume: ResumeData,
     role: str,
     location: str,
+    client: OllamaClient | None = None,
 ) -> SalaryEstimate:
     """Use Ollama to estimate salary range based on skills and experience."""
-    client = OllamaClient()
+    if client is None:
+        client = OllamaClient()
 
     skills = ", ".join(resume.skills) if resume.skills else "Not specified"
     exp = estimate_experience(resume)

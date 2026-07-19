@@ -2,9 +2,10 @@
 import logging
 import re
 from collections import Counter
-from typing import List, Tuple
+from typing import Tuple
 
 from app.domain.analysis import ATSResult
+from app.domain.skill_lexicon import SKILL_ALIASES
 from app.schemas import ResumeData
 
 logger = logging.getLogger(__name__)
@@ -120,54 +121,24 @@ _KNOWN_SKILLS: set[str] = {
     "six sigma", "lean", "itil", "cobit",
 }
 
-# Custom skills loaded from user settings at runtime.
-_custom_skills_loaded = False
+_BASE_KNOWN_SKILLS = frozenset(_KNOWN_SKILLS)
 
 
-def _ensure_custom_skills() -> None:
-    """Merge user-configured custom skills into _KNOWN_SKILLS (once)."""
-    global _custom_skills_loaded
-    if _custom_skills_loaded:
-        return
-    _custom_skills_loaded = True
+def get_known_skills() -> set[str]:
+    """Return the immutable base vocabulary plus current user settings."""
     try:
         from app.core.settings import load_settings
-        custom = load_settings().ai.custom_skills
-        if custom:
-            before = len(_KNOWN_SKILLS)
-            for s in custom:
-                _KNOWN_SKILLS.add(s.strip().lower())
-            logger.info("Loaded %d custom skills (vocabulary: %d → %d)", len(custom), before, len(_KNOWN_SKILLS))
+        custom = {
+            value.strip().casefold()
+            for value in load_settings().ai.custom_skills
+            if value.strip()
+        }
     except Exception:
         logger.debug("Could not load custom skills", exc_info=True)
+        custom = set()
+    return set(_BASE_KNOWN_SKILLS) | custom
 
 SHORT_KEEP = {"c#", "go", "r", "ai", "ml", "qa", "ci", "cd", "ux", "ui", "c++", "aws", "sql", "api", "git"}
-
-# Canonical skill name → set of known aliases (all lowercase).
-# When matching, we check whether the resume contains ANY form of the skill.
-SKILL_ALIASES: dict[str, set[str]] = {
-    "javascript":   {"js", "javascript", "ecmascript", "es6", "es2015"},
-    "typescript":   {"ts", "typescript"},
-    "python":       {"python", "python3", "py"},
-    "postgresql":   {"postgres", "postgresql", "psql", "pgsql"},
-    "kubernetes":   {"k8s", "kubernetes", "kube"},
-    "restful apis": {"rest", "restful", "restful apis", "rest api", "rest apis"},
-    "ci/cd":        {"ci/cd", "ci cd", "continuous integration", "continuous delivery", "continuous deployment"},
-    "machine learning": {"ml", "machine learning"},
-    "deep learning": {"dl", "deep learning"},
-    "react":        {"react", "reactjs", "react.js"},
-    "vue":          {"vue", "vuejs", "vue.js"},
-    "angular":      {"angular", "angularjs", "angular.js"},
-    "node.js":      {"node", "nodejs", "node.js"},
-    "golang":       {"go", "golang"},
-    "rust":         {"rust", "rustlang"},
-    "amazon web services": {"aws", "amazon web services", "amazon aws"},
-    "google cloud platform": {"gcp", "google cloud", "google cloud platform"},
-    "microsoft azure": {"azure", "microsoft azure"},
-    "devops":       {"devops", "dev ops"},
-    "natural language processing": {"nlp", "natural language processing"},
-    "computer vision": {"cv", "computer vision"},
-}
 
 # Build reverse map: alias → canonical name
 _ALIAS_TO_CANONICAL: dict[str, str] = {}
@@ -256,6 +227,7 @@ def _extract_weighted_keywords(jd_text: str, top_n: int = 25) -> list[Tuple[str,
     Returns up to *top_n* (keyword, weight) pairs sorted by weight
     descending, then frequency descending.
     """
+    known_skills = get_known_skills()
     section_text = _extract_section_text(jd_text)
     full_lower = jd_text.lower()
     section_lower = section_text.lower()
@@ -294,9 +266,9 @@ def _extract_weighted_keywords(jd_text: str, top_n: int = 25) -> list[Tuple[str,
 
     # Score bigrams
     for bg, count in full_bigrams.most_common(30):
-        if count < 2:
+        is_known = bg in known_skills or _canonicalize(bg) in SKILL_ALIASES
+        if count < 2 and not is_known:
             continue
-        is_known = bg in _KNOWN_SKILLS or _canonicalize(bg) in SKILL_ALIASES
         in_section = bg in section_bigrams
         if is_known and in_section:
             _update(bg, _WEIGHT_SKILL_IN_SECTION, count)
@@ -374,7 +346,7 @@ def extract_required_skills(text: str) -> list[str]:
     technical skills (from the curated vocabulary).  Generic words like
     "environment", "support", or "business" are excluded.
     """
-    _ensure_custom_skills()
+    known_skills = get_known_skills()
     tokens = [t.strip(".-/") for t in re.findall(r"[a-z][a-z0-9+#.\-/]*", text.lower())]
     words = [
         t for t in tokens
@@ -388,7 +360,7 @@ def extract_required_skills(text: str) -> list[str]:
     # Keep bigrams that are known skills (even if mentioned once) or frequent
     bigrams = [
         b for b, c in bigram_counts.most_common(20)
-        if (_canonicalize(b) in SKILL_ALIASES or b in _KNOWN_SKILLS) or c >= 2
+        if (_canonicalize(b) in SKILL_ALIASES or b in known_skills) or c >= 2
     ]
 
     # Single-word candidates — must be known skills
@@ -397,7 +369,7 @@ def extract_required_skills(text: str) -> list[str]:
         bigram_words.update(b.split())
     singles = [
         w for w, _ in Counter(words).most_common(60)
-        if w not in bigram_words and (w in _KNOWN_SKILLS or _canonicalize(w) in SKILL_ALIASES)
+        if w not in bigram_words and (w in known_skills or _canonicalize(w) in SKILL_ALIASES)
     ]
 
     seen: set[str] = set()
@@ -414,6 +386,13 @@ def _contains(text: str, keyword: str) -> bool:
     return re.search(pattern, text) is not None
 
 
+def _keyword_matches(resume_text: str, keyword: str) -> bool:
+    canonical = _canonicalize(keyword)
+    if canonical in SKILL_ALIASES:
+        return _skill_matches(resume_text, canonical)
+    return _contains(resume_text, keyword)
+
+
 def _resume_text(resume: ResumeData) -> str:
     parts = [resume.headline, resume.summary, " ".join(resume.skills), " ".join(resume.languages)]
     for exp in resume.experience:
@@ -423,11 +402,11 @@ def _resume_text(resume: ResumeData) -> str:
     for edu in resume.education:
         parts.append(f"{edu.degree} {edu.institution}")
     parts += resume.certifications
+    parts.append(resume.raw_text)
     return " ".join(p for p in parts if p)
 
 
 def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
-    _ensure_custom_skills()
     weighted_keywords = _extract_weighted_keywords(jd_text)
     keywords = [kw for kw, _ in weighted_keywords]
     weights = {kw: w for kw, w in weighted_keywords}
@@ -436,7 +415,7 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
     resume_text = structured if structured else resume.raw_text
     resume_text = resume_text.lower()
 
-    matched = [k for k in keywords if _contains(resume_text, k)]
+    matched = [k for k in keywords if _keyword_matches(resume_text, k)]
     matched_set = set(matched)
     missing = [k for k in keywords if k not in matched_set]
 

@@ -1,13 +1,37 @@
 """Deterministic fact guard — validates AI-generated resume changes against source."""
 import logging
 import re
-from collections import Counter
 from difflib import SequenceMatcher
 
 from app.domain.fact_guard import ChangeType, FactGuardResult, ProposedChange
 from app.domain.resume import ResumeData
+from app.domain.skill_lexicon import SKILL_ALIASES, extract_skills
 
 logger = logging.getLogger(__name__)
+
+_ALIAS_TO_CANONICAL = {
+    alias: canonical
+    for canonical, aliases in SKILL_ALIASES.items()
+    for alias in aliases
+}
+
+
+def _normalize_skill(value: str) -> str:
+    """Normalize a skill name using the shared canonical lexicon."""
+    normalized = value.casefold().strip()
+    canonical = _ALIAS_TO_CANONICAL.get(normalized, normalized)
+    # Preserve the service's historical canonical name for this public helper.
+    return "go" if canonical == "golang" else canonical
+
+
+def _extract_tech_tokens(text: str) -> set[str]:
+    """Compatibility helper returning lexicon-backed skill mentions."""
+    matches: set[str] = set()
+    for aliases in SKILL_ALIASES.values():
+        for alias in aliases:
+            pattern = r"(?<![a-z0-9])(" + re.escape(alias) + r")(?![a-z0-9])"
+            matches.update(m.group(1) for m in re.finditer(pattern, text, re.IGNORECASE))
+    return matches
 
 # Common false-positive entity patterns to ignore
 _IGNORE_TOKENS = {
@@ -41,56 +65,6 @@ _ENTITY_RE = re.compile(
     r"|\b([A-Z][a-z]+(?:Corp|Inc|Ltd|LLC|Co|Company|Group|Solutions|Technologies|Systems))\b"
 )
 
-# Pattern for tech-looking tokens (case-sensitive: React, C++, Node.js)
-_TECH_RE = re.compile(
-    r"\b([A-Z][A-Za-z#+.]{1,20})\b"  # React, C++, Node.js, etc.
-)
-
-# Skill aliases shared with ats_engine for normalization consistency
-_SKILL_ALIASES: dict[str, str] = {
-    "js": "javascript",
-    "nodejs": "node.js",
-    "node js": "node.js",
-    "reactjs": "react",
-    "react.js": "react",
-    "vuejs": "vue",
-    "vue.js": "vue",
-    "angularjs": "angular",
-    "angular.js": "angular",
-    "postgres": "postgresql",
-    "psql": "postgresql",
-    "pgsql": "postgresql",
-    "k8s": "kubernetes",
-    "kube": "kubernetes",
-    "py": "python",
-    "python3": "python",
-    "ts": "typescript",
-    "golang": "go",
-    "rustlang": "rust",
-    "aws": "amazon web services",
-    "gcp": "google cloud platform",
-    "azure": "microsoft azure",
-    "rest": "restful apis",
-    "restful": "restful apis",
-    "rest api": "restful apis",
-    "rest apis": "restful apis",
-    "ci cd": "ci/cd",
-    "continuous integration": "ci/cd",
-    "continuous delivery": "ci/cd",
-    "ml": "machine learning",
-    "dl": "deep learning",
-    "nlp": "natural language processing",
-    "cv": "computer vision",
-    "dev ops": "devops",
-}
-
-
-def _normalize_skill(value: str) -> str:
-    """Normalize a skill token to its canonical lowercase form."""
-    value = value.lower().strip()
-    return _SKILL_ALIASES.get(value, value)
-
-
 def _extract_numbers(text: str) -> set[str]:
     """Extract all number-like tokens from text."""
     return set(_NUMBER_RE.findall(text))
@@ -106,11 +80,6 @@ def _extract_entities(text: str) -> set[str]:
     return entities
 
 
-def _extract_tech_tokens(text: str) -> set[str]:
-    """Extract technology-looking tokens (CamelCase, #, ++, .js, etc.)."""
-    return {m for m in _TECH_RE.findall(text) if len(m) > 1}
-
-
 def _source_vocabulary(resume: ResumeData) -> set[str]:
     """Build a vocabulary of all known tokens from the source resume.
 
@@ -120,9 +89,8 @@ def _source_vocabulary(resume: ResumeData) -> set[str]:
     """
     vocab: set[str] = set()
     for s in resume.skills:
-        norm = _normalize_skill(s)
-        vocab.add(norm)
-        vocab.update(norm.split())
+        vocab.add(s.casefold())
+        vocab.update(s.casefold().split())
     for exp in resume.experience:
         vocab.update(exp.company.lower().split())
         vocab.update(exp.title.lower().split())
@@ -139,16 +107,8 @@ def _source_vocabulary(resume: ResumeData) -> set[str]:
 
 
 def _source_tech_vocab(resume: ResumeData) -> set[str]:
-    """Build a lowercase set of all known tech tokens from skills and experience."""
-    tech: set[str] = set()
-    for s in resume.skills:
-        norm = _normalize_skill(s)
-        tech.add(norm)
-        tech.update(_extract_tech_tokens(s))
-    for exp in resume.experience:
-        for b in exp.bullets:
-            tech.update(_extract_tech_tokens(b))
-    return {t.lower() for t in tech}
+    """Build the canonical skill set supported anywhere in the source resume."""
+    return extract_skills(resume.model_dump_json())
 
 
 # ── Semantic review helpers ───────────────────────────────────────────────
@@ -393,7 +353,7 @@ class FactGuard:
                             if change.has_new_entities:
                                 all_unsupported_entities.extend(_extract_entities(new_bullet))
                             if change.has_new_skills:
-                                all_unsupported_skills.extend(_extract_tech_tokens(new_bullet))
+                                all_unsupported_skills.extend(extract_skills(new_bullet))
                     elif tag == "replace":
                         # Existing bullets rewritten or replaced
                         for k, new_b in enumerate(opt_bullets[j1:j2]):
@@ -417,7 +377,7 @@ class FactGuard:
                                 )
                             if change.has_new_skills:
                                 all_unsupported_skills.extend(
-                                    _extract_tech_tokens(new_b) - _extract_tech_tokens(old_b)
+                                    extract_skills(new_b) - extract_skills(old_b)
                                 )
 
         # Deduplicate
@@ -455,6 +415,8 @@ class FactGuard:
             else:
                 if c.change_type == ChangeType.BULLET:
                     c.change_type = ChangeType.REWRITE
+                c.is_factually_supported = True
+                c.requires_review = False
                 safe.append(c)
 
         logger.info(
@@ -503,14 +465,10 @@ class FactGuard:
             has_new_entities = True
 
         # Check for new tech tokens not in source skills or experience
-        # Uses normalized lowercase comparison to catch python/Python, etc.
-        orig_tech = _extract_tech_tokens(original)
-        new_tech = _extract_tech_tokens(rewritten)
-        truly_new_tech = {
-            t for t in (new_tech - orig_tech)
-            if t.lower() not in source_tech_lower
-        }
-        if truly_new_tech:
+        original_skills = extract_skills(original)
+        rewritten_skills = extract_skills(rewritten)
+        unsupported_skills = rewritten_skills - original_skills - source_tech_lower
+        if unsupported_skills:
             has_new_skills = True
 
         # Semantic review: negation flips and extreme rewrites

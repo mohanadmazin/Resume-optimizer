@@ -5,8 +5,7 @@ operations (experience_index, bullet_index) instead of text matching.
 A FactGuard then validates every proposed change against the source resume
 to catch unsupported numbers, entities, and skills before the user sees them.
 
-Only safe changes are applied to the optimized resume.  Flagged changes
-are kept as proposals for user review.
+No proposed changes are applied until the user reviews them.
 """
 import json
 import logging
@@ -18,6 +17,7 @@ from app.domain.fact_guard import ChangeType, FactGuardResult, ProposedChange
 from app.domain.optimization import OptimizationAIOutput
 from app.schemas import ResumeData
 from app.services.fact_guard import FactGuard
+from app.services.job_context import select_job_context
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +35,7 @@ def optimize_resume(
     validation still runs as a safety net.
 
     Returns:
-        A tuple of (optimized_resume, fact_guard_result).
-        Only safe changes are applied to optimized_resume.  Flagged changes
-        are kept in fact_guard_result for user review.
+        A tuple of the unchanged resume copy and the proposed changes.
     """
     logger.info("Optimizing resume for ATS (missing_keywords=%d)", len(ats.missing_keywords))
 
@@ -55,7 +53,7 @@ def optimize_resume(
     }
     prompt = OPTIMIZE_PROMPT.format(
         skills=", ".join(resume.skills) or "(none listed)",
-        job_description=jd_text[:6000],
+        job_description=select_job_context(jd_text),
         missing_keywords=", ".join(ats.missing_keywords[:15]) or "(none)",
         resume_json=json.dumps(payload, indent=2),
     )
@@ -97,18 +95,11 @@ def optimize_resume(
     # Step 4: Post-generation validation (safety net)
     fact_result = guard.validate(source=resume, optimized=candidate)
 
-    # Build optimized resume: apply only safe changes
-    optimized = resume.model_copy(deep=True)
-
-    for change in fact_result.safe_changes:
-        _apply_change(optimized, change)
-
     logger.info(
-        "FactGuard: %d safe (applied), %d flagged (pending review)",
+        "FactGuard: %d supported, %d flagged (all pending review)",
         len(fact_result.safe_changes), len(fact_result.flagged_changes),
     )
-
-    return optimized, fact_result
+    return resume.model_copy(deep=True), fact_result
 
 
 def apply_accepted_changes(
@@ -120,13 +111,20 @@ def apply_accepted_changes(
     Call this after the user has reviewed flagged changes and clicked
     Accept on the ones they want to keep.
     """
-    optimized = resume.model_copy(deep=True)
-    for change in fact_result.safe_changes:
-        _apply_change(optimized, change)
-    for change in fact_result.flagged_changes:
-        if change.accepted:
-            _apply_change(optimized, change)
-    return optimized
+    result = resume.model_copy(deep=True)
+    accepted = [change for change in fact_result.all_changes if change.accepted is True]
+    non_deletions = [change for change in accepted if change.rewritten]
+    deletions = sorted(
+        (change for change in accepted if not change.rewritten),
+        key=lambda change: (
+            change.experience_index if change.experience_index is not None else -1,
+            change.bullet_index if change.bullet_index is not None else -1,
+        ),
+        reverse=True,
+    )
+    for change in non_deletions + deletions:
+        _apply_change(result, change)
+    return result
 
 
 def _apply_change(resume: ResumeData, change: ProposedChange) -> None:
@@ -142,7 +140,10 @@ def _apply_change(resume: ResumeData, change: ProposedChange) -> None:
             if change.experience_index < len(resume.experience):
                 experience = resume.experience[change.experience_index]
                 if change.bullet_index < len(experience.bullets):
-                    experience.bullets[change.bullet_index] = change.rewritten
+                    if change.rewritten:
+                        experience.bullets[change.bullet_index] = change.rewritten
+                    else:
+                        del experience.bullets[change.bullet_index]
                     return
         logger.warning(
             "Could not apply change: invalid coordinates (exp=%s, bullet=%s)",

@@ -6,7 +6,6 @@ import copy
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QMessageBox,
     QPushButton,
     QSplitter,
     QTabWidget,
@@ -44,7 +43,7 @@ class ResumeStudioPage(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # ── Left: section navigator ──────────────────────────────────
-        self._nav = SectionNavigator(SECTIONS)
+        self._nav = SectionNavigator(SECTION_NAMES)
         self._nav.section_selected.connect(self._on_section_selected)
         splitter.addWidget(self._nav)
 
@@ -163,7 +162,7 @@ class ResumeStudioPage(QWidget):
         try:
             ats = analyze(resume, job_text)
             self._vm.ats = ats
-        except Exception as exc:
+        except Exception:
             self._insights.clear()
 
     def _on_ats_changed(self) -> None:

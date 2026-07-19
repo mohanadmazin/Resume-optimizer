@@ -1,6 +1,6 @@
 """Tests for the resume parser AI fallback and parser edge cases."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from app.ai.ollama_client import OllamaError
 from app.services.resume_parser import parse_resume, parse_resume_ai
@@ -25,7 +25,6 @@ def test_parse_resume_ai_falls_back_on_ollama_error(mock_client_cls):
 
 @patch("app.services.resume_parser.OllamaClient")
 def test_parse_resume_ai_falls_back_on_validation_error(mock_client_cls):
-    from pydantic import ValidationError
     mock_client = mock_client_cls.return_value
     # Return data that will cause ResumeData.model_validate to raise ValidationError
     mock_client.generate_json.return_value = {

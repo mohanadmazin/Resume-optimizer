@@ -34,9 +34,10 @@ class ProposedChange(BaseModel):
     has_new_numbers: bool = False
     has_new_entities: bool = False
     has_new_skills: bool = False
-    requires_review: bool = False
+    is_factually_supported: bool = False
+    requires_review: bool = True
     review_reason: str = ""
-    accepted: bool = False
+    accepted: bool | None = None
 
 
 class FactGuardResult(BaseModel):
@@ -59,6 +60,13 @@ class FactGuardResult(BaseModel):
     @property
     def flagged_count(self) -> int:
         return len(self.flagged_changes)
+
+    @property
+    def review_complete(self) -> bool:
+        """Whether every proposal has an explicit accept/reject decision."""
+        return bool(self.all_changes) and all(
+            change.accepted is not None for change in self.all_changes
+        )
 
 
 # ── Parser fact guard models ────────────────────────────────────────────

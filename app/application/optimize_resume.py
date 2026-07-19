@@ -1,15 +1,11 @@
 """Optimize resume use-case: AI rewrite + fact guard validation."""
 import logging
 import threading
-from dataclasses import dataclass, field
-from datetime import datetime
 
 from app.domain.analysis import ATSResult
-from app.domain.fact_guard import FactGuardResult
 from app.domain.pipeline import PipelineResult
 from app.domain.resume import ResumeData
 from app.services.ats_engine import analyze
-from app.services.fact_guard import FactGuard
 from app.services.optimizer import optimize_resume
 from app.services.cover_letter import generate_cover_letter
 

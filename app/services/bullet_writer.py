@@ -73,7 +73,6 @@ def _validate_suggestion(
     evidence: BulletEvidence,
 ) -> None:
     """Post-hoc validation: ensure suggestion doesn't invent facts."""
-    text_lower = suggestion.text.lower()
 
     # Check for invented numbers not in evidence
     evidence_numbers = set()

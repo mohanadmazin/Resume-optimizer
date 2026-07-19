@@ -17,8 +17,8 @@ from urllib.parse import urljoin, urlparse
 import requests
 
 from app.services.browser_fetcher import BrowserFetchError, fetch_rendered_page, requires_browser_render
-from app.services.html_extractor import extract_text_from_html, extract_text_from_soup
-from app.services.metadata import JobMetadata, extract_metadata
+from app.services.html_extractor import extract_text_from_soup
+from app.services.metadata import extract_metadata
 from app.services.security import (
     SSRFError,
     ResolvedTarget,
@@ -117,7 +117,13 @@ def _pinned_getaddrinfo(
     def _pinned(host, port, family=0, type=0, proto=0, flags=0):
         if host == target_hostname:
             af = socket.AF_INET6 if ":" in target_ip else socket.AF_INET
-            return [(af, socket.SOCK_STREAM, 6, "", (target_ip, port or target_port))]
+            actual_port = port or target_port
+            sockaddr = (
+                (target_ip, actual_port, 0, 0)
+                if af == socket.AF_INET6
+                else (target_ip, actual_port)
+            )
+            return [(af, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", sockaddr)]
         return original_getaddrinfo(host, port, family, type, proto, flags)
 
     return _pinned
@@ -184,7 +190,15 @@ def _read_limited_body(
 def _safe_url_for_log(url: str) -> str:
     """Strip query params and fragments for safe logging."""
     parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    host = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme}://{host}{port}{parsed.path}"
+
+
+def _validate_url_authority(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.username or parsed.password:
+        raise InvalidURLError("URLs containing credentials are not allowed.")
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -214,11 +228,13 @@ def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResul
     # Reject non-HTTP schemes before prepending https://
     if url.startswith(("ftp://", "file://", "mailto:", "javascript:")):
         raise InvalidURLError(
-            f"URL scheme not allowed. Only http:// and https:// URLs are supported."
+            "URL scheme not allowed. Only http:// and https:// URLs are supported."
         )
 
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+
+    _validate_url_authority(url)
 
     # Validate scheme and port before any network activity
     try:
@@ -261,6 +277,7 @@ def fetch_from_url(url: str, config: FetchConfig = DEFAULT_CONFIG) -> FetchResul
                     raise JobFetcherError("Redirect with missing Location header.")
                 current_url = urljoin(current_url, location)
                 try:
+                    _validate_url_authority(current_url)
                     validate_scheme(current_url)
                     validate_port(current_url)
                 except SSRFError as exc:
@@ -359,8 +376,16 @@ def fetch_job(url: str) -> FetchResult:
 
         return result
 
-    except Exception as exc:
-        logger.warning("fetch_job failed for %s: %s", url, exc)
+    except (
+        InvalidURLError,
+        FetchTimeoutError,
+        ContentTooLargeError,
+        ExtractionError,
+        JobFetcherError,
+        BrowserFetchError,
+        requests.RequestException,
+    ) as exc:
+        logger.info("Job fetch unavailable for %s: %s", _safe_url_for_log(url), exc)
         return FetchResult(
             text="",
             source_url=url,

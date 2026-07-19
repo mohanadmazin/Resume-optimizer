@@ -1,14 +1,16 @@
 """Export a structured resume to Markdown, DOCX and PDF.
 
-DOCX and PDF are styled identically (same fonts, sizes, colors, spacing,
-tab-aligned dates, bottom-ruled section headings) and both use A4 page size.
+DOCX and PDF use the same targeted-resume design: Arial-compatible fonts,
+compact spacing, tab-aligned dates, bottom-ruled headings, and US Letter pages.
 """
 import logging
+import re
 from pathlib import Path
 
 import fitz  # PyMuPDF
 from docx import Document
-from docx.enum.text import WD_TAB_ALIGNMENT
+from docx.enum.style import WD_STYLE_TYPE
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor, Mm
@@ -17,28 +19,175 @@ from app.schemas import ResumeData
 
 logger = logging.getLogger(__name__)
 
-NAVY = "1A5276"
-GREY = "7E8B8D"
+NAVY = "185076"
+GREY = "68767D"
 DARK = "1C1C1C"
 FONT_NAME = "Arial"
 
-_NAVY_RGB = RGBColor(0x1A, 0x52, 0x76)
-_GREY_RGB = RGBColor(0x7E, 0x8B, 0x8D)
+_NAVY_RGB = RGBColor(0x18, 0x50, 0x76)
+_GREY_RGB = RGBColor(0x68, 0x76, 0x7D)
 _DARK_RGB = RGBColor(0x1C, 0x1C, 0x1C)
 
-_NAVY_F = (0x1A / 255, 0x52 / 255, 0x76 / 255)
-_GREY_F = (0x7E / 255, 0x8B / 255, 0x8D / 255)
+_NAVY_F = (0x18 / 255, 0x50 / 255, 0x76 / 255)
+_GREY_F = (0x68 / 255, 0x76 / 255, 0x7D / 255)
 _DARK_F = (0x1C / 255, 0x1C / 255, 0x1C / 255)
 
-SEP = " | "
-EXP_SEP = " \u00b7 "
+SEP = "  |  "
+EXP_SEP = " | "
 
-# A4 page geometry, shared by DOCX and PDF exporters so both render identically.
-A4_WIDTH_MM = 210.0
-A4_HEIGHT_MM = 297.0
-A4_WIDTH_PT = 595.28
-A4_HEIGHT_PT = 841.89
-MARGIN_PT = 36.0
+# US Letter geometry used by the targeted resume template.
+PAGE_WIDTH_MM = 215.9
+PAGE_HEIGHT_MM = 279.4
+PAGE_WIDTH_PT = 612.0
+PAGE_HEIGHT_PT = 792.0
+MARGIN_TOP_BOTTOM_PT = 36.0
+MARGIN_LEFT_RIGHT_PT = 43.2
+ROLE_DATE_TAB_PT = 507.6
+CERT_ISSUER_TAB_PT = 392.4
+CERT_YEAR_TAB_PT = 507.6
+
+
+def _date_range(start_date: str = "", end_date: str = "") -> str:
+    """Return a consistently formatted date range."""
+    return " \u2013 ".join(filter(None, [start_date.strip(), end_date.strip()]))
+
+
+def _docx_date_text(value: str) -> str:
+    """Keep a DOCX date range together when a heading is close to full width."""
+    return value.replace(" ", "\u00a0")
+
+
+def _normalise_date_text(value: str) -> str:
+    """Normalise separators so equivalent date ranges compare equal."""
+    return re.sub(r"\s*[-\u2013\u2014\u00b7]\s*", " - ", value.strip()).casefold()
+
+
+_DATE_RANGE_TEXT_RE = re.compile(
+    r"\b(?:19|20)\d{2}\b.*(?:\b(?:19|20)\d{2}\b|\bpresent\b|\bcurrent\b)",
+    re.I,
+)
+_PROJECT_CONTEXT_RE = re.compile(
+    r"^(.*?)\s+[\u00b7|]\s+(Project\s+(?:within|under|for)\b.*)$",
+    re.I,
+)
+SUMMARY_MAX_WORDS = 300
+_EMBEDDED_SKILLS_RE = re.compile(
+    r"\s+(?:CORE\s+)?TECHNICAL\s+SKILLS\s*:?[ \t]+"
+    r"(?=(?:Routing\s*&\s*Switching|Security|SD-WAN|Wireless|"
+    r"Project\s+Delivery|Diagnostics)\b)",
+    re.I,
+)
+_SKILL_CATEGORY_RE = re.compile(
+    r"(?P<label>Routing\s*&\s*Switching|Security|SD-WAN|Wireless|"
+    r"Project\s+Delivery\s*&\s*Documentation|Diagnostics\s*&\s*Infrastructure)"
+    r"\s*:\s*",
+    re.I,
+)
+
+
+def _truncate_summary(text: str, max_words: int = SUMMARY_MAX_WORDS) -> str:
+    """Return a clean summary no longer than *max_words*.
+
+    Prefer a complete sentence near the limit; otherwise close the truncated
+    text with a period so the exported resume never ends mid-thought.
+    """
+    clean = re.sub(r"\s+", " ", text or "").strip()
+    words = clean.split()
+    if len(words) <= max_words:
+        return clean
+
+    candidate = " ".join(words[:max_words])
+    sentence_ends = [candidate.rfind(mark) for mark in (". ", "! ", "? ")]
+    last_end = max(sentence_ends)
+    if last_end >= len(candidate) * 0.6:
+        return candidate[: last_end + 1].strip()
+    return candidate.rstrip(" ,;:-") + "."
+
+
+def _parse_embedded_skills(text: str) -> list[str]:
+    """Split a flattened categorized skills block into exportable entries."""
+    clean = re.sub(r"\s+", " ", text or "").strip()
+    if not clean:
+        return []
+
+    matches = list(_SKILL_CATEGORY_RE.finditer(clean))
+    if not matches:
+        return [clean]
+
+    entries: list[str] = []
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(clean)
+        value = clean[start:end].strip(" \t,;•")
+        label = re.sub(r"\s+", " ", match.group("label")).strip()
+        if value:
+            entries.append(f"{label}: {value}")
+    return entries
+
+
+def _summary_and_skills(resume: ResumeData) -> tuple[str, list[str]]:
+    """Keep accidentally flattened skills out of the summary.
+
+    Some AI/parser outputs append an uppercase ``CORE TECHNICAL SKILLS`` block
+    to ``summary`` and leave ``skills`` empty. Recover that block at export
+    time, while preserving a populated canonical skills list when available.
+    """
+    raw_summary = resume.summary or ""
+    embedded_skills = ""
+    match = _EMBEDDED_SKILLS_RE.search(raw_summary)
+    if match:
+        embedded_skills = raw_summary[match.end():]
+        raw_summary = raw_summary[:match.start()]
+
+    summary = _truncate_summary(raw_summary)
+    skills = [re.sub(r"\s+", " ", skill).strip() for skill in resume.skills if skill.strip()]
+    if not skills and embedded_skills:
+        skills = _parse_embedded_skills(embedded_skills)
+    return summary, skills
+
+
+def _skill_label_value(entry: str) -> tuple[str, str] | None:
+    """Return ``(label, value)`` for a categorized skill entry."""
+    if ":" not in entry:
+        return None
+    label, value = entry.split(":", 1)
+    label, value = label.strip(), value.strip()
+    if not label or not value or len(label) > 50:
+        return None
+    return label, value
+
+
+def _project_display_parts(project) -> tuple[str, str, str]:
+    """Return project title, contextual metadata, and date range.
+
+    Older parsed resumes stored the date range in ``meta``. Newer records may
+    have dedicated ``start_date`` / ``end_date`` fields while keeping ``meta``
+    for contextual text such as "Project within Acme role". Support both.
+    """
+    explicit_dates = _date_range(project.start_date, project.end_date)
+    meta = (project.meta or "").strip()
+    title = project.title
+    context = ""
+
+    if explicit_dates:
+        if meta and _normalise_date_text(meta) != _normalise_date_text(explicit_dates):
+            context = meta
+        dates = explicit_dates
+    elif meta and _DATE_RANGE_TEXT_RE.search(meta):
+        dates = meta
+    else:
+        context = meta
+        dates = ""
+
+    # Some older optimizer outputs embedded the context directly in title
+    # while using ``meta`` for the dates. Pull that context onto its own compact
+    # line so a long heading cannot force the date outside the right margin.
+    if not context:
+        match = _PROJECT_CONTEXT_RE.match(title)
+        if match:
+            title, context = match.group(1).strip(), match.group(2).strip()
+
+    return title, context, dates
 
 
 def _bottom_rule(paragraph, color: str = NAVY) -> None:
@@ -54,60 +203,57 @@ def _bottom_rule(paragraph, color: str = NAVY) -> None:
 
 
 def _blocks(resume: ResumeData) -> list[tuple[str, str]]:
+    """Return Markdown blocks in the same order as the targeted template."""
+    summary, skills = _summary_and_skills(resume)
     blocks: list[tuple[str, str]] = [("h1", resume.contact.name or "Resume")]
     if resume.headline:
         blocks.append(("meta", resume.headline))
-    contact = SEP.join(
-        filter(
-            None,
-            [
-                resume.contact.location,
-                resume.contact.phone,
-                resume.contact.email,
-                resume.contact.linkedin,
-                resume.contact.website,
-            ],
-        )
-    )
+    contact = SEP.join(filter(None, [
+        resume.contact.location,
+        resume.contact.phone,
+        resume.contact.email,
+        resume.contact.linkedin,
+        resume.contact.website,
+    ]))
     if contact:
         blocks.append(("meta", contact))
-    if resume.summary:
-        blocks += [("h2", "Professional Summary"), ("p", resume.summary)]
+    if summary:
+        blocks += [("h2", "Professional Summary"), ("p", summary)]
+    if skills:
+        blocks += [("h2", "Core Technical Skills"), ("p", ", ".join(skills))]
     if resume.experience:
         blocks.append(("h2", "Professional Experience"))
         for exp in resume.experience:
-            header = exp.title + (f" - {exp.company}" if exp.company else "")
-            dates = " - ".join(filter(None, [exp.start_date, exp.end_date]))
-            blocks.append(("h3", header + (f" ({dates})" if dates else "")))
+            metadata = " | ".join(filter(None, [exp.company, exp.location]))
+            dates = _date_range(exp.start_date, exp.end_date)
+            header = exp.title + (f" | {metadata}" if metadata else "")
+            if dates:
+                header += f" | {dates}"
+            blocks.append(("h3", header))
             for bullet in exp.bullets:
                 blocks.append(("li", bullet))
     if resume.projects:
-        blocks.append(("h2", "Key Projects"))
-        for proj in resume.projects:
-            header = proj.title
-            if proj.meta:
-                header += f" ({proj.meta})"
+        blocks.append(("h2", "Selected Project Delivery"))
+        for project in resume.projects:
+            title, context, dates = _project_display_parts(project)
+            header = title + (f" | {context}" if context else "")
+            if dates:
+                header += f" | {dates}"
             blocks.append(("h3", header))
-            for bullet in proj.bullets:
+            for bullet in project.bullets:
                 blocks.append(("li", bullet))
-    if resume.skills:
-        blocks += [("h2", "Technical Skills"), ("p", ", ".join(resume.skills))]
-    if resume.education:
-        blocks.append(("h2", "Education"))
-        for edu in resume.education:
-            line = ", ".join(filter(None, [edu.degree, edu.institution]))
-            if edu.year:
-                line += f" ({edu.year})"
-            blocks.append(("p", line))
     if resume.certifications:
         blocks.append(("h2", "Certifications"))
-        for cert in resume.certifications:
-            parts = [p.strip() for p in cert.split("|")]
-            blocks.append(("li", " \u00b7 ".join(filter(None, parts))))
+        for certification in resume.certifications:
+            title, issuer, year = _certification_parts(certification)
+            blocks.append(("p", " | ".join(filter(None, [title, issuer, year]))))
+    if resume.education:
+        blocks.append(("h2", "Education"))
+        for education in resume.education:
+            degree, detail = _education_display(education)
+            blocks.append(("p", " ".join(filter(None, [degree, detail]))))
     if resume.languages:
-        blocks.append(("h2", "Languages"))
-        for lang in resume.languages:
-            blocks.append(("li", lang))
+        blocks += [("h2", "Languages"), ("p", " | ".join(resume.languages))]
     return blocks
 
 
@@ -132,205 +278,241 @@ def export_markdown(resume: ResumeData, path: str) -> None:
     Path(path).write_text(to_markdown(resume), encoding="utf-8")
 
 
+def _set_style_font(style, *, size: float | None = None, color=None, bold=None) -> None:
+    """Apply Arial consistently to a DOCX style, including East Asian slots."""
+    style.font.name = FONT_NAME
+    if size is not None:
+        style.font.size = Pt(size)
+    if color is not None:
+        style.font.color.rgb = color
+    if bold is not None:
+        style.font.bold = bold
+    rPr = style.element.get_or_add_rPr()
+    rFonts = rPr.find(qn("w:rFonts"))
+    if rFonts is None:
+        rFonts = OxmlElement("w:rFonts")
+        rPr.insert(0, rFonts)
+    for attr in ("ascii", "hAnsi", "cs", "eastAsia"):
+        rFonts.set(qn(f"w:{attr}"), FONT_NAME)
+
+
+def _compact_year_range(value: str) -> str:
+    """Use an en dash without surrounding spaces in compact education rows."""
+    return re.sub(r"\s*[-\u2013\u2014]\s*", "\u2013", (value or "").strip())
+
+
+def _education_display(education) -> tuple[str, str]:
+    """Return the bold degree label and the remaining reference-template text."""
+    degree = (education.degree or "").strip().rstrip(":")
+    institution = re.sub(r"\s*,\s*(GPA\s*[:]?\s*)", r" | \1", education.institution or "", flags=re.I)
+    institution = re.sub(r"GPA\s*:\s*", "GPA ", institution, flags=re.I).strip()
+    year = _compact_year_range(education.year)
+    tail = institution
+    if year:
+        tail = f"{tail} | {year}" if tail else year
+    return (degree + ":" if degree else ""), tail
+
+
+def _certification_parts(certification: str) -> tuple[str, str, str]:
+    """Split a certification into title, issuer, and year columns."""
+    parts = [part.strip() for part in certification.split("|") if part.strip()]
+    if len(parts) >= 3:
+        return parts[0], parts[1], parts[2]
+    if len(parts) == 2:
+        year_match = re.fullmatch(r"(?:19|20)\d{2}", parts[1])
+        return (parts[0], "", parts[1]) if year_match else (parts[0], parts[1], "")
+    text = parts[0] if parts else certification.strip()
+    year_match = re.search(r"\b((?:19|20)\d{2})\s*$", text)
+    if year_match:
+        return text[:year_match.start()].rstrip(" -\u00b7|\t"), "", year_match.group(1)
+    return text, "", ""
+
+
 def export_docx(resume: ResumeData, path: str) -> None:
+    """Export using the compact targeted resume template."""
     logger.info("Exporting resume to DOCX: %s", path)
     doc = Document()
 
     section = doc.sections[0]
-    # A4 page size, matched to the PDF exporter below.
-    section.page_width = Mm(A4_WIDTH_MM)
-    section.page_height = Mm(A4_HEIGHT_MM)
-    section.top_margin = Pt(MARGIN_PT)
-    section.bottom_margin = Pt(MARGIN_PT)
-    section.left_margin = Pt(MARGIN_PT)
-    section.right_margin = Pt(MARGIN_PT)
+    section.page_width = Mm(PAGE_WIDTH_MM)
+    section.page_height = Mm(PAGE_HEIGHT_MM)
+    section.top_margin = Pt(MARGIN_TOP_BOTTOM_PT)
+    section.bottom_margin = Pt(MARGIN_TOP_BOTTOM_PT)
+    section.left_margin = Pt(MARGIN_LEFT_RIGHT_PT)
+    section.right_margin = Pt(MARGIN_LEFT_RIGHT_PT)
 
-    style = doc.styles["Normal"]
-    rPr = style.element.get_or_add_rPr()
-    rFonts = OxmlElement("w:rFonts")
-    rFonts.set(qn("w:ascii"), FONT_NAME)
-    rFonts.set(qn("w:hAnsi"), FONT_NAME)
-    rFonts.set(qn("w:cs"), FONT_NAME)
-    rFonts.set(qn("w:eastAsia"), FONT_NAME)
-    rPr.append(rFonts)
-    style.font.size = Pt(9.5)
-    style.font.color.rgb = _DARK_RGB
-    style.paragraph_format.space_after = Pt(2)
-    style.paragraph_format.space_before = Pt(0)
+    normal = doc.styles["Normal"]
+    _set_style_font(normal, size=9, color=_DARK_RGB)
+    normal.paragraph_format.space_before = Pt(0)
+    normal.paragraph_format.space_after = Pt(1.1)
+    normal.paragraph_format.line_spacing = 1.0
 
-    lb = doc.styles["List Bullet"]
-    lb_rPr = lb.element.get_or_add_rPr()
-    lb_rFonts = OxmlElement("w:rFonts")
-    lb_rFonts.set(qn("w:ascii"), FONT_NAME)
-    lb_rFonts.set(qn("w:hAnsi"), FONT_NAME)
-    lb_rFonts.set(qn("w:cs"), FONT_NAME)
-    lb_rFonts.set(qn("w:eastAsia"), FONT_NAME)
-    lb_rPr.append(lb_rFonts)
-    lb.font.size = Pt(9.5)
-    lb.font.color.rgb = _DARK_RGB
-    lb.paragraph_format.space_after = Pt(1)
-    lb.paragraph_format.space_before = Pt(0)
-    lb.paragraph_format.left_indent = Pt(34)
-    lb.paragraph_format.first_line_indent = Pt(-10)
+    compact = doc.styles.add_style("Compact", WD_STYLE_TYPE.PARAGRAPH)
+    _set_style_font(compact, size=9, color=_DARK_RGB)
+    compact.paragraph_format.space_before = Pt(0)
+    compact.paragraph_format.space_after = Pt(0.55)
+    compact.paragraph_format.line_spacing = 1.0
 
-    right_tab = section.page_width - section.left_margin - section.right_margin
+    section_style = doc.styles.add_style("Resume Section", WD_STYLE_TYPE.PARAGRAPH)
+    _set_style_font(section_style, size=10.5, color=_NAVY_RGB, bold=True)
+    section_style.paragraph_format.space_before = Pt(5.2)
+    section_style.paragraph_format.space_after = Pt(2)
+    section_style.paragraph_format.keep_with_next = True
 
-    def add_run(paragraph, text, *, color=_DARK_RGB, size=9.5, bold=False):
-        r = paragraph.add_run(text)
-        r.font.name = FONT_NAME
-        r.font.size = Pt(size)
-        r.font.color.rgb = color
-        r.font.bold = bold
-        return r
+    role_style = doc.styles.add_style("Resume Role", WD_STYLE_TYPE.PARAGRAPH)
+    _set_style_font(role_style, size=9.5, color=_DARK_RGB)
+    role_style.paragraph_format.space_before = Pt(2)
+    role_style.paragraph_format.space_after = Pt(0.4)
+    role_style.paragraph_format.keep_with_next = True
 
-    def section_heading(text):
-        p = doc.add_paragraph()
-        p.paragraph_format.space_before = Pt(9)
-        p.paragraph_format.space_after = Pt(3)
-        add_run(p, text.upper(), color=_NAVY_RGB, size=10.5, bold=True)
-        _bottom_rule(p)
-        return p
+    bullet_style = doc.styles.add_style("Resume Bullet", WD_STYLE_TYPE.PARAGRAPH)
+    _set_style_font(bullet_style, size=9, color=_DARK_RGB)
+    bullet_style.paragraph_format.space_before = Pt(0)
+    bullet_style.paragraph_format.space_after = Pt(0.65)
+    bullet_style.paragraph_format.line_spacing = 1.0
+    bullet_style.paragraph_format.left_indent = Pt(13.7)
+    bullet_style.paragraph_format.first_line_indent = Pt(-9.35)
 
-    def side_by_side(paragraph, left_text, left_kw, right_text, right_kw):
-        paragraph.paragraph_format.tab_stops.add_tab_stop(right_tab, WD_TAB_ALIGNMENT.RIGHT)
-        add_run(paragraph, left_text, **left_kw)
-        if right_text:
-            add_run(paragraph, "\t" + right_text, **right_kw)
+    def add_run(paragraph, text, *, color=_DARK_RGB, size=None, bold=False, italic=False):
+        run = paragraph.add_run(text)
+        run.font.name = FONT_NAME
+        if size is not None:
+            run.font.size = Pt(size)
+        run.font.color.rgb = color
+        run.font.bold = bold
+        run.font.italic = italic
+        return run
 
-    name_p = doc.add_paragraph()
-    name_p.alignment = 1
-    name_p.paragraph_format.space_after = Pt(2)
-    add_run(name_p, (resume.contact.name or "Resume").upper(), color=_NAVY_RGB, size=26, bold=True)
+    def section_heading(text: str, *, add_spacer: bool = True, page_break: bool = False):
+        # The reference template uses an empty bordered section paragraph as
+        # a compact spacer before visible headings. The project heading starts
+        # a fresh page, so it intentionally omits that spacer at the page top.
+        if add_spacer:
+            spacer_p = doc.add_paragraph(style="Resume Section")
+            _bottom_rule(spacer_p, NAVY)
+        paragraph = doc.add_paragraph(style="Resume Section")
+        paragraph.paragraph_format.page_break_before = page_break
+        add_run(paragraph, text.upper(), color=_NAVY_RGB, size=10.5, bold=True)
+        _bottom_rule(paragraph, NAVY)
+        return paragraph
+
+    def add_role_line(title: str, metadata: list[str], dates: str = ""):
+        paragraph = doc.add_paragraph(style="Resume Role")
+        paragraph.paragraph_format.tab_stops.add_tab_stop(Pt(ROLE_DATE_TAB_PT), WD_TAB_ALIGNMENT.RIGHT)
+        add_run(paragraph, title, bold=True)
+        for item in [item for item in metadata if item]:
+            add_run(paragraph, " | ")
+            add_run(paragraph, item, color=_GREY_RGB)
+        if dates:
+            add_run(paragraph, "\t")
+            add_run(paragraph, dates, color=_GREY_RGB, italic=True)
+        return paragraph
+
+    def add_bullet(text: str):
+        paragraph = doc.add_paragraph(style="Resume Bullet")
+        add_run(paragraph, "\u2022  " + text)
+        return paragraph
+
+    summary, skills = _summary_and_skills(resume)
+
+    name = doc.add_paragraph()
+    name.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    name.paragraph_format.space_after = Pt(0)
+    add_run(name, (resume.contact.name or "Resume").upper(), color=_NAVY_RGB, size=20.5, bold=True)
+
+    spacer = doc.add_paragraph()
+    spacer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    spacer.paragraph_format.space_after = Pt(0.4)
 
     if resume.headline:
-        hp = doc.add_paragraph()
-        hp.alignment = 1
-        hp.paragraph_format.space_after = Pt(2)
-        add_run(hp, resume.headline, color=_GREY_RGB, size=10.5)
+        headline = doc.add_paragraph()
+        headline.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        headline.paragraph_format.space_after = Pt(0.4)
+        add_run(headline, resume.headline, color=_GREY_RGB, size=10.5)
 
-    contact = SEP.join(
-        filter(None, [
-            resume.contact.location,
-            resume.contact.phone,
-            resume.contact.email,
-            resume.contact.linkedin,
-            resume.contact.website,
-        ])
-    )
+    contact = SEP.join(filter(None, [
+        resume.contact.location,
+        resume.contact.phone,
+        resume.contact.email,
+        resume.contact.linkedin,
+        resume.contact.website,
+    ]))
     if contact:
-        cp = doc.add_paragraph()
-        cp.alignment = 1
-        cp.paragraph_format.space_after = Pt(4)
-        add_run(cp, contact, color=_GREY_RGB, size=9)
+        contact_p = doc.add_paragraph()
+        contact_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        contact_p.paragraph_format.space_after = Pt(3)
+        add_run(contact_p, contact, color=_GREY_RGB, size=8.5)
 
-    rule_p = doc.add_paragraph()
-    rule_p.paragraph_format.space_before = Pt(0)
-    rule_p.paragraph_format.space_after = Pt(4)
-    _bottom_rule(rule_p)
-
-    if resume.summary:
+    if summary:
         section_heading("Professional Summary")
-        p = doc.add_paragraph()
-        p.paragraph_format.space_after = Pt(4)
-        add_run(p, resume.summary, size=9.5)
+        paragraph = doc.add_paragraph(style="Compact")
+        paragraph.paragraph_format.space_after = Pt(1.4)
+        add_run(paragraph, summary, size=9)
+
+    if skills:
+        section_heading("Core Technical Skills")
+        categorized = [_skill_label_value(skill) for skill in skills]
+        if len(skills) > 1 and all(categorized):
+            for label, value in categorized:
+                paragraph = doc.add_paragraph(style="Compact")
+                add_run(paragraph, label + ": ", bold=True)
+                add_run(paragraph, value)
+        else:
+            paragraph = doc.add_paragraph(style="Compact")
+            add_run(paragraph, " | ".join(skills))
 
     if resume.experience:
         section_heading("Professional Experience")
-        for exp in resume.experience:
-            hp = doc.add_paragraph()
-            hp.paragraph_format.space_before = Pt(6)
-            hp.paragraph_format.space_after = Pt(1)
-            dates = " \u2013 ".join(filter(None, [exp.start_date, exp.end_date]))
-            side_by_side(
-                hp,
-                exp.title,
-                {"color": _DARK_RGB, "size": 10.5, "bold": True},
-                None,
-                {},
+        for experience in resume.experience:
+            add_role_line(
+                experience.title,
+                [experience.company, experience.location],
+                _date_range(experience.start_date, experience.end_date),
             )
-            if exp.company:
-                add_run(hp, EXP_SEP + exp.company, color=_GREY_RGB, size=10)
-            if dates:
-                hp.paragraph_format.tab_stops.add_tab_stop(right_tab, WD_TAB_ALIGNMENT.RIGHT)
-                add_run(hp, "\t" + dates, color=_GREY_RGB, size=9.5)
-            for bullet in exp.bullets:
-                bp = doc.add_paragraph(style="List Bullet")
-                add_run(bp, bullet, size=9.5)
+            for bullet in experience.bullets:
+                add_bullet(bullet)
 
     if resume.projects:
-        section_heading("Key Projects")
-        for proj in resume.projects:
-            hp = doc.add_paragraph()
-            hp.paragraph_format.space_before = Pt(6)
-            hp.paragraph_format.space_after = Pt(1)
-            side_by_side(
-                hp,
-                proj.title,
-                {"color": _DARK_RGB, "size": 10.5, "bold": True},
-                proj.meta,
-                {"color": _GREY_RGB, "size": 9.5},
-            )
-            for bullet in proj.bullets:
-                bp = doc.add_paragraph(style="List Bullet")
-                add_run(bp, bullet, size=9.5)
-
-    if resume.skills:
-        section_heading("Technical Skills")
-        skill_size = 9.5
-        num_cols = 6
-        total_w = right_tab
-        col_w = total_w // num_cols
-        num_rows = (len(resume.skills) + num_cols - 1) // num_cols
-        tbl = doc.add_table(rows=num_rows, cols=num_cols)
-        tbl.autofit = False
-        for row_idx in range(num_rows):
-            for col_idx in range(num_cols):
-                cell = tbl.cell(row_idx, col_idx)
-                cell.width = col_w
-                p = cell.paragraphs[0]
-                p.paragraph_format.space_after = Pt(1)
-                p.paragraph_format.space_before = Pt(1)
-                flat_idx = row_idx * num_cols + col_idx
-                if flat_idx < len(resume.skills):
-                    add_run(p, resume.skills[flat_idx], size=skill_size)
-        tbl_borders = OxmlElement("w:tblBorders")
-        for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
-            el = OxmlElement(f"w:{edge}")
-            el.set(qn("w:val"), "single")
-            el.set(qn("w:sz"), "4")
-            el.set(qn("w:space"), "0")
-            el.set(qn("w:color"), "CCCCCC")
-            tbl_borders.append(el)
-        tbl._tbl.tblPr.append(tbl_borders)
-
-    if resume.education:
-        section_heading("Education")
-        for edu in resume.education:
-            p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(3)
-            p.paragraph_format.space_after = Pt(1)
-            line = ", ".join(filter(None, [edu.degree, edu.institution]))
-            side_by_side(
-                p,
-                line,
-                {"color": _DARK_RGB, "size": 10, "bold": True},
-                edu.year,
-                {"color": _GREY_RGB, "size": 9},
-            )
+        section_heading("Selected Project Delivery", add_spacer=False, page_break=True)
+        for project in resume.projects:
+            project_title, project_context, project_dates = _project_display_parts(project)
+            add_role_line(project_title, [project_context], project_dates)
+            for bullet in project.bullets:
+                add_bullet(bullet)
 
     if resume.certifications:
         section_heading("Certifications")
-        for cert in resume.certifications:
-            parts = [p.strip() for p in cert.split("|")]
-            display = " \u00b7 ".join(filter(None, parts))
-            bp = doc.add_paragraph(style="List Bullet")
-            add_run(bp, display, size=9.5)
+        for certification in resume.certifications:
+            title, issuer, year = _certification_parts(certification)
+            paragraph = doc.add_paragraph(style="Compact")
+            paragraph.paragraph_format.tab_stops.add_tab_stop(Pt(CERT_ISSUER_TAB_PT), WD_TAB_ALIGNMENT.LEFT)
+            paragraph.paragraph_format.tab_stops.add_tab_stop(Pt(CERT_YEAR_TAB_PT), WD_TAB_ALIGNMENT.RIGHT)
+            add_run(paragraph, title, bold=True)
+            if issuer or year:
+                add_run(paragraph, "\t")
+                add_run(paragraph, issuer, color=_GREY_RGB)
+                add_run(paragraph, "\t")
+                add_run(paragraph, year, color=_GREY_RGB)
+
+    if resume.education:
+        section_heading("Education")
+        for education in resume.education:
+            degree, detail = _education_display(education)
+            paragraph = doc.add_paragraph(style="Compact")
+            if degree:
+                add_run(paragraph, degree + " ", bold=True)
+            add_run(paragraph, detail)
 
     if resume.languages:
         section_heading("Languages")
-        langs_text = EXP_SEP.join(resume.languages)
-        p = doc.add_paragraph()
-        add_run(p, langs_text, size=9.5)
+        paragraph = doc.add_paragraph(style="Compact")
+        language_text = " | ".join(resume.languages)
+        if ":" in language_text:
+            label, value = language_text.split(":", 1)
+            add_run(paragraph, label + ":", bold=True)
+            add_run(paragraph, value)
+        else:
+            add_run(paragraph, language_text)
 
     doc.save(path)
 
@@ -349,235 +531,247 @@ def _resolve_pdf_font(name: str) -> str:
         return "helv"
 
 
-# Resolve bold/regular PDF fonts once at module load.
-_PDF_BOLD = _resolve_pdf_font("tibo")
-_PDF_REGULAR = _resolve_pdf_font("tiro")
+# Use Arimo (an Arial-compatible metric substitute) when available so the
+# PDF supports Unicode punctuation such as en dashes. Fall back to built-ins.
+_PDF_FONT_FILES = {
+    "arimo-regular": "/usr/share/fonts/truetype/croscore/Arimo-Regular.ttf",
+    "arimo-bold": "/usr/share/fonts/truetype/croscore/Arimo-Bold.ttf",
+    "arimo-italic": "/usr/share/fonts/truetype/croscore/Arimo-Italic.ttf",
+}
+_PDF_REGULAR = "arimo-regular" if Path(_PDF_FONT_FILES["arimo-regular"]).exists() else _resolve_pdf_font("helv")
+_PDF_BOLD = "arimo-bold" if Path(_PDF_FONT_FILES["arimo-bold"]).exists() else _resolve_pdf_font("hebo")
+_PDF_ITALIC = "arimo-italic" if Path(_PDF_FONT_FILES["arimo-italic"]).exists() else _resolve_pdf_font("heit")
 
 
 def export_pdf(resume: ResumeData, path: str) -> None:
+    """Export a PDF matching the compact targeted DOCX template."""
     logger.info("Exporting resume to PDF: %s", path)
     doc = fitz.open()
-    # A4 page size, matched to the DOCX exporter above.
-    page = doc.new_page(width=A4_WIDTH_PT, height=A4_HEIGHT_PT)
-    margin_l, margin_r = MARGIN_PT, MARGIN_PT
-    margin_t = MARGIN_PT
-    left, right = margin_l, page.rect.width - margin_r
-    y = margin_t
-    page_h = page.rect.height
+    page = doc.new_page(width=PAGE_WIDTH_PT, height=PAGE_HEIGHT_PT)
+    left = MARGIN_LEFT_RIGHT_PT
+    right = PAGE_WIDTH_PT - MARGIN_LEFT_RIGHT_PT
+    top = MARGIN_TOP_BOTTOM_PT
+    bottom = PAGE_HEIGHT_PT - MARGIN_TOP_BOTTOM_PT
+    y = top
+    font_cache: dict[str, fitz.Font] = {}
 
-    def new_page():
-        nonlocal y, page
-        page = doc.new_page(width=A4_WIDTH_PT, height=A4_HEIGHT_PT)
-        y = margin_t
+    def text_width(text: str, fontname: str, fontsize: float) -> float:
+        font = font_cache.get(fontname)
+        if font is None:
+            font_file = _PDF_FONT_FILES.get(fontname)
+            font = fitz.Font(fontfile=font_file) if font_file else fitz.Font(fontname=fontname)
+            font_cache[fontname] = font
+        return font.text_length(text, fontsize=fontsize)
 
-    def check_page(needed=20):
-        nonlocal y
-        if y + needed > page_h - 36:
+    def new_page() -> None:
+        nonlocal page, y
+        page = doc.new_page(width=PAGE_WIDTH_PT, height=PAGE_HEIGHT_PT)
+        y = top
+
+    def ensure(needed: float) -> None:
+        if y + needed > bottom:
             new_page()
 
-    def draw_text(x, text, *, size=9.5, color=_DARK_F, bold=False):
+    def insert(x: float, baseline: float, text: str, *, size=9.0, color=_DARK_F, bold=False, italic=False):
+        font = _PDF_BOLD if bold else (_PDF_ITALIC if italic else _PDF_REGULAR)
+        page.insert_text(
+            (x, baseline),
+            text,
+            fontsize=size,
+            fontname=font,
+            fontfile=_PDF_FONT_FILES.get(font),
+            color=color,
+        )
+
+    def centered(text: str, *, size: float, color, bold=False):
         nonlocal y
-        fontname = _PDF_BOLD if bold else _PDF_REGULAR
-        page.insert_text((x, y), text, fontsize=size, fontname=fontname, color=color)
-        y += size * 1.5
+        font = _PDF_BOLD if bold else _PDF_REGULAR
+        x = (PAGE_WIDTH_PT - text_width(text, font, size)) / 2
+        insert(x, y + size, text, size=size, color=color, bold=bold)
+        y += size + 1.5
 
-    def draw_centered(text, *, size=9.5, color=_DARK_F, bold=False):
+    def section_title(text: str, *, compact_top: bool = False):
         nonlocal y
-        fontname = _PDF_BOLD if bold else _PDF_REGULAR
-        w = fitz.get_text_length(text, fontname=fontname, fontsize=size)
-        x = (page.rect.width - w) / 2
-        page.insert_text((x, y), text, fontsize=size, fontname=fontname, color=color)
-        y += size * 1.5
+        ensure(22)
+        y += 5.2 if compact_top else 18.0
+        baseline = y + 10.5
+        insert(left, baseline, text.upper(), size=10.5, color=_NAVY_F, bold=True)
+        line_y = baseline + 2.2
+        page.draw_line((left, line_y), (right, line_y), color=_NAVY_F, width=0.8)
+        y = line_y + 4.2
 
-    def section_title(text):
+    def wrapped_tokens(tokens, max_width, size=9.0):
+        lines = []
+        line = []
+        width = 0.0
+        for text, bold, color, italic in tokens:
+            words = re.findall(r"\s+|\S+", text)
+            font = _PDF_BOLD if bold else (_PDF_ITALIC if italic else _PDF_REGULAR)
+            for word in words:
+                word_width = text_width(word, font, size)
+                if line and width + word_width > max_width:
+                    lines.append(line)
+                    line = []
+                    width = 0.0
+                line.append((word, bold, color, italic))
+                width += word_width
+        if line:
+            lines.append(line)
+        return lines or [[]]
+
+    def draw_wrapped(tokens, *, x=left, max_width=None, size=9.0, line_height=10.0, hanging=0.0):
         nonlocal y
-        check_page(30)
-        y += 4
-        draw_text(left, text.upper(), size=10.5, color=_NAVY_F, bold=True)
-        y += 2
-        page.draw_line((left, y), (right, y), color=_NAVY_F, width=1.0)
-        y += 8
+        width = max_width if max_width is not None else right - x
+        lines = wrapped_tokens(tokens, width, size)
+        ensure(line_height * len(lines) + 1)
+        for line_index, line in enumerate(lines):
+            cursor = x if line_index == 0 else x + hanging
+            baseline = y + size
+            for text, bold, color, italic in line:
+                insert(cursor, baseline, text, size=size, color=color, bold=bold, italic=italic)
+                font = _PDF_BOLD if bold else (_PDF_ITALIC if italic else _PDF_REGULAR)
+                cursor += text_width(text, font, size)
+            y += line_height
+        return len(lines)
 
-    def wrap_text(text, size, bold=False):
-        fontname = _PDF_BOLD if bold else _PDF_REGULAR
-        max_w = right - left
-        words = text.split()
-        lines, current = [], ""
-        for w in words:
-            test = (current + " " + w).strip()
-            if fitz.get_text_length(test, fontname=fontname, fontsize=size) <= max_w:
-                current = test
-            else:
-                if current:
-                    lines.append(current)
-                current = w
-        if current:
-            lines.append(current)
-        return lines or [""]
+    def role_line(title: str, metadata: list[str], dates: str = ""):
+        nonlocal y
+        ensure(13)
+        tokens = [(title, True, _DARK_F, False)]
+        for item in [item for item in metadata if item]:
+            tokens.extend([(" | ", False, _DARK_F, False), (item, False, _GREY_F, False)])
+        date_width = text_width(dates, _PDF_ITALIC, 9.0) if dates else 0
+        available = (right - left) - date_width - (10 if dates else 0)
+        lines = wrapped_tokens(tokens, available, 9.5)
+        for index, line in enumerate(lines):
+            baseline = y + 9.5
+            cursor = left
+            for text, bold, color, italic in line:
+                insert(cursor, baseline, text, size=9.5, color=color, bold=bold, italic=italic)
+                font = _PDF_BOLD if bold else (_PDF_ITALIC if italic else _PDF_REGULAR)
+                cursor += text_width(text, font, 9.5)
+            if index == 0 and dates:
+                insert(right - date_width, baseline, dates, size=9.0, color=_GREY_F, italic=True)
+            y += 10.2
+        y += 0.4
 
-    name = (resume.contact.name or "Resume").upper()
-    draw_centered(name, size=26, color=_NAVY_F, bold=True)
-    y += 2
+    def bullet(text: str):
+        nonlocal y
+        bullet_x = left + 4.35
+        text_x = left + 13.7
+        lines = wrapped_tokens([(text, False, _DARK_F, False)], right - text_x, 9.0)
+        ensure(len(lines) * 9.65 + 1)
+        for index, line in enumerate(lines):
+            baseline = y + 9.0
+            if index == 0:
+                insert(bullet_x, baseline, "\u2022", size=9.0)
+            cursor = text_x
+            for fragment, bold, color, italic in line:
+                insert(cursor, baseline, fragment, size=9.0, color=color, bold=bold, italic=italic)
+                cursor += text_width(fragment, _PDF_REGULAR, 9.0)
+            y += 9.65
 
+    summary, skills = _summary_and_skills(resume)
+
+    centered((resume.contact.name or "Resume").upper(), size=20.5, color=_NAVY_F, bold=True)
+    y += 8.5
     if resume.headline:
-        draw_centered(resume.headline, size=10.5, color=_GREY_F)
-        y += 1
-
+        centered(resume.headline, size=10.5, color=_GREY_F)
     contact = SEP.join(filter(None, [
-        resume.contact.location, resume.contact.phone,
-        resume.contact.email, resume.contact.linkedin, resume.contact.website,
+        resume.contact.location,
+        resume.contact.phone,
+        resume.contact.email,
+        resume.contact.linkedin,
+        resume.contact.website,
     ]))
     if contact:
-        draw_centered(contact, size=9, color=_GREY_F)
-        y += 2
+        centered(contact, size=8.5, color=_GREY_F)
+    y += 3
 
-    page.draw_line((left, y), (right, y), color=_NAVY_F, width=1.0)
-    y += 8
-
-    if resume.summary:
+    if summary:
         section_title("Professional Summary")
-        for line in wrap_text(resume.summary, 9.5):
-            check_page(12)
-            draw_text(left, line, size=9.5)
+        draw_wrapped([(summary, False, _DARK_F, False)], size=9.0, line_height=10.0)
+        y += 1.4
+
+    if skills:
+        section_title("Core Technical Skills")
+        categorized = [_skill_label_value(skill) for skill in skills]
+        if len(skills) > 1 and all(categorized):
+            for label, value in categorized:
+                draw_wrapped([
+                    (label + ": ", True, _DARK_F, False),
+                    (value, False, _DARK_F, False),
+                ], size=9.0, line_height=9.5)
+        else:
+            draw_wrapped([(" | ".join(skills), False, _DARK_F, False)], size=9.0, line_height=9.5)
 
     if resume.experience:
         section_title("Professional Experience")
-        for exp in resume.experience:
-            check_page(24)
-            dates = " \u2013 ".join(filter(None, [exp.start_date, exp.end_date]))
-            title_w = fitz.get_text_length(exp.title, fontname=_PDF_BOLD, fontsize=10.5)
-            draw_text(left, exp.title, size=10.5, color=_DARK_F, bold=True)
-            if exp.company:
-                page.insert_text(
-                    (left + title_w + 4, y - 10.5 * 1.5),
-                    EXP_SEP + exp.company,
-                    fontsize=10, fontname=_PDF_REGULAR, color=_GREY_F,
-                )
-            if dates:
-                dw = fitz.get_text_length(dates, fontname=_PDF_REGULAR, fontsize=9.5)
-                page.insert_text((right - dw, y - 10.5 * 1.5), dates, fontsize=9.5, fontname=_PDF_REGULAR, color=_GREY_F)
-            for bullet in exp.bullets:
-                check_page(12)
-                lines = wrap_text(bullet, 9.5)
-                for i, bl in enumerate(lines):
-                    draw_text(left + 12, bl, size=9.5)
-                    if i == 0:
-                        page.insert_text((left + 3, y - 9.5 * 1.5), "\u2022", fontsize=9.5, fontname=_PDF_REGULAR, color=_DARK_F)
-            y += 4
+        for experience in resume.experience:
+            role_line(
+                experience.title,
+                [experience.company, experience.location],
+                _date_range(experience.start_date, experience.end_date),
+            )
+            for item in experience.bullets:
+                bullet(item)
 
     if resume.projects:
-        section_title("Key Projects")
-        for proj in resume.projects:
-            check_page(24)
-            dates = proj.meta or ""
-            draw_text(left, proj.title, size=10.5, color=_DARK_F, bold=True)
-            if dates:
-                dw = fitz.get_text_length(dates, fontname=_PDF_REGULAR, fontsize=9.5)
-                page.insert_text((right - dw, y - 10.5 * 1.5), dates, fontsize=9.5, fontname=_PDF_REGULAR, color=_GREY_F)
-            for bullet in proj.bullets:
-                check_page(12)
-                lines = wrap_text(bullet, 9.5)
-                for i, bl in enumerate(lines):
-                    draw_text(left + 12, bl, size=9.5)
-                    if i == 0:
-                        page.insert_text((left + 3, y - 9.5 * 1.5), "\u2022", fontsize=9.5, fontname=_PDF_REGULAR, color=_DARK_F)
-            y += 4
-
-    if resume.skills:
-        section_title("Technical Skills")
-        skill_font = _PDF_REGULAR
-        skill_size = 9.5
-        page_w = right - left
-        num_cols = 6
-        col_w = page_w / num_cols
-        num_rows = (len(resume.skills) + num_cols - 1) // num_cols
-        for row_idx in range(num_rows):
-            max_lines = 1
-            for col_idx in range(num_cols):
-                flat_idx = row_idx * num_cols + col_idx
-                if flat_idx < len(resume.skills):
-                    sk = resume.skills[flat_idx]
-                    text_w = fitz.get_text_length(sk, fontname=skill_font, fontsize=skill_size)
-                    max_text_w = col_w - 8
-                    if text_w > max_text_w:
-                        words = sk.split()
-                        line_count = 1
-                        current = ""
-                        for w in words:
-                            test = (current + " " + w).strip()
-                            if fitz.get_text_length(test, fontname=skill_font, fontsize=skill_size) <= max_text_w:
-                                current = test
-                            else:
-                                line_count += 1
-                                current = w
-                        max_lines = max(max_lines, line_count)
-            row_h = skill_size * 1.5 * max_lines + 6
-            check_page(row_h + 4)
-            for col_idx in range(num_cols):
-                flat_idx = row_idx * num_cols + col_idx
-                x0 = left + col_idx * col_w
-                rect = fitz.Rect(x0, y, x0 + col_w, y + row_h)
-                page.draw_rect(rect, fill=None, color=(0.8, 0.8, 0.8), width=0.5)
-                if flat_idx < len(resume.skills):
-                    sk = resume.skills[flat_idx]
-                    text_w = fitz.get_text_length(sk, fontname=skill_font, fontsize=skill_size)
-                    max_text_w = col_w - 8
-                    if text_w <= max_text_w:
-                        page.insert_text(
-                            (x0 + 4, y + skill_size + 4),
-                            sk, fontsize=skill_size, fontname=skill_font, color=_DARK_F,
-                        )
-                    else:
-                        words = sk.split()
-                        line1, line2 = "", ""
-                        for w in words:
-                            test = (line1 + " " + w).strip()
-                            if fitz.get_text_length(test, fontname=skill_font, fontsize=skill_size) <= max_text_w:
-                                line1 = test
-                            else:
-                                line2 = (line2 + " " + w).strip()
-                        page.insert_text((x0 + 4, y + skill_size + 4), line1, fontsize=skill_size, fontname=skill_font, color=_DARK_F)
-                        if line2:
-                            page.insert_text((x0 + 4, y + skill_size * 2.5 + 4), line2, fontsize=skill_size, fontname=skill_font, color=_DARK_F)
-            y += row_h
-        y += skill_size * 2
-
-    if resume.education:
-        section_title("Education")
-        for edu in resume.education:
-            check_page(16)
-            line = ", ".join(filter(None, [edu.degree, edu.institution]))
-            draw_text(left, line, size=10, color=_DARK_F, bold=True)
-            if edu.year:
-                dw = fitz.get_text_length(edu.year, fontname=_PDF_REGULAR, fontsize=9)
-                page.insert_text((right - dw, y - 10 * 1.5), edu.year, fontsize=9, fontname=_PDF_REGULAR, color=_GREY_F)
-            y += 4
+        if y > top:
+            new_page()
+        section_title("Selected Project Delivery", compact_top=True)
+        for project in resume.projects:
+            title, context, dates = _project_display_parts(project)
+            role_line(title, [context], dates)
+            for item in project.bullets:
+                bullet(item)
 
     if resume.certifications:
         section_title("Certifications")
-        for cert in resume.certifications:
-            check_page(12)
-            parts = [p.strip() for p in cert.split("|")]
-            display = " \u00b7 ".join(filter(None, parts))
-            page.insert_text((left + 3, y), "\u2022", fontsize=9.5, fontname=_PDF_REGULAR, color=_DARK_F)
-            draw_text(left + 12, display, size=9.5)
+        for certification in resume.certifications:
+            ensure(9.7)
+            title, issuer, year = _certification_parts(certification)
+            baseline = y + 9.0
+            insert(left, baseline, title, size=9.0, bold=True)
+            if issuer:
+                insert(left + CERT_ISSUER_TAB_PT, baseline, issuer, size=9.0, color=_GREY_F)
+            if year:
+                year_width = text_width(year, _PDF_REGULAR, 9.0)
+                insert(left + CERT_YEAR_TAB_PT - year_width, baseline, year, size=9.0, color=_GREY_F)
+            y += 9.5
+
+    if resume.education:
+        section_title("Education")
+        for education in resume.education:
+            degree, detail = _education_display(education)
+            draw_wrapped([
+                ((degree + " ") if degree else "", True, _DARK_F, False),
+                (detail, False, _DARK_F, False),
+            ], size=9.0, line_height=9.5)
 
     if resume.languages:
         section_title("Languages")
-        langs = EXP_SEP.join(resume.languages)
-        draw_text(left, langs, size=9.5)
+        text = " | ".join(resume.languages)
+        if ":" in text:
+            label, value = text.split(":", 1)
+            draw_wrapped([
+                (label + ":", True, _DARK_F, False),
+                (value, False, _DARK_F, False),
+            ], size=9.0, line_height=9.5)
+        else:
+            draw_wrapped([(text, False, _DARK_F, False)], size=9.0, line_height=9.5)
 
     doc.save(path)
     doc.close()
 
 
 def export_text_docx(text: str, path: str) -> None:
-    """Save plain text (e.g. a cover letter) as a DOCX file, A4 size."""
+    """Save plain text (e.g. a cover letter) as a US Letter DOCX file."""
     logger.info("Exporting text to DOCX: %s", path)
     doc = Document()
     section = doc.sections[0]
-    section.page_width = Mm(A4_WIDTH_MM)
-    section.page_height = Mm(A4_HEIGHT_MM)
+    section.page_width = Mm(PAGE_WIDTH_MM)
+    section.page_height = Mm(PAGE_HEIGHT_MM)
     for paragraph in text.split("\n"):
         doc.add_paragraph(paragraph)
     doc.save(path)

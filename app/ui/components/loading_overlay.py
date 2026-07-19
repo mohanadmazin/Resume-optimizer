@@ -2,7 +2,7 @@
 
 """Semi-transparent overlay with spinner for blocking operations."""
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QProgressBar, QVBoxLayout, QWidget
 
 

@@ -1,7 +1,7 @@
 """Lightweight undo stack for resume edits."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable
 
 

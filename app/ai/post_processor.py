@@ -37,7 +37,6 @@ class PostProcessor:
 
         # Split into protected (code blocks, tables) and unprotected regions
         protected: list[str] = []
-        placeholders: list[str] = []
 
         def _protect(match: re.Match) -> str:
             placeholder = f"\x00PROTECTED{len(protected)}\x00"

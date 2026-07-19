@@ -3,7 +3,6 @@
 Each test uses a temporary database so the real user database is never touched.
 """
 
-import shutil
 import sqlite3
 import textwrap
 from pathlib import Path
@@ -15,7 +14,6 @@ from alembic import command
 from alembic.config import Config
 
 from app.database.migrate import (
-    MAX_BACKUPS,
     _backup_database,
     _has_alembic_version,
     _has_tables,

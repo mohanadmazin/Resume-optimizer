@@ -14,6 +14,23 @@ from app.core.settings import load_settings
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+_AI_SLOT = threading.BoundedSemaphore(1)
+
+
+class _GenerationLockView:
+    """Lock-compatible view retained for callers while sharing one AI slot."""
+    def acquire(self, blocking: bool = True) -> bool:
+        return _AI_SLOT.acquire(blocking=blocking)
+
+    def release(self) -> None:
+        _AI_SLOT.release()
+
+    def locked(self) -> bool:
+        acquired = _AI_SLOT.acquire(blocking=False)
+        if acquired:
+            _AI_SLOT.release()
+            return False
+        return True
 
 
 class OllamaError(Exception):
@@ -43,7 +60,7 @@ class OllamaClient:
         self.model = model or settings.ai.model
         self.temperature = settings.ai.temperature
         self._cancel_event: threading.Event | None = None
-        self._generation_lock = threading.Lock()
+        self._generation_lock = _GenerationLockView()
         self._post = PostProcessor()
 
     def set_cancel_event(self, event: threading.Event | None) -> None:
@@ -63,8 +80,6 @@ class OllamaClient:
         return [m["name"] for m in resp.json().get("models", [])]
 
     def generate(self, prompt: str, system: str | None = None, json_mode: bool = False) -> str:
-        if not self._generation_lock.acquire(blocking=False):
-            raise AIBusyError("Another AI generation is already in progress. Please wait.")
         try:
             json_schema = "json" if json_mode else None
             return self._generate_impl(prompt, system=system, json_schema=json_schema)
@@ -80,11 +95,22 @@ class OllamaClient:
                 f"Ollama request failed: {exc}. Is Ollama running at {self.base_url}? "
                 f"Start it with 'ollama serve' and pull the model with 'ollama pull {self.model}'."
             ) from exc
-        finally:
-            self._generation_lock.release()
 
     @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=requests.RequestException)
     def _generate_impl(
+        self,
+        prompt: str,
+        system: str | None = None,
+        json_schema: dict | str | None = None,
+    ) -> str:
+        if not _AI_SLOT.acquire(blocking=False):
+            raise AIBusyError("Another AI generation is already in progress. Please wait.")
+        try:
+            return self._generate_stream(prompt, system=system, json_schema=json_schema)
+        finally:
+            _AI_SLOT.release()
+
+    def _generate_stream(
         self,
         prompt: str,
         system: str | None = None,
@@ -140,7 +166,7 @@ class OllamaClient:
             raise OllamaProtocolError("Ollama returned malformed NDJSON.") from exc
 
         text = "".join(pieces)
-        logger.debug("Ollama raw response (first 500 chars): %s", text[:500])
+        logger.debug("Ollama response received: chars=%d", len(text))
 
         text = self._post.clean_for_resume(text)
         return text.strip()
@@ -175,8 +201,8 @@ class OllamaClient:
         cancellations are raised immediately.
         """
         schema_definition = schema.model_json_schema()
-        last_error = None
         current_prompt = prompt
+        format_spec: dict | str = schema_definition
 
         for attempt in range(max_validation_attempts + 1):
             self._check_cancelled()
@@ -185,13 +211,30 @@ class OllamaClient:
                 raw = self._generate_impl(
                     current_prompt,
                     system=system,
-                    json_schema=schema_definition,
+                    json_schema=format_spec,
                 )
                 return schema.model_validate_json(raw)
             except (OllamaCancelledError, OllamaTransportError):
                 raise
+            except requests.HTTPError as exc:
+                if (
+                    exc.response is not None
+                    and exc.response.status_code == 400
+                    and isinstance(format_spec, dict)
+                ):
+                    logger.warning(
+                        "Model rejected JSON schema; falling back to JSON mode"
+                    )
+                    format_spec = "json"
+                    current_prompt = (
+                        f"{prompt}\n\nReturn only JSON matching this schema:\n"
+                        f"{json.dumps(schema_definition)}"
+                    )
+                    continue
+                raise OllamaTransportError(
+                    f"Ollama structured request failed: {exc}"
+                ) from exc
             except (OllamaProtocolError, ValidationError) as exc:
-                last_error = exc
                 logger.warning(
                     "Validation attempt %d/%d failed: %s",
                     attempt + 1,
@@ -205,7 +248,8 @@ class OllamaClient:
 
                 current_prompt = (
                     f"{prompt}\n\n"
-                    "Return only data matching the supplied JSON schema. "
+                    "Return only data matching this JSON schema: "
+                    f"{json.dumps(schema_definition)}. "
                     f"Previous validation error: {exc}"
                 )
 

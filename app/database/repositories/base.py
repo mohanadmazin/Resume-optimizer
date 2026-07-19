@@ -1,5 +1,5 @@
 """Base repository with common database operations."""
-from abc import ABC, abstractmethod
+from abc import ABC
 
 from sqlalchemy.orm import Session
 

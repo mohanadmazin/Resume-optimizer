@@ -4,11 +4,9 @@
 
 import re
 from dataclasses import replace
-from datetime import date
 
 from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -34,7 +32,7 @@ from app.services.diff_highlight import resume_diff_html
 from app.services.document_reader import extract_text
 from app.services.job_fetcher import fetch_job
 from app.services.optimizer import apply_accepted_changes, optimize_resume
-from app.services.resume_parser import parse_resume, parse_resume_ai
+from app.services.resume_parser import parse_resume
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 
@@ -46,7 +44,6 @@ class OptimizationPage(QWidget):
         self._worker = None
         self._overlay = LoadingOverlayManager()
         self._change_cards: dict[int, tuple[ProposedChange, QFrame]] = {}
-        self._reviewed_indices: set[int] = set()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -393,7 +390,6 @@ class OptimizationPage(QWidget):
 
         # Clear old change cards
         self._change_cards.clear()
-        self._reviewed_indices.clear()
 
         if total == 0:
             self.fact_banner.setVisible(False)
@@ -431,23 +427,23 @@ class OptimizationPage(QWidget):
             )
         self.fact_banner.setVisible(True)
 
-        # Review panel — show each flagged change
+        # Review panel — every proposal is a user decision. Fact safety is
+        # metadata and never acts as approval.
         # Clear old content
         while self.review_layout.count():
             child = self.review_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
 
-        if flagged:
-            header = QLabel("Flagged Changes — Review Before Accepting:")
-            header.setObjectName("reviewHeader")
-            self.review_layout.addWidget(header)
+        header = QLabel("Proposed Changes — Accept or Reject Each:")
+        header.setObjectName("reviewHeader")
+        self.review_layout.addWidget(header)
 
-            for idx, change in enumerate(result.flagged_changes):
-                self._add_change_card(idx, change)
+        for idx, change in enumerate(result.all_changes):
+            self._add_change_card(idx, change)
 
-        self.review_scroll.setVisible(flagged > 0)
-        self.apply_btn.setVisible(flagged > 0)
+        self.review_scroll.setVisible(True)
+        self.apply_btn.setVisible(True)
 
     def _add_change_card(self, idx: int, change: ProposedChange) -> None:
         """Add a single change card to the review panel with Accept/Reject."""
@@ -503,21 +499,26 @@ class OptimizationPage(QWidget):
         status_label = QLabel("Pending review")
         status_label.setStyleSheet("color: #9CA3AF; font-size: 11px;")
 
-        def _on_accept(change_idx=idx, sl=status_label, ab=accept_btn, rb=reject_btn):
-            self.window.state.fact_guard.flagged_changes[change_idx].accepted = True
-            self._reviewed_indices.add(change_idx)
+        if change.accepted is True:
+            status_label.setText("Accepted")
+            status_label.setStyleSheet(
+                "color: #22C55E; font-size: 11px; font-weight: bold;"
+            )
+        elif change.accepted is False:
+            status_label.setText("Rejected")
+            status_label.setStyleSheet(
+                "color: #EF4444; font-size: 11px; font-weight: bold;"
+            )
+
+        def _on_accept(_checked: bool = False, proposal=change, sl=status_label):
+            proposal.accepted = True
             sl.setText("Accepted")
             sl.setStyleSheet("color: #22C55E; font-size: 11px; font-weight: bold;")
-            ab.setEnabled(False)
-            rb.setEnabled(False)
 
-        def _on_reject(change_idx=idx, sl=status_label, ab=accept_btn, rb=reject_btn):
-            self.window.state.fact_guard.flagged_changes[change_idx].accepted = False
-            self._reviewed_indices.add(change_idx)
+        def _on_reject(_checked: bool = False, proposal=change, sl=status_label):
+            proposal.accepted = False
             sl.setText("Rejected")
             sl.setStyleSheet("color: #EF4444; font-size: 11px; font-weight: bold;")
-            ab.setEnabled(False)
-            rb.setEnabled(False)
 
         accept_btn.clicked.connect(_on_accept)
         reject_btn.clicked.connect(_on_reject)
@@ -536,45 +537,18 @@ class OptimizationPage(QWidget):
         if state.fact_guard is None or state.resume is None:
             return
 
-        all_reviewed = all(
-            i in self._reviewed_indices
-            for i in range(len(state.fact_guard.flagged_changes))
-        )
-
-        if not all_reviewed:
+        if not state.fact_guard.review_complete:
             QMessageBox.warning(
                 self,
                 "Changes pending",
-                "Please accept or reject all flagged changes before applying.",
+                "Please accept or reject every proposed change before applying.",
             )
             return
 
-        # Apply accepted changes to the current optimized resume so they
-        # persist and the FactGuard won't re-flag them on re-run
-        state.optimized = apply_accepted_changes(state.optimized or state.resume, state.fact_guard)
-
-        # Collect accepted keywords from flagged changes
-        accepted_keywords = []
-        for change in state.fact_guard.flagged_changes:
-            if change.accepted:
-                if change.has_new_skills:
-                    accepted_keywords.append(change.rewritten.strip())
-                if change.has_new_numbers:
-                    accepted_keywords.append(change.rewritten.strip())
-                if change.has_new_entities:
-                    accepted_keywords.append(change.rewritten.strip())
-
-        # Add accepted keywords to the ATS missing_keywords so the
-        # re-optimization prompt includes them
-        if state.ats is not None:
-            for kw in accepted_keywords:
-                if kw and kw not in state.ats.missing_keywords:
-                    state.ats.missing_keywords.append(kw)
-
-        # Merge into selected_keywords so the re-run includes them
-        if state.selected_keywords is None:
-            state.selected_keywords = list(state.ats.missing_keywords) if state.ats else []
-        state.selected_keywords.extend(k for k in accepted_keywords if k and k not in state.selected_keywords)
+        accepted_count = state.fact_guard.accepted_count
+        state.optimized = apply_accepted_changes(state.resume, state.fact_guard)
+        self.after.setHtml(resume_diff_html(state.resume, state.optimized))
+        self._update_score_display()
 
         # Clear fact guard state before re-running
         state.fact_guard = None
@@ -582,8 +556,7 @@ class OptimizationPage(QWidget):
         self.apply_btn.setVisible(False)
         self.fact_banner.setVisible(False)
 
-        self.window.notify(f"Re-optimizing with {len(accepted_keywords)} accepted keyword(s)...")
-        self._run()
+        self.window.notify(f"Applied {accepted_count} accepted change(s).")
 
     # ── Score styling ──────────────────────────────────────────────────────
 
@@ -641,18 +614,25 @@ class OptimizationPage(QWidget):
 
     @staticmethod
     def _clean_filename_part(text: str) -> str:
-        text = re.sub(r'[\\/:*?"<>|]+', "", text).strip()
-        return re.sub(r"\s+", " ", text)
+        """Return an underscore-safe filename fragment."""
+        tokens = re.findall(r"[A-Za-z0-9]+", text or "")
+        return "_".join(tokens)
 
     def _default_filename(self, fmt: str) -> str:
+        """Use the targeted-resume naming convention shown in the template."""
         state = self.window.state
-        parts = ["Resume"]
-        if state.job_company.strip():
-            parts.append(self._clean_filename_part(state.job_company))
-        if state.job_title.strip():
-            parts.append(self._clean_filename_part(state.job_title))
-        parts.append(date.today().isoformat())
-        return " - ".join(parts) + f".{fmt}"
+        resume = state.optimized or state.resume
+
+        name = resume.contact.name if resume is not None else "Resume"
+        name_tokens = re.findall(r"[A-Za-z0-9]+", name)
+        candidate = "_".join(name_tokens[:2]) or "Resume"
+
+        headline_role = ""
+        if resume is not None and resume.headline.strip():
+            headline_role = resume.headline.split("|", 1)[0].strip()
+        role = headline_role or state.job_title.strip() or "Resume"
+        role_fragment = self._clean_filename_part(role) or "Resume"
+        return f"{candidate}_Targeted_{role_fragment}.{fmt}"
 
     def _export(self, fmt: str) -> None:
         state = self.window.state

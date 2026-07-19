@@ -79,9 +79,16 @@ STRICT RULES
     - truthful
     - no keyword stuffing
 
-12. Every JSON value must contain plain text only.
+12. Summary rules:
+    - maximum 300 words
+    - 2 to 4 concise sentences
+    - do not include section headings or labels
+    - do not append a technical-skills list
+    - keep skills only in the existing skills array
 
-13. Return this structure only:
+13. Every JSON value must contain plain text only.
+
+14. Return this structure only:
 
 {
   "headline": "",
@@ -95,7 +102,7 @@ STRICT RULES
   ]
 }
 
-14. bullet_rewrites rules:
+15. bullet_rewrites rules:
     - experience_index is 0-based position in the experience array
     - bullet_index is 0-based position of the bullet within that experience
     - Only include bullets that were actually changed
@@ -152,6 +159,8 @@ Requirements:
 - Maximum 5 bullets per company.
 - Keep experience count unchanged.
 - Keep experience order unchanged.
+- Keep the summary at 300 words or fewer.
+- Do not place a skills heading or skills list inside the summary.
 - Only include bullets that were actually changed.
 - experience_index is 0-based position in the experience array.
 - bullet_index is 0-based position of the bullet within that experience.
@@ -356,6 +365,10 @@ RULES
 - Extract headline if present.
 - Extract projects if present.
 - Extract languages if present.
+- Keep summary content under "summary" only; stop at the next section heading.
+- Keep the summary at 300 words or fewer.
+- Put content under Skills, Technical Skills, or Core Technical Skills only in "skills".
+- Never append a skills heading or skills list to "summary".
 - Do not move projects into experience.
 - Do not move certifications into skills.
 - Do not infer missing information.

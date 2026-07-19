@@ -246,6 +246,51 @@ def test_new_tech_in_rewritten_bullet_flagged():
     assert any(c.has_new_skills for c in result.flagged_changes)
 
 
+def test_lowercase_new_tech_in_rewritten_bullet_flagged():
+    source = _resume(skills=["Python"])
+    source.experience[0].bullets = ["Built web applications"]
+    optimized = _resume(skills=["Python"])
+    optimized.experience[0].bullets = ["Built web apps with terraform"]
+    result = FactGuard().validate(source, optimized)
+    assert result.unsupported_skills == ["terraform"]
+    assert any(c.has_new_skills for c in result.flagged_changes)
+
+
+def test_capitalized_action_verb_is_not_a_skill():
+    source = _resume()
+    optimized = _resume()
+    optimized.experience[0].bullets[0] = "Spearheaded REST APIs with Django serving 1M daily requests"
+    result = FactGuard().validate(source, optimized)
+    assert not result.unsupported_skills
+    assert all(not c.has_new_skills for c in result.all_changes)
+
+
+def test_deleted_bullet_requires_review():
+    source = _resume()
+    optimized = _resume()
+    optimized.experience[0].bullets.pop()
+    result = FactGuard().validate(source, optimized)
+    assert any(c.rewritten == "" and c.requires_review for c in result.flagged_changes)
+
+
+def test_negation_change_requires_review():
+    source = _resume()
+    source.experience[0].bullets = ["Did not manage production deployments."]
+    optimized = _resume()
+    optimized.experience[0].bullets = ["Managed production deployments."]
+    result = FactGuard().validate(source, optimized)
+    assert any("polarity" in c.review_reason.lower() for c in result.flagged_changes)
+
+
+def test_change_ratio_is_enforced():
+    source = _resume()
+    source.experience[0].bullets = ["Built APIs", "Wrote tests", "Fixed bugs"]
+    optimized = _resume()
+    optimized.experience[0].bullets = ["Built services", "Created tests", "Fixed bugs"]
+    result = FactGuard(max_bullet_change_ratio=0.5).validate(source, optimized)
+    assert len(result.flagged_changes) >= 2
+
+
 # ── FactGuard.validate — headline ────────────────────────────────────────────
 
 
@@ -275,3 +320,25 @@ def test_fact_guard_result_accepted_count():
                               has_new_numbers=True, accepted=True)]
     result = FactGuardResult(safe_changes=safe, flagged_changes=flagged)
     assert result.accepted_count == 2
+
+
+def test_review_complete_uses_change_decisions_not_ui_state():
+    accepted = ProposedChange(
+        change_type=ChangeType.SUMMARY, original="a", rewritten="b", accepted=True
+    )
+    rejected = ProposedChange(
+        change_type=ChangeType.HEADLINE, original="c", rewritten="d", accepted=False
+    )
+    result = FactGuardResult(safe_changes=[accepted], flagged_changes=[rejected])
+    assert result.review_complete is True
+
+
+def test_review_incomplete_when_any_decision_is_pending():
+    decided = ProposedChange(
+        change_type=ChangeType.SUMMARY, original="a", rewritten="b", accepted=True
+    )
+    pending = ProposedChange(
+        change_type=ChangeType.HEADLINE, original="c", rewritten="d", accepted=None
+    )
+    result = FactGuardResult(safe_changes=[decided], flagged_changes=[pending])
+    assert result.review_complete is False

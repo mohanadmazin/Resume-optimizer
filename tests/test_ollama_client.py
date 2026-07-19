@@ -5,8 +5,27 @@ from unittest.mock import patch
 import pytest
 import requests
 from circuitbreaker import CircuitBreakerMonitor
+from pydantic import BaseModel
 
 from app.ai.ollama_client import AIBusyError, OllamaClient, OllamaError
+
+
+class _StructuredResult(BaseModel):
+    value: str
+
+
+def test_structured_generation_falls_back_when_schema_is_rejected(client):
+    bad_response = requests.Response()
+    bad_response.status_code = 400
+    error = requests.HTTPError("400 Bad Request", response=bad_response)
+    with patch.object(
+        client,
+        "_generate_impl",
+        side_effect=[error, '{"value":"ok"}'],
+    ) as generate:
+        result = client.generate_structured("prompt", _StructuredResult)
+    assert result.value == "ok"
+    assert generate.call_args_list[1].kwargs["json_schema"] == "json"
 
 
 @pytest.fixture()

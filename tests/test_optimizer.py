@@ -1,7 +1,6 @@
 """Tests for the resume optimizer service (safe-only apply, apply_accepted_changes)."""
 
-import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from app.domain.analysis import ATSResult
 from app.domain.fact_guard import ChangeType, FactGuardResult, ProposedChange
@@ -107,13 +106,14 @@ def test_apply_change_does_not_mutate_original():
 # ── apply_accepted_changes ───────────────────────────────────────────────────
 
 
-def test_apply_accepted_changes_only_applies_accepted_flagged():
+def test_apply_accepted_changes_only_applies_explicitly_accepted_changes():
     resume = _resume()
     safe = ProposedChange(
         change_type=ChangeType.SUMMARY,
         section="Summary",
         original="Experienced software engineer.",
         rewritten="Senior software engineer.",
+        accepted=False,
     )
     flagged_accepted = ProposedChange(
         change_type=ChangeType.HEADLINE,
@@ -138,8 +138,8 @@ def test_apply_accepted_changes_only_applies_accepted_flagged():
 
     result = apply_accepted_changes(resume, fact_result)
 
-    # Safe change applied
-    assert result.summary == "Senior software engineer."
+    # A factually safe but rejected change is not applied
+    assert result.summary == "Experienced software engineer."
     # Accepted flagged change applied
     assert result.headline == "Senior Software Engineer | Cloud Expert"
     # Rejected flagged change NOT applied
@@ -152,7 +152,7 @@ def test_apply_accepted_changes_does_not_mutate_original():
     fact_result = FactGuardResult(
         safe_changes=[
             ProposedChange(change_type=ChangeType.SUMMARY, section="s",
-                           original=original_summary, rewritten="New summary")
+                           original=original_summary, rewritten="New summary", accepted=True)
         ],
         flagged_changes=[],
     )
@@ -166,8 +166,8 @@ def test_apply_accepted_changes_does_not_mutate_original():
 
 @patch("app.services.optimizer.FactGuard")
 @patch("app.services.optimizer.OllamaClient")
-def test_optimize_resume_only_applies_safe_changes(mock_client_cls, mock_guard_cls):
-    """The optimizer should apply safe changes but leave flagged ones as proposals."""
+def test_optimize_resume_applies_no_changes_before_review(mock_client_cls, mock_guard_cls):
+    """The optimizer returns proposals without treating safety as approval."""
     from app.domain.optimization import BulletRewrite, OptimizationAIOutput
 
     # Mock AI response as structured output with indexed bullet rewrites
@@ -213,8 +213,8 @@ def test_optimize_resume_only_applies_safe_changes(mock_client_cls, mock_guard_c
 
     result_resume, result_fact = optimize_resume(_resume(), "some jd text", _ats(), mock_client)
 
-    # Safe change applied
-    assert result_resume.summary == "Expert Python developer with 10 years."
+    # Even a safe change remains unapplied until explicitly accepted
+    assert result_resume.summary == "Experienced software engineer."
     # Flagged change NOT applied
     assert result_fact.flagged_count == 1
     assert len(result_fact.safe_changes) == 1

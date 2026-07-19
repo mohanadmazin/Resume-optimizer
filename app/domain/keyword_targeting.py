@@ -1,4 +1,5 @@
 """Keyword targeting domain models and helpers."""
+import re
 from typing import List
 from enum import Enum
 from pydantic import BaseModel, Field
@@ -53,7 +54,6 @@ class ResumeTextMatch(BaseModel):
     text: str
 
 # Normalization helper
-import re
 def normalize(s: str) -> str:
     return re.sub(r"[^a-z0-9#+.]", "", s.lower())
 

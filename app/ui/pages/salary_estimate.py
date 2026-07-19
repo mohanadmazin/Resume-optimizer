@@ -133,7 +133,6 @@ class SalaryEstimatePage(QWidget):
 
     def run_analysis(self, silent: bool = False) -> None:
         """Run salary estimation — can be called internally or from another page."""
-        state = self.window.state
         resume = self._load_resume()
 
         if resume is None:

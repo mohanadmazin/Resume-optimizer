@@ -1,11 +1,9 @@
 """Tests for ResumeStudioViewModel, SectionNavigator, SectionEditor, InsightsPanel."""
 from __future__ import annotations
 
-import copy
 import sys
 from unittest.mock import MagicMock
 
-import pytest
 
 # ── PySide6 import guard ───────────────────────────────────────────────────
 from PySide6.QtWidgets import QApplication
@@ -22,8 +20,6 @@ from app.domain.resume import (
 from app.domain.analysis import ATSResult
 from app.domain.scoring import (
     CategoryScore,
-    IssueSeverity,
-    ResumeIssue,
     ResumeScoreReport,
     ScoreCategory,
 )

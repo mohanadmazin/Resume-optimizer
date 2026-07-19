@@ -1,14 +1,10 @@
 """Tests for the parser fact guard — anti-hallucination layer."""
-from unittest.mock import patch
 
-import pytest
 
-from app.domain.fact_guard import ParseFactGuardResult
 from app.domain.resume import (
     ContactInfo,
     EducationItem,
     ExperienceItem,
-    ParseWarning,
     ResumeData,
 )
 from app.services.parser_fact_guard import _field_found_in_text, verify_parse

@@ -39,12 +39,18 @@ class AISettings(BaseModel):
     @classmethod
     def _validate_url(cls, v: str) -> str:
         v = v.strip()
-        if not _URL_RE.match(v):
-            raise ValueError("Must be a valid HTTP or HTTPS URL")
         parsed = urlparse(v)
         if parsed.scheme not in ("http", "https"):
             raise ValueError("Only http and https schemes are allowed")
-        return v
+        if not parsed.hostname:
+            raise ValueError("A hostname is required")
+        if parsed.username or parsed.password:
+            raise ValueError("Credentials are not allowed")
+        if parsed.path not in ("", "/"):
+            raise ValueError("Do not include an API path")
+        if parsed.query or parsed.fragment:
+            raise ValueError("Queries and fragments are not allowed")
+        return v.rstrip("/")
 
 
 class AppearanceSettings(BaseModel):

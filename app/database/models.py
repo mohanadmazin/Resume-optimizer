@@ -5,7 +5,7 @@ from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -22,6 +22,8 @@ class Resume(Base):
     source_hash = Column(String(64), default="")
     is_original = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    analyses = relationship("Analysis", cascade="all, delete-orphan", passive_deletes=True)
+    optimizations = relationship("Optimization", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class JobDescription(Base):
@@ -31,14 +33,16 @@ class JobDescription(Base):
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    analyses = relationship("Analysis", cascade="all, delete-orphan", passive_deletes=True)
+    optimizations = relationship("Optimization", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class Analysis(Base):
     __tablename__ = "analyses"
 
     id = Column(Integer, primary_key=True)
-    resume_id = Column(Integer, ForeignKey("resumes.id"), nullable=False)
-    job_id = Column(Integer, ForeignKey("job_descriptions.id"), nullable=False)
+    resume_id = Column(Integer, ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("job_descriptions.id", ondelete="CASCADE"), nullable=False, index=True)
     ats_score = Column(Integer, nullable=False)
     keyword_match = Column(Float, default=0.0)
     skills_match = Column(Float, default=0.0)
@@ -51,8 +55,8 @@ class Optimization(Base):
     __tablename__ = "optimizations"
 
     id = Column(Integer, primary_key=True)
-    resume_id = Column(Integer, ForeignKey("resumes.id"), nullable=False)
-    job_id = Column(Integer, ForeignKey("job_descriptions.id"), nullable=False)
+    resume_id = Column(Integer, ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("job_descriptions.id", ondelete="CASCADE"), nullable=False, index=True)
     model = Column(String(100), default="")
     optimized_json = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

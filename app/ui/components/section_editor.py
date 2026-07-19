@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFrame,
     QFormLayout,
@@ -213,7 +213,7 @@ class SectionEditor(QWidget):
                 bullet_le.editingFinished.connect(
                     lambda i=idx, b=j, le=bullet_le: self._on_bullet_edit(i, b, le.text())
                 )
-                form.addRow(f"  •", bullet_le)
+                form.addRow("  •", bullet_le)
 
             self._container_layout.addWidget(card)
             if idx < len(experience) - 1:

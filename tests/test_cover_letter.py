@@ -1,6 +1,6 @@
 """Tests for the cover letter fact-checking."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from app.domain.resume import ContactInfo, EducationItem, ExperienceItem, ResumeData
 from app.services.cover_letter import _check_cover_letter_facts, generate_cover_letter
@@ -139,6 +139,17 @@ def test_target_employer_always_allowed_even_if_not_in_resume():
     assert len(warnings) == 0
 
 
+def test_job_description_facts_are_allowed():
+    resume = _resume()
+    letter = "I can support IEC 62443 programs with Nozomi Guardian."
+    warnings = _check_cover_letter_facts(
+        letter,
+        resume,
+        allowed_text="Experience with IEC 62443 and Nozomi Guardian is preferred.",
+    )
+    assert warnings == ()
+
+
 # ── Warnings are a tuple, never contaminate text ─────────────────────────────
 
 
@@ -153,8 +164,7 @@ def test_warnings_never_in_letter_text():
     """Fact-check warnings must never be appended to the letter text."""
     resume = _resume()
     letter = "Dear Hiring Manager, I am interested in the role."
-    warnings = _check_cover_letter_facts(letter, resume)
-    combined = letter + "\n".join(warnings)
+    _check_cover_letter_facts(letter, resume)
     # The letter text itself should not contain any warning markers
     assert "not found in resume" not in letter
     assert "mentions organization not" not in letter

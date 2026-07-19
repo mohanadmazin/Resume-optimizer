@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 
 # Job board site names that should NOT be used as company names
 _JOB_BOARD_SITES: frozenset[str] = frozenset({

@@ -55,3 +55,54 @@ def test_education_and_certifications():
     assert resume.education
     assert resume.education[0].year == "2018"
     assert any("AWS" in cert for cert in resume.certifications)
+
+
+def test_multiline_education_is_one_record():
+    resume = parse_resume("""Jane Doe
+
+Education
+Bachelor of Science in Computer Science
+University of Example
+2018 - 2022
+""")
+    assert len(resume.education) == 1
+    assert resume.education[0].institution == "University of Example"
+
+
+def test_certification_comma_is_preserved():
+    resume = parse_resume("""Jane Doe
+
+Certifications
+AWS Certified Solutions Architect, Associate
+""")
+    assert resume.certifications == ["AWS Certified Solutions Architect, Associate"]
+
+
+def test_table_style_education_rows_stay_separate():
+    resume = parse_resume("""Jane Doe
+
+Education
+Master of Science · Example University · GPA: 4.0
+2019 – 2021
+Bachelor of Science · Another University · GPA: 3.8
+2015 – 2019
+""")
+    assert len(resume.education) == 2
+    assert [item.year for item in resume.education] == ["2019 – 2021", "2015 – 2019"]
+
+
+def test_table_style_certification_fields_are_grouped():
+    resume = parse_resume("""Jane Doe
+
+Certifications
+Security Professional
+Certification Body
+2025
+Network Associate
+Vendor
+2024
+""")
+    assert resume.certifications == [
+        "Security Professional | Certification Body | 2025",
+        "Network Associate | Vendor | 2024",
+    ]

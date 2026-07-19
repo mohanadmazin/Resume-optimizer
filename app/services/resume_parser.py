@@ -127,7 +127,7 @@ def parse_resume(text: str) -> ResumeData:
     return ResumeData(
         contact=contact,
         headline=headline,
-        summary=" ".join(l.strip() for l in sections.get("summary", []) if l.strip()),
+        summary=" ".join(line.strip() for line in sections.get("summary", []) if line.strip()),
         skills=_parse_skills(sections.get("skills", [])),
         experience=experience,
         education=_parse_education(sections.get("education", [])),
@@ -187,6 +187,27 @@ def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
         if fact_result.has_hallucinations:
             for h in fact_result.hallucinated_fields:
                 _strip_hallucinated_field(resume, h)
+            invalid_experience_bullets: dict[int, set[int]] = {}
+            invalid_project_bullets: dict[int, set[int]] = {}
+            for field in fact_result.hallucinated_fields:
+                if field.section.startswith("experience_bullets:"):
+                    invalid_experience_bullets.setdefault(
+                        int(field.section.split(":", 1)[1]), set()
+                    ).add(field.index)
+                elif field.section.startswith("project_bullets:"):
+                    invalid_project_bullets.setdefault(
+                        int(field.section.split(":", 1)[1]), set()
+                    ).add(field.index)
+            for item_index, bullet_indexes in invalid_experience_bullets.items():
+                if item_index < len(resume.experience):
+                    for bullet_index in sorted(bullet_indexes, reverse=True):
+                        if bullet_index < len(resume.experience[item_index].bullets):
+                            del resume.experience[item_index].bullets[bullet_index]
+            for item_index, bullet_indexes in invalid_project_bullets.items():
+                if item_index < len(resume.projects):
+                    for bullet_index in sorted(bullet_indexes, reverse=True):
+                        if bullet_index < len(resume.projects[item_index].bullets):
+                            del resume.projects[item_index].bullets[bullet_index]
             # Delete invalid certifications by reverse-sorted index
             invalid_cert_indexes = sorted(
                 {
@@ -201,7 +222,7 @@ def parse_resume_ai(text: str, client: OllamaClient) -> ResumeData:
                     del resume.certifications[index]
             # Remove blanked list items
             resume.skills = [s for s in resume.skills if s]
-            resume.languages = [l for l in resume.languages if l]
+            resume.languages = [lang for lang in resume.languages if lang]
             resume.parse_warnings.extend(fact_result.warnings)
             logger.info(
                 "Parser fact guard stripped %d hallucinated field(s)",
@@ -233,20 +254,18 @@ def _strip_hallucinated_field(resume: ResumeData, h: HallucinatedField) -> None:
     if h.section == "experience" and h.index < len(resume.experience):
         setattr(resume.experience[h.index], h.field, "")
     elif h.section.startswith("experience_bullets:") and h.index is not None:
-        parts = h.section.split(":")
-        exp_idx = int(parts[1])
-        if exp_idx < len(resume.experience):
-            exp = resume.experience[exp_idx]
-            if h.index < len(exp.bullets):
-                exp.bullets[h.index] = ""
+        return  # Removed in a reverse-sorted batch.
     elif h.section == "education" and h.index < len(resume.education):
         setattr(resume.education[h.index], h.field, "")
     elif h.section == "certifications" and h.index < len(resume.certifications):
-        resume.certifications[h.index] = ""
+        # Removed in a reverse-sorted batch after all findings are collected.
+        return
     elif h.section == "skills" and h.index < len(resume.skills):
         resume.skills[h.index] = ""
     elif h.section == "projects" and h.index < len(resume.projects):
         setattr(resume.projects[h.index], h.field, "")
+    elif h.section.startswith("project_bullets:") and h.index is not None:
+        return  # Removed in a reverse-sorted batch.
     elif h.section == "languages" and h.index < len(resume.languages):
         resume.languages[h.index] = ""
 
@@ -423,36 +442,92 @@ def _parse_experience(lines: list[str]) -> tuple[list[ExperienceItem], list[Pars
     return [item for item in items if item.title or item.bullets], warnings
 
 
-def _parse_education(lines: list[str]) -> list[EducationItem]:
-    items: list[EducationItem] = []
+_DEGREE_TERMS = {
+    "bachelor", "master", "phd", "doctor", "diploma", "associate",
+    "bsc", "msc", "mba",
+}
+
+
+def _split_blocks(lines: list[str]) -> list[list[str]]:
+    blocks: list[list[str]] = []
+    current: list[str] = []
     for raw in lines:
         line = BULLET_RE.sub("", raw).strip()
         if not line:
+            if current:
+                blocks.append(current)
+                current = []
             continue
-        year_match = YEAR_RE.search(line)
-        parts = [p.strip() for p in re.split(r"\s*[,|]\s*|\s+[\u2013\u2014-]\s+", line) if p.strip()]
-        parts = [p for p in parts if not YEAR_RE.fullmatch(p)]
-        items.append(
-            EducationItem(
-                degree=parts[0] if parts else line,
-                institution=parts[1] if len(parts) > 1 else "",
-                year=year_match.group(0) if year_match else "",
+        current.append(line)
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def _parse_education(lines: list[str]) -> list[EducationItem]:
+    cleaned = [BULLET_RE.sub("", raw).strip() for raw in lines if raw.strip()]
+    items: list[EducationItem] = []
+    current: EducationItem | None = None
+
+    for line in cleaned:
+        is_degree = any(term in line.casefold() for term in _DEGREE_TERMS)
+        if is_degree:
+            if current is not None:
+                items.append(current)
+            parts = [part.strip() for part in re.split(r"\s*[·|]\s*", line) if part.strip()]
+            if len(parts) == 1:
+                comma_parts = [part.strip() for part in line.split(",") if part.strip()]
+                parts = comma_parts if len(comma_parts) > 1 else parts
+            parts = [
+                part for part in parts
+                if not re.fullmatch(r"(?:19|20)\d{2}(?:\s*[–-]\s*(?:19|20)\d{2})?", part)
+            ]
+            current = EducationItem(
+                degree=parts[0],
+                institution=" · ".join(parts[1:]),
             )
-        )
+            inline_years = re.findall(r"\b(?:19|20)\d{2}\b", line)
+            if inline_years:
+                current.year = " – ".join(inline_years[-2:])
+            continue
+
+        years = re.findall(r"\b(?:19|20)\d{2}\b", line)
+        if current is not None and years:
+            current.year = " – ".join(years[-2:])
+        elif current is not None and not current.institution:
+            current.institution = line
+        elif current is None:
+            current = EducationItem(degree=line)
+
+    if current is not None:
+        items.append(current)
     return items
 
 
 def _parse_certifications(lines: list[str]) -> list[str]:
-    certs: list[str] = []
+    values: list[str] = []
     for raw in lines:
         line = BULLET_RE.sub("", raw).strip()
         if not line:
             continue
-        for part in re.split(r"[,;]", line):
+        for part in re.split(r"[;\u2022\u00b7|]", line):
             cert = part.strip(" .")
             if cert:
-                certs.append(cert)
-    return certs
+                values.append(cert)
+
+    # Table-based resumes commonly flatten each certification into three
+    # consecutive lines: name, issuer, year. Reassemble those records.
+    if any(re.fullmatch(r"(?:19|20)\d{2}", value) for value in values):
+        certs: list[str] = []
+        pending: list[str] = []
+        for value in values:
+            pending.append(value)
+            if re.fullmatch(r"(?:19|20)\d{2}", value):
+                certs.append(" | ".join(pending))
+                pending = []
+        certs.extend(pending)
+        return list(dict.fromkeys(certs))
+    return list(dict.fromkeys(values))
 
 
 def _parse_projects(lines: list[str]) -> list[ProjectItem]:
@@ -461,6 +536,20 @@ def _parse_projects(lines: list[str]) -> list[ProjectItem]:
     bullets - no separate company field."""
     items: list[ProjectItem] = []
     current: ProjectItem | None = None
+
+    def project_from_header(value: str) -> ProjectItem:
+        dates = DATE_RANGE_RE.search(value)
+        if not dates:
+            return ProjectItem(title=value)
+        title = DATE_RANGE_RE.sub("", value).strip(" ,|·–—-")
+        start = dates.group(1).strip()
+        end = dates.group(2).strip()
+        return ProjectItem(
+            title=title,
+            meta=f"{start} – {end}",
+            start_date=start,
+            end_date=end,
+        )
     for raw in lines:
         line = raw.strip()
         if not line:
@@ -487,13 +576,13 @@ def _parse_projects(lines: list[str]) -> list[ProjectItem]:
             )
             if is_new_title:
                 items.append(current)
-                current = ProjectItem(title=line)
+                current = project_from_header(line)
                 continue
             current.bullets[-1] += " " + line
             continue
         if current is not None:
             items.append(current)
-        current = ProjectItem(title=line)
+        current = project_from_header(line)
     if current is not None:
         items.append(current)
     return [item for item in items if item.title or item.bullets]

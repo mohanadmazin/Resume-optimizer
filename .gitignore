@@ -8,6 +8,8 @@ build/
 .pytest_cache/
 .idea/
 .vscode/
+.coverage
+opencode.json
 
 # Database and user data
 *.db

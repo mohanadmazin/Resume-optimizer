@@ -12,8 +12,10 @@ Alembic migrations.  Handles three scenarios:
 """
 
 import logging
+import shutil
 import sqlite3
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 
 from alembic import command
@@ -43,21 +45,33 @@ def _get_alembic_config(db_path: Path = DB_PATH) -> Config:
 # ── Database introspection ──────────────────────────────────────────────────
 
 
+class DatabaseState(Enum):
+    MISSING = "missing"
+    EMPTY = "empty"
+    VALID = "valid"
+    CORRUPT = "corrupt"
+
+
+def inspect_database(db_path: Path) -> DatabaseState:
+    if not db_path.exists():
+        return DatabaseState.MISSING
+    try:
+        with sqlite3.connect(db_path) as connection:
+            integrity = connection.execute("PRAGMA quick_check").fetchone()
+            if not integrity or integrity[0] != "ok":
+                return DatabaseState.CORRUPT
+            count = connection.execute(
+                "SELECT COUNT(*) FROM sqlite_master "
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            ).fetchone()[0]
+            return DatabaseState.VALID if count else DatabaseState.EMPTY
+    except sqlite3.DatabaseError:
+        return DatabaseState.CORRUPT
+
+
 def _has_tables(db_path: Path) -> bool:
     """Return True if the SQLite database contains any tables."""
-    if not db_path.exists():
-        return False
-    try:
-        conn = sqlite3.connect(str(db_path))
-        try:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
-            ).fetchone()
-            return row is not None and row[0] > 0
-        finally:
-            conn.close()
-    except sqlite3.DatabaseError:
-        return False
+    return inspect_database(db_path) == DatabaseState.VALID
 
 
 def _has_alembic_version(db_path: Path) -> bool:
@@ -211,10 +225,21 @@ def run_migrations() -> None:
     Called at application startup instead of the old ``create_all()`` path.
     """
     config = _get_alembic_config(DB_PATH)
+    state = inspect_database(DB_PATH)
+
+    if state == DatabaseState.CORRUPT:
+        quarantine = DB_PATH.with_suffix(
+            f".corrupt-{datetime.now():%Y%m%d-%H%M%S-%f}.db"
+        )
+        shutil.copy2(DB_PATH, quarantine)
+        raise RuntimeError(
+            "Database integrity check failed. "
+            f"A copy was preserved at {quarantine}."
+        )
 
     # ── Scenario 1: fresh install ──────────────────────────────────────
-    if not DB_PATH.exists() or not _has_tables(DB_PATH):
-        if not DB_PATH.exists():
+    if state in (DatabaseState.MISSING, DatabaseState.EMPTY):
+        if state == DatabaseState.MISSING:
             logger.info("Fresh install — creating database with Alembic")
         else:
             logger.info("Database file exists but is empty — running migrations")

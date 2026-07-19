@@ -65,14 +65,14 @@ def verify_parse(resume: ResumeData, raw_text: str) -> ParseFactGuardResult:
 
     # ── experience ──────────────────────────────────────────────────────
     for i, exp in enumerate(resume.experience):
-        for field in ("company", "title", "start_date", "end_date"):
+        for field in ("company", "title", "start_date", "end_date", "location"):
             verify("experience", i, field, getattr(exp, field, ""))
         for bullet_index, bullet in enumerate(exp.bullets):
             verify(f"experience_bullets:{i}", bullet_index, "bullet", bullet)
 
     # ── education ───────────────────────────────────────────────────────
     for i, edu in enumerate(resume.education):
-        for field in ("institution", "degree"):
+        for field in ("institution", "degree", "year"):
             verify("education", i, field, getattr(edu, field, ""))
 
     # ── certifications ──────────────────────────────────────────────────
@@ -82,7 +82,10 @@ def verify_parse(resume: ResumeData, raw_text: str) -> ParseFactGuardResult:
     # ── projects ────────────────────────────────────────────────────────
     for i, proj in enumerate(resume.projects):
         verify("projects", i, "title", proj.title)
-        verify("projects", i, "meta", proj.meta)
+        for field in ("meta", "start_date", "end_date", "description"):
+            verify("projects", i, field, getattr(proj, field, ""))
+        for bullet_index, bullet in enumerate(proj.bullets):
+            verify(f"project_bullets:{i}", bullet_index, "bullet", bullet)
 
     # ── languages ───────────────────────────────────────────────────────
     for i, lang in enumerate(resume.languages):

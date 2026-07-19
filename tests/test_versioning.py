@@ -1,21 +1,14 @@
 """Tests for versioning models, migration 0004, and VersioningRepository."""
-import json
 import sqlite3
-import textwrap
 from pathlib import Path
 
 import pytest
-import sqlalchemy as sa
 from alembic import command
 from sqlalchemy.orm import Session
 
 from app.database.models import (
     AgentConversation,
     AgentMessage,
-    Base,
-    CoverLetter,
-    InterviewSession,
-    JobApplication,
     JobDescription,
     Resume,
     ResumeVersion,
@@ -379,9 +372,9 @@ def test_versioning_repository_sequential_version_numbers(tmp_path, monkeypatch)
         session.flush()
 
         repo = VersioningRepository(session)
-        v1 = repo.create_version(resume.id, '{"v":1}')
-        v2 = repo.create_version(resume.id, '{"v":2}')
-        v3 = repo.create_version(resume.id, '{"v":3}')
+        repo.create_version(resume.id, '{"v":1}')
+        repo.create_version(resume.id, '{"v":2}')
+        repo.create_version(resume.id, '{"v":3}')
         resume_id = resume.id
         session.commit()
 
@@ -471,7 +464,7 @@ def test_versioning_repository_suggestions(tmp_path, monkeypatch):
             ts_id, "experience[0].bullets[0]",
             "Old", "New", '{"evidence":"..."}',
         )
-        s2 = repo.add_suggestion(
+        repo.add_suggestion(
             ts_id, "summary",
             "Old summary", "New summary", '{"evidence":"..."}',
         )

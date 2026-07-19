@@ -1,6 +1,5 @@
 """Tests for bullet writer domain models, service, and undo stack."""
 import pytest
-from unittest.mock import MagicMock, patch
 
 from app.domain.bullet_writer import (
     BulletEvidence,

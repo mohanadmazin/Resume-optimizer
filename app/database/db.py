@@ -5,12 +5,10 @@ New code should import from:
   - app.database.session
   - app.database.repositories
 """
-import json
 import logging
 
-from app.database.engine import engine
-from app.database.session import SessionLocal, get_session
-from app.database.models import Base, Resume, JobDescription, Analysis, Optimization
+from app.database.session import get_session
+from app.database.models import Optimization
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +44,6 @@ def save_analysis(resume_id: int, job_id: int, result: dict) -> int:
 
 
 def save_optimization(resume_id: int, job_id: int, model: str, optimized_json: str) -> int:
-    from app.database.models import Optimization
     with get_session() as session:
         row = Optimization(resume_id=resume_id, job_id=job_id, model=model, optimized_json=optimized_json)
         session.add(row)

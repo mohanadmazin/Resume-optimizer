@@ -1,6 +1,5 @@
 """Analyze resume use-case: ATS scoring, keyword extraction, suggestions."""
 import logging
-from dataclasses import dataclass
 
 from app.domain.analysis import ATSResult
 from app.domain.resume import ResumeData

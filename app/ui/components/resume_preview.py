@@ -1,8 +1,7 @@
 """ResumePreview — center tab showing the resume as rendered markdown."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QTextEdit, QVBoxLayout, QWidget
 
 
 class ResumePreview(QWidget):
