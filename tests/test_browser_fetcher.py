@@ -85,6 +85,49 @@ class TestFetchRenderedPage:
 # ── Integration: browser fallback in fetch_from_url ─────────────────────
 
 
+class TestBrowserSecurity:
+    def test_blocks_loopback_redirect(self):
+        mock_route = MagicMock()
+        mock_request = MagicMock()
+        mock_request.url = "http://127.0.0.1/secret"
+        mock_request.resource_type = "document"
+        mock_route.request = mock_request
+
+        from app.services.browser_fetcher import _secure_route
+        from app.services.security import SSRFError
+
+        with (
+            patch("app.services.browser_fetcher.validate_scheme"),
+            patch("app.services.browser_fetcher.validate_port"),
+            patch("app.services.browser_fetcher.resolve_and_validate", side_effect=SSRFError("loopback")),
+        ):
+            _secure_route(mock_route)
+
+        mock_route.abort.assert_called_once_with("blockedbyclient")
+
+    def test_blocks_private_subresource(self):
+        mock_route = MagicMock()
+        mock_request = MagicMock()
+        mock_request.url = "https://example.com/image.png"
+        mock_request.resource_type = "image"
+        mock_route.request = mock_request
+
+        from app.services.browser_fetcher import _secure_route
+
+        with (
+            patch("app.services.browser_fetcher.validate_scheme"),
+            patch("app.services.browser_fetcher.validate_port"),
+            patch("app.services.browser_fetcher.resolve_and_validate"),
+        ):
+            _secure_route(mock_route)
+
+        mock_route.abort.assert_called_once_with("blockedbyclient")
+
+    def test_domain_matching_requires_real_suffix(self):
+        assert requires_browser_render("https://linkedin.com.evil.com/job/123") is False
+        assert requires_browser_render("https://evil-linkedin.com/job/123") is False
+
+
 class TestBrowserFallbackIntegration:
     def test_fallback_triggered_for_thin_text(self):
         """When static extraction returns thin text for a JS-heavy URL,

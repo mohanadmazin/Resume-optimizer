@@ -375,3 +375,24 @@ def test_bigram_requires_frequency_before_known_skill():
     skills = extract_required_skills(jd)
     # "machine learning" is a known skill — included even with frequency 1
     assert "machine learning" in skills
+
+
+def test_custom_skill_changes_refresh_immediately():
+    from app.services.ats_engine import get_known_skills
+
+    base = get_known_skills()
+    assert "mycompany-framework" not in base
+    assert "internal-tool-x" not in base
+
+    from unittest.mock import patch
+    from app.core.settings import AISettings
+
+    mock_settings = type("S", (), {})()
+    mock_settings.ai = AISettings(custom_skills=["mycompany-framework", "internal-tool-x"])
+
+    with patch("app.core.settings.load_settings", return_value=mock_settings):
+        updated = get_known_skills()
+
+    assert "mycompany-framework" in updated
+    assert "internal-tool-x" in updated
+    assert "python" in updated

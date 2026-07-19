@@ -469,6 +469,24 @@ def test_foreign_keys_enabled_on_connect(tmp_path, monkeypatch):
         assert row[0] == 1  # 1 = ON
 
 
+def test_wal_backup_passes_integrity_check(tmp_path, monkeypatch):
+    """A WAL-mode backup must pass PRAGMA integrity_check."""
+    db = tmp_path / "wal_backup.db"
+    monkeypatch.setattr("app.database.migrate.DB_PATH", db)
+    run_migrations()
+
+    from app.database.migrate import _backup_database
+
+    backup = _backup_database(db)
+    assert backup is not None
+    assert backup.exists()
+
+    import sqlite3
+    with sqlite3.connect(backup) as conn:
+        result = conn.execute("PRAGMA integrity_check").fetchone()
+        assert result[0] == "ok"
+
+
 def test_wal_mode_enabled(tmp_path, monkeypatch):
     """The engine PRAGMA listener must set journal_mode=WAL."""
     db = tmp_path / "wal.db"

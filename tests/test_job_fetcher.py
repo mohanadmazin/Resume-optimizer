@@ -547,6 +547,18 @@ class TestFetchFromUrl:
     @patch("app.services.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
         hostname="example.com", ip="93.184.216.34", port=443, scheme="https",
     ))
+    def test_redirected_blocked_port_is_rejected(self, mock_resolve):
+        resp1 = MagicMock()
+        resp1.status_code = 302
+        resp1.headers = {"Location": "https://evil.com:22/secret"}
+        resp1.close = MagicMock()
+        with patch("app.services.job_fetcher._connect", return_value=resp1):
+            with pytest.raises(InvalidURLError, match="blocked"):
+                fetch_from_url("https://example.com/start")
+
+    @patch("app.services.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
+        hostname="example.com", ip="93.184.216.34", port=443, scheme="https",
+    ))
     def test_too_many_redirects(self, mock_resolve):
         resp = MagicMock()
         resp.status_code = 302
