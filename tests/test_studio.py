@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 
 # ── PySide6 import guard ───────────────────────────────────────────────────
@@ -20,6 +20,8 @@ from app.domain.resume import (
 from app.domain.analysis import ATSResult
 from app.domain.scoring import (
     CategoryScore,
+    IssueSeverity,
+    ResumeIssue,
     ResumeScoreReport,
     ScoreCategory,
 )
@@ -319,3 +321,363 @@ def test_insights_panel_update_from_none():
     panel.update_from_ats(_make_ats())
     panel.update_from_ats(None)
     assert panel.ats_card._value.text() == "--"
+
+
+# ── Helper for ATS with issues ─────────────────────────────────────────────
+
+def _make_ats_with_issues() -> ATSResult:
+    return ATSResult(
+        ats_score=60,
+        keyword_match_pct=40.0,
+        skills_match_pct=30.0,
+        matched_keywords=["python"],
+        missing_keywords=["docker", "kubernetes", "aws"],
+        score_report=ResumeScoreReport(
+            ruleset_version="2026.1",
+            overall_score=60,
+            categories=[
+                CategoryScore(
+                    category=ScoreCategory.CONTENT,
+                    score=50,
+                    weight=0.30,
+                    issues=[
+                        ResumeIssue(
+                            code="CONTENT_001",
+                            category=ScoreCategory.CONTENT,
+                            path="summary",
+                            message="Summary is too short",
+                            severity=IssueSeverity.WARNING,
+                            recommendation="Add more detail",
+                            penalty=5.0,
+                        ),
+                    ],
+                ),
+                CategoryScore(
+                    category=ScoreCategory.FORMAT,
+                    score=70,
+                    weight=0.20,
+                    issues=[
+                        ResumeIssue(
+                            code="FORMAT_001",
+                            category=ScoreCategory.FORMAT,
+                            path="contact",
+                            message="Missing contact info",
+                            severity=IssueSeverity.ERROR,
+                            recommendation="Add email",
+                            penalty=3.0,
+                        ),
+                    ],
+                ),
+            ],
+            generated_at=datetime.now(timezone.utc),
+        ),
+    )
+
+
+# ── Task 11: Auto-save ────────────────────────────────────────────────────
+
+
+def test_auto_save_timer_is_single_shot():
+    from app.ui.pages.studio import ResumeStudioPage
+    window = MagicMock()
+    window.state = MagicMock()
+    window.state.resume = None
+    window.state.active_resume_id = None
+    page = ResumeStudioPage(window)
+    assert page._auto_save_timer.isSingleShot()
+    assert page._auto_save_timer.interval() == 2000
+
+
+def test_auto_save_skips_when_no_resume_id():
+    from app.ui.pages.studio import ResumeStudioPage
+    window = MagicMock()
+    window.state = MagicMock()
+    window.state.resume = None
+    window.state.active_resume_id = None
+    page = ResumeStudioPage(window)
+    page._vm.resume = _make_resume()
+    with patch("app.ui.pages.studio.get_session") as mock_session:
+        page._auto_save()
+        mock_session.assert_not_called()
+
+
+def test_auto_save_skips_when_no_resume():
+    from app.ui.pages.studio import ResumeStudioPage
+    window = MagicMock()
+    window.state = MagicMock()
+    window.state.resume = None
+    window.state.active_resume_id = 42
+    page = ResumeStudioPage(window)
+    with patch("app.ui.pages.studio.get_session") as mock_session:
+        page._auto_save()
+        mock_session.assert_not_called()
+
+
+def test_auto_save_calls_repository():
+    from app.ui.pages.studio import ResumeStudioPage
+    window = MagicMock()
+    window.state = MagicMock()
+    window.state.resume = None
+    window.state.active_resume_id = 42
+    page = ResumeStudioPage(window)
+    page._vm.resume = _make_resume()
+    with patch("app.ui.pages.studio.get_session") as mock_session:
+        mock_ctx = MagicMock()
+        mock_session.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_session.return_value.__exit__ = MagicMock(return_value=False)
+        page._auto_save()
+        mock_session.assert_called_once()
+
+
+# ── Task 12: Resume duplication ───────────────────────────────────────────
+
+
+def test_duplicate_resume_returns_deep_copy():
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.resume = _make_resume()
+    dup = vm.duplicate_resume()
+    assert dup is not None
+    assert dup is not vm.resume
+    assert dup.contact.name == "Alice (Copy)"
+
+
+def test_duplicate_resume_independent():
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.resume = _make_resume()
+    dup = vm.duplicate_resume()
+    dup.summary = "Changed summary"
+    assert vm.resume.summary != "Changed summary"
+
+
+def test_duplicate_resume_none_when_empty():
+    vm = ResumeStudioViewModel(state=_make_state())
+    assert vm.duplicate_resume() is None
+
+
+def test_duplicate_resume_preserves_other_fields():
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.resume = _make_resume()
+    dup = vm.duplicate_resume()
+    assert dup.skills == vm.resume.skills
+    assert len(dup.experience) == len(vm.resume.experience)
+    assert dup.education == vm.resume.education
+
+
+# ── Task 14: Section reorder ──────────────────────────────────────────────
+
+
+def test_section_order_default():
+    vm = ResumeStudioViewModel(state=_make_state())
+    assert vm.section_order == SECTION_NAMES
+
+
+def test_move_section_up():
+    vm = ResumeStudioViewModel(state=_make_state())
+    spy = MagicMock()
+    vm.section_order_changed.connect(spy)
+    vm.move_section("Summary", -1)
+    assert vm.section_order[0] == "Summary"
+    assert vm.section_order[1] == "Contact"
+    spy.assert_called_once()
+
+
+def test_move_section_down():
+    vm = ResumeStudioViewModel(state=_make_state())
+    spy = MagicMock()
+    vm.section_order_changed.connect(spy)
+    vm.move_section("Contact", 1)
+    assert vm.section_order[0] == "Summary"
+    assert vm.section_order[1] == "Contact"
+    spy.assert_called_once()
+
+
+def test_move_section_no_op_at_top():
+    vm = ResumeStudioViewModel(state=_make_state())
+    spy = MagicMock()
+    vm.section_order_changed.connect(spy)
+    vm.move_section("Contact", -1)
+    assert vm.section_order[0] == "Contact"
+    spy.assert_not_called()
+
+
+def test_move_section_no_op_at_bottom():
+    vm = ResumeStudioViewModel(state=_make_state())
+    spy = MagicMock()
+    vm.section_order_changed.connect(spy)
+    last = vm.section_order[-1]
+    vm.move_section(last, 1)
+    assert vm.section_order[-1] == last
+    spy.assert_not_called()
+
+
+# ── Task 15: Custom headings / rename ─────────────────────────────────────
+
+
+def test_custom_heading_default():
+    vm = ResumeStudioViewModel(state=_make_state())
+    assert vm.get_display_name("Contact") == "Contact"
+    assert vm.custom_headings == {}
+
+
+def test_set_custom_heading():
+    vm = ResumeStudioViewModel(state=_make_state())
+    spy = MagicMock()
+    vm.custom_headings_changed.connect(spy)
+    vm.set_custom_heading("Contact", "My Info")
+    assert vm.get_display_name("Contact") == "My Info"
+    assert vm.custom_headings == {"Contact": "My Info"}
+    spy.assert_called_once()
+
+
+def test_set_custom_heading_same_as_section_clears():
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.set_custom_heading("Contact", "Contact")
+    assert vm.custom_headings == {}
+
+
+def test_get_internal_name_with_heading():
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.set_custom_heading("Contact", "My Info")
+    assert vm.get_internal_name("My Info") == "Contact"
+
+
+def test_get_internal_name_without_heading():
+    vm = ResumeStudioViewModel(state=_make_state())
+    assert vm.get_internal_name("Summary") == "Summary"
+
+
+def test_get_internal_name_unknown_returns_input():
+    vm = ResumeStudioViewModel(state=_make_state())
+    assert vm.get_internal_name("Unknown") == "Unknown"
+
+
+# ── Task 16: Issue navigation signal ──────────────────────────────────────
+
+
+def test_insights_panel_emits_issue_selected():
+    from app.ui.components.resume_insights_panel import ResumeInsightsPanel
+    panel = ResumeInsightsPanel()
+    spy = MagicMock()
+    panel.issue_selected.connect(spy)
+    panel.update_from_ats(_make_ats_with_issues())
+    from PySide6.QtWidgets import QPushButton
+    btns = panel._issues_container.findChildren(QPushButton)
+    assert len(btns) == 2
+    btns[0].click()
+    spy.assert_called_once_with("Summary")
+
+
+def test_insights_panel_issue_button_mapped_to_section():
+    from app.ui.components.resume_insights_panel import ResumeInsightsPanel
+    panel = ResumeInsightsPanel()
+    spy = MagicMock()
+    panel.issue_selected.connect(spy)
+    panel.update_from_ats(_make_ats_with_issues())
+    from PySide6.QtWidgets import QPushButton
+    btns = panel._issues_container.findChildren(QPushButton)
+    assert len(btns) == 2
+    btns[1].click()
+    spy.assert_called_once_with("Contact")
+
+
+def test_insights_panel_no_issues_shows_message():
+    from app.ui.components.resume_insights_panel import ResumeInsightsPanel
+    panel = ResumeInsightsPanel()
+    panel.update_from_ats(_make_ats())
+    from PySide6.QtWidgets import QLabel
+    labels = [
+        w for w in panel._issues_container.findChildren(QLabel)
+        if "No issues" in (w.text() or "")
+    ]
+    assert len(labels) == 1
+
+
+# ── Section navigator reorder and rename signals ──────────────────────────
+
+
+def test_navigator_up_down_buttons_exist():
+    from app.ui.components.section_navigator import SectionNavigator
+    nav = SectionNavigator(SECTION_NAMES)
+    assert nav._up_btn is not None
+    assert nav._down_btn is not None
+
+
+def test_navigator_move_down():
+    from app.ui.components.section_navigator import SectionNavigator
+    nav = SectionNavigator(SECTION_NAMES)
+    spy = MagicMock()
+    nav.section_reorder.connect(spy)
+    nav._list.setCurrentRow(0)
+    nav._on_move_down()
+    assert nav._list.item(0).text() == SECTION_NAMES[1]
+    assert nav._list.item(1).text() == SECTION_NAMES[0]
+    spy.assert_called_once_with(SECTION_NAMES[0], 1)
+
+
+def test_navigator_move_up():
+    from app.ui.components.section_navigator import SectionNavigator
+    nav = SectionNavigator(SECTION_NAMES)
+    spy = MagicMock()
+    nav.section_reorder.connect(spy)
+    nav._list.setCurrentRow(1)
+    nav._on_move_up()
+    assert nav._list.item(0).text() == SECTION_NAMES[1]
+    assert nav._list.item(1).text() == SECTION_NAMES[0]
+    spy.assert_called_once_with(SECTION_NAMES[1], -1)
+
+
+def test_navigator_set_sections():
+    from app.ui.components.section_navigator import SectionNavigator
+    nav = SectionNavigator(SECTION_NAMES)
+    new_order = ["Skills", "Contact", "Summary"]
+    nav.set_sections(new_order)
+    assert nav._list.count() == 3
+    assert nav._list.item(0).text() == "Skills"
+    assert nav._list.item(1).text() == "Contact"
+    assert nav._list.item(2).text() == "Summary"
+
+
+def test_navigator_double_click_renames():
+    from app.ui.components.section_navigator import SectionNavigator
+    nav = SectionNavigator(SECTION_NAMES)
+    spy = MagicMock()
+    nav.section_renamed.connect(spy)
+    nav._list.setCurrentRow(0)
+    item = nav._list.item(0)
+    item.setText("My Info")
+    nav.section_renamed.emit(SECTION_NAMES[0], "My Info")
+    spy.assert_called_once_with(SECTION_NAMES[0], "My Info")
+
+
+# ── SectionEditor scroll_to_field ─────────────────────────────────────────
+
+
+def test_editor_scroll_to_field_finds_widget():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    resume = _make_resume()
+    editor.load("Contact", resume.contact)
+    # Should not raise even if scroll parent is None
+    editor.scroll_to_field("name")
+
+
+# ── ResumeRepository.update ───────────────────────────────────────────────
+
+
+def test_resume_repository_update():
+    from app.database.session import get_session
+    from app.database.repositories.resume_repository import ResumeRepository
+    with get_session() as session:
+        repo = ResumeRepository(session)
+        rid = repo.save("Test", "{}", "", "test", "test.pdf")
+        assert repo.update(rid, '{"updated": true}')
+        row = repo.get_by_id(rid)
+        assert row.data_json == '{"updated": true}'
+
+
+def test_resume_repository_update_nonexistent():
+    from app.database.session import get_session
+    from app.database.repositories.resume_repository import ResumeRepository
+    with get_session() as session:
+        repo = ResumeRepository(session)
+        assert repo.update(99999, '{"x": 1}') is False

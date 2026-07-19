@@ -336,3 +336,20 @@ class SectionEditor(QWidget):
                 new_items,
             )
             self._old_value = new_items
+
+    def scroll_to_field(self, field_name: str) -> None:
+        """Scroll the editor to reveal the named field."""
+        container = self._container
+        if container is None:
+            return
+        for child in container.findChildren(QWidget):
+            obj_name = child.objectName()
+            if obj_name == field_name or obj_name == field_name.lower():
+                child.setFocus()
+                scroll_area = self.parent()
+                while scroll_area is not None:
+                    if hasattr(scroll_area, "ensureWidgetVisible"):
+                        scroll_area.ensureWidgetVisible(child)
+                        break
+                    scroll_area = scroll_area.parent()
+                return

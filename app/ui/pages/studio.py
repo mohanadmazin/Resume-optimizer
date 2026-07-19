@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
@@ -13,6 +14,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.database.session import get_session
+from app.database.repositories.resume_repository import ResumeRepository
+from app.database.repositories.versioning_repository import VersioningRepository
 from app.exports.exporter import to_markdown
 from app.ui.components.resume_insights_panel import ResumeInsightsPanel
 from app.ui.components.resume_preview import ResumePreview
@@ -21,6 +25,10 @@ from app.ui.components.section_navigator import SectionNavigator
 from app.ui.view_models.studio_vm import SECTION_NAMES, ResumeStudioViewModel
 
 from app.services.ats_engine import analyze
+
+logger = logging.getLogger(__name__)
+
+_AUTO_SAVE_INTERVAL_MS = 2000
 
 
 class ResumeStudioPage(QWidget):
@@ -45,6 +53,8 @@ class ResumeStudioPage(QWidget):
         # ── Left: section navigator ──────────────────────────────────
         self._nav = SectionNavigator(SECTION_NAMES)
         self._nav.section_selected.connect(self._on_section_selected)
+        self._nav.section_reorder.connect(self._on_section_reorder)
+        self._nav.section_renamed.connect(self._on_section_renamed)
         splitter.addWidget(self._nav)
 
         # ── Center: editor + preview tabs ────────────────────────────
@@ -66,12 +76,13 @@ class ResumeStudioPage(QWidget):
 
         # ── Right: insights ──────────────────────────────────────────
         self._insights = ResumeInsightsPanel()
+        self._insights.issue_selected.connect(self._on_issue_selected)
         splitter.addWidget(self._insights)
 
         splitter.setSizes([180, 600, 280])
         root.addWidget(splitter)
 
-        # ── Bottom bar: undo/redo ────────────────────────────────────
+        # ── Bottom bar: undo/redo/duplicate/version ──────────────────
         bar = QHBoxLayout()
         bar.addStretch()
 
@@ -85,7 +96,23 @@ class ResumeStudioPage(QWidget):
         self._redo_btn.clicked.connect(self._on_redo)
         bar.addWidget(self._redo_btn)
 
+        self._dup_btn = QPushButton("Duplicate")
+        self._dup_btn.setEnabled(False)
+        self._dup_btn.clicked.connect(self._on_duplicate)
+        bar.addWidget(self._dup_btn)
+
+        self._save_version_btn = QPushButton("Save Version")
+        self._save_version_btn.setEnabled(False)
+        self._save_version_btn.clicked.connect(self._on_save_version)
+        bar.addWidget(self._save_version_btn)
+
         root.addLayout(bar)
+
+        # ── Auto-save timer ──────────────────────────────────────────
+        self._auto_save_timer = QTimer(self)
+        self._auto_save_timer.setSingleShot(True)
+        self._auto_save_timer.setInterval(_AUTO_SAVE_INTERVAL_MS)
+        self._auto_save_timer.timeout.connect(self._auto_save)
 
         # ── Debounce timer for recalculation ─────────────────────────
         self._analysis_timer = QTimer(self)
@@ -98,6 +125,8 @@ class ResumeStudioPage(QWidget):
         self._vm.section_changed.connect(self._on_section_changed)
         self._vm.ats_changed.connect(self._on_ats_changed)
         self._vm.undoStateChanged.connect(self._on_undo_state_changed)
+        self._vm.section_order_changed.connect(self._on_section_order_changed)
+        self._vm.custom_headings_changed.connect(self._on_custom_headings_changed)
 
     # ── Public lifecycle ─────────────────────────────────────────────
 
@@ -108,16 +137,23 @@ class ResumeStudioPage(QWidget):
             self._nav.select_section("Contact")
             self._on_section_selected("Contact")
             self._recalculate()
+        has = self._vm.has_resume()
+        self._dup_btn.setEnabled(has)
+        self._save_version_btn.setEnabled(
+            has and self.window.state.active_resume_id is not None
+        )
 
     # ── Navigation ───────────────────────────────────────────────────
 
     def _on_section_selected(self, name: str) -> None:
-        self._vm.select_section(name)
-        value = self._vm.get_section_value(name)
-        self._editor.load(name, copy.deepcopy(value))
+        internal = self._vm.get_internal_name(name)
+        self._vm.select_section(internal)
+        value = self._vm.get_section_value(internal)
+        self._editor.load(internal, copy.deepcopy(value))
 
     def _on_section_changed(self, name: str) -> None:
-        self._nav.select_section(name)
+        display = self._vm.get_display_name(name)
+        self._nav.select_section(display)
         value = self._vm.get_section_value(name)
         self._editor.load(name, copy.deepcopy(value))
 
@@ -126,20 +162,88 @@ class ResumeStudioPage(QWidget):
     def _on_section_edited(self, section: str, old_value, new_value) -> None:
         self._vm.update_section(section, old_value, new_value)
         self._analysis_timer.start()
+        self._auto_save_timer.start()
 
     # ── Undo / redo ──────────────────────────────────────────────────
 
     def _on_undo(self) -> None:
         self._vm.undo()
         self._analysis_timer.start()
+        self._auto_save_timer.start()
 
     def _on_redo(self) -> None:
         self._vm.redo()
         self._analysis_timer.start()
+        self._auto_save_timer.start()
 
     def _on_undo_state_changed(self) -> None:
         self._undo_btn.setEnabled(self._vm.can_undo)
         self._redo_btn.setEnabled(self._vm.can_redo)
+
+    # ── Duplicate ──────────────────────────────────────────────────
+
+    def _on_duplicate(self) -> None:
+        dup = self._vm.duplicate_resume()
+        if dup is None:
+            return
+        self._vm.clear()
+        self._vm.resume = dup
+        self._nav.select_section("Contact")
+        self._on_section_selected("Contact")
+        self._recalculate()
+        self._auto_save_timer.start()
+
+    # ── Version save ──────────────────────────────────────────────
+
+    def _on_save_version(self) -> None:
+        resume = self._vm.resume
+        resume_id = self.window.state.active_resume_id
+        if resume is None or resume_id is None:
+            return
+        try:
+            with get_session() as session:
+                VersioningRepository(session).create_version(
+                    resume_id, resume.model_dump_json()
+                )
+        except Exception:
+            logger.exception("Failed to save resume version")
+
+    # ── Issue navigation ──────────────────────────────────────────
+
+    def _on_issue_selected(self, section: str) -> None:
+        internal = self._vm.get_internal_name(section)
+        display = self._vm.get_display_name(internal)
+        self._nav.select_section(display)
+        self._vm.select_section(internal)
+        value = self._vm.get_section_value(internal)
+        self._editor.load(internal, copy.deepcopy(value))
+        self._editor.scroll_to_field(internal)
+
+    # ── Section reorder ──────────────────────────────────────────
+
+    def _on_section_reorder(self, section: str, direction: int) -> None:
+        self._vm.move_section(section, direction)
+
+    # ── Section rename ───────────────────────────────────────────
+
+    def _on_section_renamed(self, old_name: str, new_name: str) -> None:
+        self._vm.set_custom_heading(old_name, new_name)
+        self._nav.set_sections(
+            [self._vm.get_display_name(s) for s in self._vm.section_order]
+        )
+        self._nav.select_section(new_name)
+
+    # ── Section order changed (from ViewModel) ───────────────────
+
+    def _on_section_order_changed(self) -> None:
+        self._nav.set_sections(
+            [self._vm.get_display_name(s) for s in self._vm.section_order]
+        )
+
+    def _on_custom_headings_changed(self) -> None:
+        self._nav.set_sections(
+            [self._vm.get_display_name(s) for s in self._vm.section_order]
+        )
 
     # ── Preview ──────────────────────────────────────────────────────
 
@@ -167,3 +271,18 @@ class ResumeStudioPage(QWidget):
 
     def _on_ats_changed(self) -> None:
         self._insights.update_from_ats(self._vm.ats)
+
+    # ── Auto-save ─────────────────────────────────────────────────
+
+    def _auto_save(self) -> None:
+        resume = self._vm.resume
+        resume_id = self.window.state.active_resume_id
+        if resume is None or resume_id is None:
+            return
+        try:
+            with get_session() as session:
+                ResumeRepository(session).update(
+                    resume_id, resume.model_dump_json()
+                )
+        except Exception:
+            logger.exception("Auto-save failed")

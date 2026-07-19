@@ -70,3 +70,11 @@ class ResumeRepository(BaseRepository):
             return False
         self.session.delete(row)
         return True
+
+    def update(self, resume_id: int, data_json: str) -> bool:
+        """Update the data_json of an existing resume. Returns True if updated."""
+        row = self.get_by_id(resume_id)
+        if row is None:
+            return False
+        row.data_json = data_json
+        return True

@@ -1,6 +1,7 @@
 """ResumeStudioViewModel — MVVM bridge between UI and application layer."""
 from __future__ import annotations
 
+import copy
 import logging
 from typing import Any
 
@@ -29,13 +30,16 @@ class ResumeStudioViewModel(QObject):
     """ViewModel for the Resume Studio page.
 
     Holds the resume data, selected section, ATS analysis results,
-    and undo/redo stack.  Exposes Qt signals for reactive UI updates.
+    undo/redo stack, section order, and custom headings.  Emits Qt
+    signals for reactive UI updates.
     """
 
     resume_changed = Signal()
     section_changed = Signal(str)
     ats_changed = Signal()
     undoStateChanged = Signal()
+    section_order_changed = Signal()
+    custom_headings_changed = Signal()
 
     def __init__(self, state: AppState, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -44,6 +48,8 @@ class ResumeStudioViewModel(QObject):
         self._selected_section: str = "Contact"
         self._ats: ATSResult | None = None
         self._undo_stack = UndoStack()
+        self._section_order: list[str] = list(SECTION_NAMES)
+        self._custom_headings: dict[str, str] = {}
 
     # ── Resume access ────────────────────────────────────────────────
 
@@ -193,3 +199,56 @@ class ResumeStudioViewModel(QObject):
     def clear(self) -> None:
         self._undo_stack.clear()
         self.undoStateChanged.emit()
+
+    # ── Section order ─────────────────────────────────────────────
+
+    @property
+    def section_order(self) -> list[str]:
+        return list(self._section_order)
+
+    def move_section(self, section: str, direction: int) -> None:
+        """Move *section* by *direction* positions (-1 = up, +1 = down)."""
+        idx = self._section_order.index(section)
+        new_idx = idx + direction
+        if new_idx < 0 or new_idx >= len(self._section_order):
+            return
+        self._section_order.pop(idx)
+        self._section_order.insert(new_idx, section)
+        self.section_order_changed.emit()
+
+    # ── Custom headings ───────────────────────────────────────────
+
+    @property
+    def custom_headings(self) -> dict[str, str]:
+        return dict(self._custom_headings)
+
+    def set_custom_heading(self, section: str, heading: str) -> None:
+        if heading and heading != section:
+            self._custom_headings[section] = heading
+        else:
+            self._custom_headings.pop(section, None)
+        self.custom_headings_changed.emit()
+
+    def get_display_name(self, section: str) -> str:
+        return self._custom_headings.get(section, section)
+
+    def get_internal_name(self, display_name: str) -> str:
+        """Map a display name back to its internal section name."""
+        for internal, custom in self._custom_headings.items():
+            if custom == display_name:
+                return internal
+        if display_name in SECTION_NAMES:
+            return display_name
+        return display_name
+
+    # ── Duplicate ─────────────────────────────────────────────────
+
+    def duplicate_resume(self) -> ResumeData | None:
+        """Create a deep copy of the current resume with '(Copy)' appended to the name."""
+        if self._resume is None:
+            return None
+        dup = copy.deepcopy(self._resume)
+        dup.contact = dup.contact.model_copy(
+            update={"name": dup.contact.name + " (Copy)"}
+        )
+        return dup

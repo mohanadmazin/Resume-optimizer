@@ -1,13 +1,13 @@
 """ResumeInsightsPanel — right panel showing score, keywords, and issues."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -38,6 +38,8 @@ class _ScoreCard(QFrame):
 
 class ResumeInsightsPanel(QWidget):
     """Right-hand panel showing ATS score breakdown, missing keywords, and issues."""
+
+    issue_selected = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -95,11 +97,16 @@ class ResumeInsightsPanel(QWidget):
         issues_label.setObjectName("sectionLabel")
         root.addWidget(issues_label)
 
-        self._issues_text = QTextEdit()
-        self._issues_text.setReadOnly(True)
-        self._issues_text.setObjectName("issuesText")
-        self._issues_text.setMaximumHeight(150)
-        root.addWidget(self._issues_text)
+        self._issues_scroll = QScrollArea()
+        self._issues_scroll.setWidgetResizable(True)
+        self._issues_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._issues_container = QWidget()
+        self._issues_layout = QVBoxLayout(self._issues_container)
+        self._issues_layout.setContentsMargins(0, 0, 0, 0)
+        self._issues_layout.setSpacing(2)
+        self._issues_layout.addStretch()
+        self._issues_scroll.setWidget(self._issues_container)
+        root.addWidget(self._issues_scroll)
 
     # ── Public update API ────────────────────────────────────────────
 
@@ -124,7 +131,8 @@ class ResumeInsightsPanel(QWidget):
         self._clear_layout(self._cat_layout)
         self._clear_layout(self._keywords_layout)
         self._keywords_layout.addStretch()
-        self._issues_text.clear()
+        self._clear_layout(self._issues_layout)
+        self._issues_layout.addStretch()
 
     # ── Internal ─────────────────────────────────────────────────────
 
@@ -160,14 +168,41 @@ class ResumeInsightsPanel(QWidget):
         self._keywords_layout.addStretch()
 
     def _update_issues(self, ats: ATSResult) -> None:
-        lines: list[str] = []
+        self._clear_layout(self._issues_layout)
+        _SECTION_MAP = {
+            "content": "Summary",
+            "format": "Contact",
+            "optimization": "Skills",
+            "best_practices": "Experience",
+            "application_ready": "Summary",
+        }
+        found = False
         if ats.score_report:
             for cat in ats.score_report.categories:
                 for issue in cat.issues:
-                    lines.append(f"[{issue.severity.value.upper()}] {issue.message}")
-        if not lines:
-            lines.append("No issues found.")
-        self._issues_text.setPlainText("\n".join(lines))
+                    found = True
+                    section = _SECTION_MAP.get(cat.category.value, "Summary")
+                    btn = QPushButton(
+                        f"[{issue.severity.value.upper()}] {issue.message}"
+                    )
+                    btn.setObjectName("issueButton")
+                    btn.setCheckable(False)
+                    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                    btn.setStyleSheet(
+                        "text-align: left; padding: 4px 6px; font-size: 11px;"
+                        "border: 1px solid transparent; border-radius: 3px;"
+                        "background: transparent;"
+                        "QPushButton:hover{border: 1px solid #555; background: #2a2a2a;}"
+                    )
+                    btn.clicked.connect(
+                        lambda checked=False, s=section: self.issue_selected.emit(s)
+                    )
+                    self._issues_layout.addWidget(btn)
+        if not found:
+            lbl = QLabel("No issues found.")
+            lbl.setStyleSheet("color: #888; font-style: italic; font-size: 11px;")
+            self._issues_layout.addWidget(lbl)
+        self._issues_layout.addStretch()
 
     @staticmethod
     def _clear_layout(layout: QVBoxLayout) -> None:
