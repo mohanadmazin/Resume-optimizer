@@ -1,9 +1,8 @@
-"""ResumeStudioViewModel — MVVM bridge between UI and application layer."""
+"""MVVM bridge for editing, reviewing, and exporting a resume."""
 from __future__ import annotations
 
 import copy
-import logging
-from typing import Any
+from typing import Any, Literal
 
 from PySide6.QtCore import QObject, Signal
 
@@ -11,8 +10,6 @@ from app.domain.analysis import ATSResult
 from app.domain.resume import ResumeData
 from app.ui.state import AppState
 from app.ui.undo_stack import UndoCommand, UndoStack
-
-logger = logging.getLogger(__name__)
 
 SECTION_NAMES: list[str] = [
     "Contact",
@@ -25,33 +22,27 @@ SECTION_NAMES: list[str] = [
     "Languages",
 ]
 
+StateTarget = Literal["resume", "optimized"]
+
 
 class ResumeStudioViewModel(QObject):
-    """ViewModel for the Resume Studio page.
-
-    Holds the resume data, selected section, ATS analysis results,
-    undo/redo stack, section order, and custom headings.  Emits Qt
-    signals for reactive UI updates.
-    """
+    """Own the single working resume used by editor, preview, and exporters."""
 
     resume_changed = Signal()
     section_changed = Signal(str)
     ats_changed = Signal()
     undoStateChanged = Signal()
-    section_order_changed = Signal()
-    custom_headings_changed = Signal()
+    reviewStateChanged = Signal()
 
     def __init__(self, state: AppState, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._state = state
         self._resume: ResumeData | None = None
-        self._selected_section: str = "Contact"
+        self._selected_section = "Contact"
         self._ats: ATSResult | None = None
         self._undo_stack = UndoStack()
-        self._section_order: list[str] = list(SECTION_NAMES)
-        self._custom_headings: dict[str, str] = {}
-
-    # ── Resume access ────────────────────────────────────────────────
+        self._state_target: StateTarget = "resume"
+        self._approved_resume: ResumeData | None = None
 
     @property
     def resume(self) -> ResumeData | None:
@@ -59,8 +50,22 @@ class ResumeStudioViewModel(QObject):
 
     @resume.setter
     def resume(self, value: ResumeData | None) -> None:
+        self.load_resume(value, target="resume")
+
+    def load_resume(
+        self,
+        value: ResumeData | None,
+        *,
+        target: StateTarget = "resume",
+    ) -> None:
+        """Load a new working resume and reset history/review approval."""
+        self._undo_stack.clear()
+        self._state_target = target
         self._resume = value
-        self._state.resume = value
+        self._sync_to_state()
+        self._approved_resume = None
+        self.undoStateChanged.emit()
+        self.reviewStateChanged.emit()
         self.resume_changed.emit()
 
     @property
@@ -73,18 +78,16 @@ class ResumeStudioViewModel(QObject):
         self._state.ats = value
         self.ats_changed.emit()
 
-    # ── Section selection ────────────────────────────────────────────
-
     @property
     def selected_section(self) -> str:
         return self._selected_section
 
     def select_section(self, name: str) -> None:
+        if name not in SECTION_NAMES:
+            raise ValueError(f"Unknown resume section: {name}")
         if name != self._selected_section:
             self._selected_section = name
             self.section_changed.emit(name)
-
-    # ── Undo / redo ─────────────────────────────────────────────────
 
     @property
     def can_undo(self) -> bool:
@@ -95,100 +98,111 @@ class ResumeStudioViewModel(QObject):
         return self._undo_stack.can_redo
 
     def undo(self) -> str | None:
-        desc = self._undo_stack.undo()
-        if desc is not None:
-            self._apply_to_state()
+        description = self._undo_stack.undo()
+        if description is not None:
+            self._sync_to_state()
+            self._invalidate_review()
             self.undoStateChanged.emit()
             self.resume_changed.emit()
-        return desc
+            self.section_changed.emit(self._selected_section)
+        return description
 
     def redo(self) -> str | None:
-        desc = self._undo_stack.redo()
-        if desc is not None:
-            self._apply_to_state()
+        description = self._undo_stack.redo()
+        if description is not None:
+            self._sync_to_state()
+            self._invalidate_review()
             self.undoStateChanged.emit()
             self.resume_changed.emit()
-        return desc
+            self.section_changed.emit(self._selected_section)
+        return description
 
     def push_command(self, command: UndoCommand) -> None:
-        """Push an already-constructed command onto the undo stack.
-
-        ``command.execute()`` is called immediately by ``UndoStack.push``.
-        After push, the resume state is synced to ``AppState`` and signals
-        are emitted.
-        """
         self._undo_stack.push(command)
-        self._apply_to_state()
+        self._sync_to_state()
+        self._invalidate_review()
         self.undoStateChanged.emit()
         self.resume_changed.emit()
 
-    def _apply_to_state(self) -> None:
-        """Copy the current undo-stack-top resume into AppState."""
-        top = self._undo_stack._undo_stack[-1] if self._undo_stack._undo_stack else None
-        if top is not None:
-            self._state.resume = self._resume
-
-    # ── Section mutation helpers ─────────────────────────────────────
-
     def update_section(self, section: str, old_value: Any, new_value: Any) -> None:
-        """Create and push an undo command for a section-level update."""
+        """Create a self-contained undo command for one section edit."""
         if old_value == new_value:
             return
 
-        def _execute() -> None:
-            self._set_section_value(section, new_value)
+        old_snapshot = copy.deepcopy(old_value)
+        new_snapshot = copy.deepcopy(new_value)
 
-        def _undo() -> None:
-            self._set_section_value(section, old_value)
+        def execute() -> None:
+            self._set_section_value(section, copy.deepcopy(new_snapshot))
 
-        cmd = UndoCommand(
-            description=f"Edit {section}",
-            execute=_execute,
-            undo=_undo,
+        def undo() -> None:
+            self._set_section_value(section, copy.deepcopy(old_snapshot))
+
+        self.push_command(
+            UndoCommand(
+                description=f"Edit {section}",
+                execute=execute,
+                undo=undo,
+            )
         )
-        self.push_command(cmd)
 
     def _set_section_value(self, section: str, value: Any) -> None:
-        """Apply *value* to the resume for the given section name."""
         if self._resume is None:
             return
 
-        if section == "Contact":
-            self._resume.contact = value
-        elif section == "Summary":
-            self._resume.summary = value
-        elif section == "Headline":
-            self._resume.headline = value
-        elif section == "Experience":
-            self._resume.experience = value
-        elif section == "Projects":
-            self._resume.projects = value
-        elif section == "Education":
-            self._resume.education = value
-        elif section == "Skills":
-            self._resume.skills = value
-        elif section == "Certifications":
-            self._resume.certifications = value
-        elif section == "Languages":
-            self._resume.languages = value
-
-    # ── Helpers for editor ───────────────────────────────────────────
+        attribute_by_section = {
+            "Contact": "contact",
+            "Summary": "summary",
+            "Experience": "experience",
+            "Projects": "projects",
+            "Education": "education",
+            "Skills": "skills",
+            "Certifications": "certifications",
+            "Languages": "languages",
+        }
+        attribute = attribute_by_section.get(section)
+        if attribute is None:
+            raise ValueError(f"Unknown resume section: {section}")
+        setattr(self._resume, attribute, value)
 
     def get_section_value(self, section: str) -> Any:
         if self._resume is None:
             return None
-        mapping = {
-            "Contact": self._resume.contact,
-            "Summary": self._resume.summary,
-            "Headline": self._resume.headline,
-            "Experience": self._resume.experience,
-            "Projects": self._resume.projects,
-            "Education": self._resume.education,
-            "Skills": self._resume.skills,
-            "Certifications": self._resume.certifications,
-            "Languages": self._resume.languages,
+        attribute_by_section = {
+            "Contact": "contact",
+            "Summary": "summary",
+            "Experience": "experience",
+            "Projects": "projects",
+            "Education": "education",
+            "Skills": "skills",
+            "Certifications": "certifications",
+            "Languages": "languages",
         }
-        return mapping.get(section)
+        attribute = attribute_by_section.get(section)
+        return getattr(self._resume, attribute) if attribute else None
+
+    @property
+    def is_approved_for_export(self) -> bool:
+        return self._approved_resume is not None
+
+    @property
+    def approved_resume(self) -> ResumeData | None:
+        """Return a copy of the exact snapshot approved by the user."""
+        return copy.deepcopy(self._approved_resume)
+
+    def approve_for_export(self) -> None:
+        if self._resume is None:
+            return
+        self._approved_resume = copy.deepcopy(self._resume)
+        self.reviewStateChanged.emit()
+
+    def _invalidate_review(self) -> None:
+        if self._approved_resume is not None:
+            self._approved_resume = None
+            self.reviewStateChanged.emit()
+
+    def _sync_to_state(self) -> None:
+        setattr(self._state, self._state_target, self._resume)
 
     def job_text(self) -> str:
         return self._state.job_text or ""
@@ -201,57 +215,6 @@ class ResumeStudioViewModel(QObject):
 
     def clear(self) -> None:
         self._undo_stack.clear()
+        self._approved_resume = None
         self.undoStateChanged.emit()
-
-    # ── Section order ─────────────────────────────────────────────
-
-    @property
-    def section_order(self) -> list[str]:
-        return list(self._section_order)
-
-    def move_section(self, section: str, direction: int) -> None:
-        """Move *section* by *direction* positions (-1 = up, +1 = down)."""
-        idx = self._section_order.index(section)
-        new_idx = idx + direction
-        if new_idx < 0 or new_idx >= len(self._section_order):
-            return
-        self._section_order.pop(idx)
-        self._section_order.insert(new_idx, section)
-        self.section_order_changed.emit()
-
-    # ── Custom headings ───────────────────────────────────────────
-
-    @property
-    def custom_headings(self) -> dict[str, str]:
-        return dict(self._custom_headings)
-
-    def set_custom_heading(self, section: str, heading: str) -> None:
-        if heading and heading != section:
-            self._custom_headings[section] = heading
-        else:
-            self._custom_headings.pop(section, None)
-        self.custom_headings_changed.emit()
-
-    def get_display_name(self, section: str) -> str:
-        return self._custom_headings.get(section, section)
-
-    def get_internal_name(self, display_name: str) -> str:
-        """Map a display name back to its internal section name."""
-        for internal, custom in self._custom_headings.items():
-            if custom == display_name:
-                return internal
-        if display_name in SECTION_NAMES:
-            return display_name
-        return display_name
-
-    # ── Duplicate ─────────────────────────────────────────────────
-
-    def duplicate_resume(self) -> ResumeData | None:
-        """Create a deep copy of the current resume with '(Copy)' appended to the name."""
-        if self._resume is None:
-            return None
-        dup = copy.deepcopy(self._resume)
-        dup.contact = dup.contact.model_copy(
-            update={"name": dup.contact.name + " (Copy)"}
-        )
-        return dup
+        self.reviewStateChanged.emit()
