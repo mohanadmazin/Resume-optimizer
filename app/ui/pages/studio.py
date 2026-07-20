@@ -6,7 +6,9 @@ import logging
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QSplitter,
     QTabWidget,
@@ -111,6 +113,24 @@ class ResumeStudioPage(QWidget):
         self._save_version_btn.clicked.connect(self._on_save_version)
         bar.addWidget(self._save_version_btn)
 
+        bar.addSpacing(20)
+
+        # ── Export controls ──────────────────────────────────────────
+        bar.addWidget(QLabel("Format:"))
+        self._export_format = QComboBox()
+        self._export_format.addItems(["PDF", "DOCX", "Markdown"])
+        bar.addWidget(self._export_format)
+
+        bar.addWidget(QLabel("Template:"))
+        self._export_template = QComboBox()
+        self._export_template.addItems(["Classic", "Modern", "Compact"])
+        bar.addWidget(self._export_template)
+
+        self._export_btn = QPushButton("Export")
+        self._export_btn.setEnabled(False)
+        self._export_btn.clicked.connect(self._on_export)
+        bar.addWidget(self._export_btn)
+
         root.addLayout(bar)
 
         # ── Auto-save timer ──────────────────────────────────────────
@@ -150,6 +170,7 @@ class ResumeStudioPage(QWidget):
             self._recalculate()
         has = self._vm.has_resume()
         self._dup_btn.setEnabled(has)
+        self._export_btn.setEnabled(has)
         self._save_version_btn.setEnabled(
             has and self.window.state.active_resume_id is not None
         )
@@ -382,3 +403,43 @@ class ResumeStudioPage(QWidget):
             lambda e: logger.warning("Headline generation failed: %s", e)
         )
         self._gen_worker.start()
+
+    # ── Export ──────────────────────────────────────────────────────
+
+    def _on_export(self) -> None:
+        """Export resume to chosen format and template."""
+        resume = self._vm.resume
+        if resume is None:
+            return
+
+        fmt = self._export_format.currentText()
+        template_name = self._export_template.currentText()
+
+        ext_map = {"PDF": "pdf", "DOCX": "docx", "Markdown": "md"}
+        ext = ext_map.get(fmt, "pdf")
+
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        default_name = (resume.contact.name or "resume").replace(" ", "_").lower()
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Resume", f"{default_name}.{ext}",
+            f"{fmt} Files (*.{ext})"
+        )
+        if not path:
+            return
+
+        try:
+            from app.exports.exporter import export_pdf, export_docx, export_markdown, get_template
+            theme = get_template(template_name)
+
+            if fmt == "PDF":
+                export_pdf(resume, path, theme=theme)
+            elif fmt == "DOCX":
+                export_docx(resume, path, theme=theme)
+            else:
+                export_markdown(resume, path)
+
+            QMessageBox.information(self, "Export Complete", f"Resume exported to:\n{path}")
+        except Exception as e:
+            logger.exception("Export failed")
+            QMessageBox.critical(self, "Export Failed", str(e))
