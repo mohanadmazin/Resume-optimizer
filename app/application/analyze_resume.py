@@ -3,7 +3,7 @@ import logging
 
 from app.domain.analysis import ATSResult
 from app.domain.resume import ResumeData
-from app.services.ats_engine import analyze
+from app.engines.ats_engine import analyze
 
 logger = logging.getLogger(__name__)
 

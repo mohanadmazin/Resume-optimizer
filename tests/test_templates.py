@@ -8,7 +8,7 @@ from app.domain.templates import (
     FitResult,
     TemplateManifest,
 )
-from app.services.auto_fit import auto_fit
+from app.engines.auto_fit import auto_fit
 
 
 # ── TemplateManifest ──────────────────────────────────────────────────────

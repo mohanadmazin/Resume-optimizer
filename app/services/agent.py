@@ -19,8 +19,8 @@ from app.ai.prompts import (
 from app.domain.agent import AgentAction, AgentProposal, AgentTool
 from app.domain.fact_guard import ChangeType, ProposedChange
 from app.domain.resume import ResumeData
-from app.services import diff_highlight
-from app.services.fact_guard import FactGuard, _source_tech_vocab, _source_vocabulary
+from app.engines import diff_highlight
+from app.engines.fact_guard import FactGuard, _source_tech_vocab, _source_vocabulary
 
 logger = logging.getLogger(__name__)
 

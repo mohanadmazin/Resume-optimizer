@@ -12,7 +12,7 @@ from app.database.models import (
     Resume,
 )
 from app.database.session import get_session
-from app.services.global_search import global_search, _extract_snippet
+from app.infrastructure.global_search import global_search, _extract_snippet
 
 
 @pytest.fixture(autouse=True)
@@ -100,19 +100,19 @@ class TestGlobalSearch:
 
 class TestSemanticSearch:
     def test_empty_index(self):
-        from app.services.global_search import semantic_search
+        from app.infrastructure.global_search import semantic_search
         results = semantic_search("python developer")
         assert results == []
 
     def test_rebuild_index(self):
-        from app.services.global_search import rebuild_search_index
+        from app.infrastructure.global_search import rebuild_search_index
         count = rebuild_search_index()
         assert count >= 0
 
     def test_auto_index_fact(self):
-        from app.services.global_search import auto_index_fact
+        from app.infrastructure.global_search import auto_index_fact
         auto_index_fact(999, "Test fact for indexing")
 
     def test_remove_fact_from_index(self):
-        from app.services.global_search import remove_fact_from_index
+        from app.infrastructure.global_search import remove_fact_from_index
         remove_fact_from_index(999)

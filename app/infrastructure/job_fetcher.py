@@ -16,10 +16,10 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
-from app.services.browser_fetcher import BrowserFetchError, fetch_rendered_page, requires_browser_render
-from app.services.html_extractor import extract_text_from_soup
-from app.services.metadata import extract_metadata
-from app.services.security import (
+from app.infrastructure.browser_fetcher import BrowserFetchError, fetch_rendered_page, requires_browser_render
+from app.infrastructure.html_extractor import extract_text_from_soup
+from app.infrastructure.metadata import extract_metadata
+from app.infrastructure.security import (
     SSRFError,
     ResolvedTarget,
     resolve_and_validate,

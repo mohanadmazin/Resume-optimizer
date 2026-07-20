@@ -5,15 +5,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 from bs4 import BeautifulSoup
 
-from app.services.html_extractor import extract_text_from_html, extract_text_from_soup
-from app.services.metadata import (
+from app.infrastructure.html_extractor import extract_text_from_html, extract_text_from_soup
+from app.infrastructure.metadata import (
     JobMetadata,
     TitleCandidate,
     extract_jsonld,
     extract_metadata,
     parse_title_string,
 )
-from app.services.security import (
+from app.infrastructure.security import (
     SSRFError,
     BLOCKED_PORTS,
     ResolvedTarget,
@@ -23,7 +23,7 @@ from app.services.security import (
 )
 
 # Keep backward-compatible aliases for the orchestrator tests
-from app.services.job_fetcher import (
+from app.infrastructure.job_fetcher import (
     FetchResult,
     InvalidURLError,
     JobFetcherError,
@@ -44,7 +44,7 @@ def test_ipv6_pinned_resolution_has_valid_sockaddr():
 
 
 def test_unexpected_fetch_exception_is_not_silenced():
-    with patch("app.services.job_fetcher.fetch_from_url", side_effect=RuntimeError("bug")):
+    with patch("app.infrastructure.job_fetcher.fetch_from_url", side_effect=RuntimeError("bug")):
         with pytest.raises(RuntimeError, match="bug"):
             fetch_job("https://example.com/job")
 
@@ -97,73 +97,73 @@ class TestValidatePort:
 
 
 class TestResolveAndValidate:
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_localhost(self, mock_dns):
         mock_dns.return_value = [(2, 1, 6, "", ("127.0.0.1", 0))]
         with pytest.raises(SSRFError, match="private/reserved"):
             resolve_and_validate("http://localhost/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_private_10(self, mock_dns):
         mock_dns.return_value = [(2, 1, 6, "", ("10.0.0.1", 0))]
         with pytest.raises(SSRFError, match="private/reserved"):
             resolve_and_validate("http://internal-host/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_private_192(self, mock_dns):
         mock_dns.return_value = [(2, 1, 6, "", ("192.168.1.1", 0))]
         with pytest.raises(SSRFError, match="private/reserved"):
             resolve_and_validate("http://router/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_private_172(self, mock_dns):
         mock_dns.return_value = [(2, 1, 6, "", ("172.16.0.1", 0))]
         with pytest.raises(SSRFError, match="private/reserved"):
             resolve_and_validate("http://container/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_link_local(self, mock_dns):
         mock_dns.return_value = [(2, 1, 6, "", ("169.254.1.1", 0))]
         with pytest.raises(SSRFError, match="private/reserved"):
             resolve_and_validate("http://link-local/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_multicast(self, mock_dns):
         mock_dns.return_value = [(2, 1, 6, "", ("224.0.0.1", 0))]
         with pytest.raises(SSRFError, match="private/reserved"):
             resolve_and_validate("http://multicast/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_reserved(self, mock_dns):
         mock_dns.return_value = [(2, 1, 6, "", ("0.0.0.0", 0))]
         with pytest.raises(SSRFError, match="private/reserved"):
             resolve_and_validate("http://zero-host/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_ipv6_loopback(self, mock_dns):
         mock_dns.return_value = [(10, 1, 6, "", ("::1", 0, 0, 0))]
         with pytest.raises(SSRFError, match="private/reserved"):
             resolve_and_validate("http://ipv6-localhost/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_ipv6_private(self, mock_dns):
         mock_dns.return_value = [(10, 1, 6, "", ("fc00::1", 0, 0, 0))]
         with pytest.raises(SSRFError, match="private/reserved"):
             resolve_and_validate("http://ipv6-ula/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_empty_results(self, mock_dns):
         mock_dns.return_value = []
         with pytest.raises(SSRFError, match="no results"):
             resolve_and_validate("http://no-dns.example.com/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_dns_failure(self, mock_dns):
         mock_dns.side_effect = OSError("DNS failed")
         with pytest.raises(SSRFError, match="DNS resolution failed"):
             resolve_and_validate("http://unresolvable.example.com/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_accepts_public_ip(self, mock_dns):
         mock_dns.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
         target = resolve_and_validate("https://example.com/jobs")
@@ -172,7 +172,7 @@ class TestResolveAndValidate:
         assert target.hostname == "example.com"
         assert target.scheme == "https"
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_rejects_if_any_record_is_private(self, mock_dns):
         mock_dns.return_value = [
             (2, 1, 6, "", ("93.184.216.34", 0)),
@@ -181,7 +181,7 @@ class TestResolveAndValidate:
         with pytest.raises(SSRFError, match="private/reserved"):
             resolve_and_validate("http://dual-homed.example.com/page")
 
-    @patch("app.services.security.socket.getaddrinfo")
+    @patch("app.infrastructure.security.socket.getaddrinfo")
     def test_returns_first_ip(self, mock_dns):
         mock_dns.return_value = [
             (2, 1, 6, "", ("93.184.216.34", 0)),
@@ -470,13 +470,13 @@ class TestFetchFromUrl:
         with pytest.raises(InvalidURLError, match="blocked"):
             fetch_from_url("https://example.com:22/path")
 
-    @patch("app.services.job_fetcher.resolve_and_validate")
+    @patch("app.infrastructure.job_fetcher.resolve_and_validate")
     def test_rejects_private_ip(self, mock_resolve):
         mock_resolve.side_effect = SSRFError("private/reserved IP (169.254.169.254)")
         with pytest.raises(InvalidURLError, match="private/reserved"):
             fetch_from_url("http://169.254.169.254/metadata")
 
-    @patch("app.services.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
+    @patch("app.infrastructure.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
         hostname="example.com", ip="93.184.216.34", port=443, scheme="https",
     ))
     def test_rejects_non_html_content_type(self, mock_resolve):
@@ -484,11 +484,11 @@ class TestFetchFromUrl:
         resp.headers = {"Content-Type": "application/json"}
         resp.status_code = 200
         resp.close = MagicMock()
-        with patch("app.services.job_fetcher._connect", return_value=resp):
+        with patch("app.infrastructure.job_fetcher._connect", return_value=resp):
             with pytest.raises(JobFetcherError, match="content type"):
                 fetch_from_url("https://example.com/api")
 
-    @patch("app.services.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
+    @patch("app.infrastructure.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
         hostname="example.com", ip="93.184.216.34", port=443, scheme="https",
     ))
     def test_rejects_too_large_response(self, mock_resolve):
@@ -498,11 +498,11 @@ class TestFetchFromUrl:
         resp.close = MagicMock()
         resp.content = b"x" * (6 * 1024 * 1024)
         resp.iter_content.return_value = [b"x" * (6 * 1024 * 1024)]
-        with patch("app.services.job_fetcher._connect", return_value=resp):
+        with patch("app.infrastructure.job_fetcher._connect", return_value=resp):
             with pytest.raises(JobFetcherError, match="MB limit"):
                 fetch_from_url("https://example.com/large")
 
-    @patch("app.services.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
+    @patch("app.infrastructure.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
         hostname="example.com", ip="93.184.216.34", port=443, scheme="https",
     ))
     def test_success(self, mock_resolve):
@@ -518,7 +518,7 @@ class TestFetchFromUrl:
         resp.content = html.encode("utf-8")
         resp.iter_content.return_value = [html.encode("utf-8")]
         resp.close = MagicMock()
-        with patch("app.services.job_fetcher._connect", return_value=resp):
+        with patch("app.infrastructure.job_fetcher._connect", return_value=resp):
             result = fetch_from_url("https://example.com/jobs/123")
         assert isinstance(result, FetchResult)
         assert "senior developer" in result.text.lower()
@@ -527,7 +527,7 @@ class TestFetchFromUrl:
         assert result.location == "Remote"
         assert result.source_url == "https://example.com/jobs/123"
 
-    @patch("app.services.job_fetcher.resolve_and_validate")
+    @patch("app.infrastructure.job_fetcher.resolve_and_validate")
     def test_redirect_to_private_rejected(self, mock_resolve):
         resp1 = MagicMock()
         resp1.status_code = 302
@@ -540,11 +540,11 @@ class TestFetchFromUrl:
             return ResolvedTarget(hostname="example.com", ip="93.184.216.34", port=443, scheme="https")
 
         mock_resolve.side_effect = resolve_side_effect
-        with patch("app.services.job_fetcher._connect", return_value=resp1):
+        with patch("app.infrastructure.job_fetcher._connect", return_value=resp1):
             with pytest.raises(InvalidURLError, match="private/reserved"):
                 fetch_from_url("https://example.com/redirect")
 
-    @patch("app.services.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
+    @patch("app.infrastructure.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
         hostname="example.com", ip="93.184.216.34", port=443, scheme="https",
     ))
     def test_redirected_blocked_port_is_rejected(self, mock_resolve):
@@ -552,11 +552,11 @@ class TestFetchFromUrl:
         resp1.status_code = 302
         resp1.headers = {"Location": "https://evil.com:22/secret"}
         resp1.close = MagicMock()
-        with patch("app.services.job_fetcher._connect", return_value=resp1):
+        with patch("app.infrastructure.job_fetcher._connect", return_value=resp1):
             with pytest.raises(InvalidURLError, match="blocked"):
                 fetch_from_url("https://example.com/start")
 
-    @patch("app.services.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
+    @patch("app.infrastructure.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
         hostname="example.com", ip="93.184.216.34", port=443, scheme="https",
     ))
     def test_too_many_redirects(self, mock_resolve):
@@ -564,11 +564,11 @@ class TestFetchFromUrl:
         resp.status_code = 302
         resp.headers = {"Location": "https://example.com/loop"}
         resp.close = MagicMock()
-        with patch("app.services.job_fetcher._connect", return_value=resp):
+        with patch("app.infrastructure.job_fetcher._connect", return_value=resp):
             with pytest.raises(JobFetcherError, match="Too many redirects"):
                 fetch_from_url("https://example.com/start")
 
-    @patch("app.services.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
+    @patch("app.infrastructure.job_fetcher.resolve_and_validate", return_value=ResolvedTarget(
         hostname="example.com", ip="93.184.216.34", port=443, scheme="https",
     ))
     def test_redirect_missing_location(self, mock_resolve):
@@ -576,11 +576,11 @@ class TestFetchFromUrl:
         resp.status_code = 301
         resp.headers = {}
         resp.close = MagicMock()
-        with patch("app.services.job_fetcher._connect", return_value=resp):
+        with patch("app.infrastructure.job_fetcher._connect", return_value=resp):
             with pytest.raises(JobFetcherError, match="missing Location"):
                 fetch_from_url("https://example.com/bad-redirect")
 
-    @patch("app.services.job_fetcher.resolve_and_validate")
+    @patch("app.infrastructure.job_fetcher.resolve_and_validate")
     def test_resolves_dns_per_redirect(self, mock_resolve):
         resp1 = MagicMock()
         resp1.status_code = 302
@@ -599,7 +599,7 @@ class TestFetchFromUrl:
             ResolvedTarget(hostname="example.com", ip="93.184.216.34", port=443, scheme="https"),
             ResolvedTarget(hostname="other-site.com", ip="93.184.216.35", port=443, scheme="https"),
         ]
-        with patch("app.services.job_fetcher._connect", side_effect=[resp1, resp2]):
+        with patch("app.infrastructure.job_fetcher._connect", side_effect=[resp1, resp2]):
             result = fetch_from_url("https://example.com/start")
         assert result.text == "We are looking for a senior developer with strong experience."
 
@@ -623,7 +623,7 @@ class TestFetchJob:
             title="Backend Engineer",
             company="Acme",
         )
-        with patch("app.services.job_fetcher.fetch_from_url", return_value=good_result):
+        with patch("app.infrastructure.job_fetcher.fetch_from_url", return_value=good_result):
             result = fetch_job("https://company.com/jobs/123")
 
         assert result.text == good_result.text
@@ -632,7 +632,7 @@ class TestFetchJob:
 
     def test_thin_text_returns_requires_manual_input(self):
         thin_result = FetchResult(text="Sign in to see more", title="LinkedIn")
-        with patch("app.services.job_fetcher.fetch_from_url", return_value=thin_result):
+        with patch("app.infrastructure.job_fetcher.fetch_from_url", return_value=thin_result):
             result = fetch_job("https://www.linkedin.com/jobs/view/123")
 
         assert result.requires_manual_input is True
@@ -640,7 +640,7 @@ class TestFetchJob:
         assert result.title == "LinkedIn"
 
     def test_fetch_error_returns_requires_manual_input(self):
-        with patch("app.services.job_fetcher.fetch_from_url", side_effect=JobFetcherError("timeout")):
+        with patch("app.infrastructure.job_fetcher.fetch_from_url", side_effect=JobFetcherError("timeout")):
             result = fetch_job("https://example.com/jobs/1")
 
         assert result.requires_manual_input is True
@@ -648,14 +648,14 @@ class TestFetchJob:
 
     def test_empty_text_returns_requires_manual_input(self):
         empty_result = FetchResult(text="")
-        with patch("app.services.job_fetcher.fetch_from_url", return_value=empty_result):
+        with patch("app.infrastructure.job_fetcher.fetch_from_url", return_value=empty_result):
             result = fetch_job("https://example.com/jobs/1")
 
         assert result.requires_manual_input is True
 
     def test_metadata_preserved_on_thin_text(self):
         thin_result = FetchResult(text="Sign in", title="SWE at Google", company="Google")
-        with patch("app.services.job_fetcher.fetch_from_url", return_value=thin_result):
+        with patch("app.infrastructure.job_fetcher.fetch_from_url", return_value=thin_result):
             result = fetch_job("https://www.linkedin.com/jobs/view/123")
 
         assert result.requires_manual_input is True
@@ -663,7 +663,7 @@ class TestFetchJob:
         assert result.company == "Google"
 
     def test_source_url_preserved(self):
-        with patch("app.services.job_fetcher.fetch_from_url", side_effect=JobFetcherError("fail")):
+        with patch("app.infrastructure.job_fetcher.fetch_from_url", side_effect=JobFetcherError("fail")):
             result = fetch_job("https://example.com/jobs/99")
 
         assert result.source_url == "https://example.com/jobs/99"

@@ -10,7 +10,7 @@ the browser from accessing private, loopback, or blocked targets.
 import logging
 from urllib.parse import urlparse
 
-from app.services.security import (
+from app.infrastructure.security import (
     SSRFError,
     resolve_and_validate,
     validate_port,

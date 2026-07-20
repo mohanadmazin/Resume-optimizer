@@ -1,5 +1,5 @@
 """Select the most useful bounded job-description context for AI prompts."""
-from app.services.ats_engine import _extract_section_text
+from app.engines.ats_engine import _extract_section_text
 
 
 def select_job_context(text: str, maximum_chars: int = 12_000) -> str:

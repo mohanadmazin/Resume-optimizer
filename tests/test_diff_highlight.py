@@ -8,7 +8,7 @@ from app.domain.resume import (
     ProjectItem,
     ResumeData,
 )
-from app.services.diff_highlight import (
+from app.engines.diff_highlight import (
     HIGHLIGHT,
     _diff_bullets_html,
     _diff_words_html,

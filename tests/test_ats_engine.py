@@ -1,5 +1,5 @@
 from app.schemas import ContactInfo, ExperienceItem, ResumeData
-from app.services.ats_engine import (
+from app.engines.ats_engine import (
     analyze,
     extract_keywords,
     extract_required_skills,
@@ -378,7 +378,7 @@ def test_bigram_requires_frequency_before_known_skill():
 
 
 def test_custom_skill_changes_refresh_immediately():
-    from app.services.ats_engine import get_known_skills
+    from app.engines.ats_engine import get_known_skills
 
     base = get_known_skills()
     assert "mycompany-framework" not in base

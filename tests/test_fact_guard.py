@@ -2,7 +2,7 @@
 
 from app.domain.fact_guard import ChangeType, FactGuardResult, ProposedChange
 from app.domain.resume import ContactInfo, ExperienceItem, ResumeData
-from app.services.fact_guard import (
+from app.engines.fact_guard import (
     FactGuard,
     _extract_entities,
     _extract_numbers,

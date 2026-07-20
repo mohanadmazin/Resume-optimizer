@@ -16,8 +16,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.database import db
-from app.services.document_reader import extract_text
-from app.services.job_fetcher import FetchResult, fetch_job
+from app.infrastructure.document_reader import extract_text
+from app.infrastructure.job_fetcher import FetchResult, fetch_job
 from app.ui.workers import Worker
 
 

@@ -1298,7 +1298,7 @@ def test_editor_projects_exposes_context_dates_and_bullets():
 def test_optimization_review_preview_recalculates_ats_score():
     from types import SimpleNamespace
     from app.domain.fact_guard import ChangeType, FactGuardResult, ProposedChange
-    from app.services.ats_engine import analyze
+    from app.engines.ats_engine import analyze
     from app.ui.pages.optimization import OptimizationPage
 
     original = ResumeData(

@@ -3,13 +3,13 @@
 from unittest.mock import patch
 
 from app.ai.ollama_client import OllamaError
-from app.services.resume_parser import parse_resume, parse_resume_ai
+from app.infrastructure.resume_parser import parse_resume, parse_resume_ai
 
 
 # ── AI parser fallback ───────────────────────────────────────────────────────
 
 
-@patch("app.services.resume_parser.OllamaClient")
+@patch("app.infrastructure.resume_parser.OllamaClient")
 def test_parse_resume_ai_falls_back_on_ollama_error(mock_client_cls):
     mock_client = mock_client_cls.return_value
     mock_client.generate_json.side_effect = OllamaError("Connection refused")
@@ -23,7 +23,7 @@ def test_parse_resume_ai_falls_back_on_ollama_error(mock_client_cls):
     assert result.raw_text == text
 
 
-@patch("app.services.resume_parser.OllamaClient")
+@patch("app.infrastructure.resume_parser.OllamaClient")
 def test_parse_resume_ai_falls_back_on_validation_error(mock_client_cls):
     mock_client = mock_client_cls.return_value
     # Return data that will cause ResumeData.model_validate to raise ValidationError
@@ -39,7 +39,7 @@ def test_parse_resume_ai_falls_back_on_validation_error(mock_client_cls):
     assert "Python" in result.skills
 
 
-@patch("app.services.resume_parser.OllamaClient")
+@patch("app.infrastructure.resume_parser.OllamaClient")
 def test_parse_resume_ai_falls_back_on_value_error(mock_client_cls):
     mock_client = mock_client_cls.return_value
     mock_client.generate_json.side_effect = ValueError("Bad JSON")
@@ -50,7 +50,7 @@ def test_parse_resume_ai_falls_back_on_value_error(mock_client_cls):
     assert result.raw_text == text
 
 
-@patch("app.services.resume_parser.OllamaClient")
+@patch("app.infrastructure.resume_parser.OllamaClient")
 def test_parse_resume_ai_falls_back_on_type_error(mock_client_cls):
     mock_client = mock_client_cls.return_value
     mock_client.generate_json.side_effect = TypeError("Unexpected type")
@@ -61,7 +61,7 @@ def test_parse_resume_ai_falls_back_on_type_error(mock_client_cls):
     assert result.raw_text == text
 
 
-@patch("app.services.resume_parser.OllamaClient")
+@patch("app.infrastructure.resume_parser.OllamaClient")
 def test_parse_resume_ai_success(mock_client_cls):
     mock_client = mock_client_cls.return_value
     mock_client.generate_json.return_value = {

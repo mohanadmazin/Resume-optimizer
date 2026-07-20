@@ -7,7 +7,7 @@ from app.domain.resume import (
     ExperienceItem,
     ResumeData,
 )
-from app.services.parser_fact_guard import _field_found_in_text, verify_parse
+from app.engines.parser_fact_guard import _field_found_in_text, verify_parse
 
 
 # ── _field_found_in_text unit tests ─────────────────────────────────────

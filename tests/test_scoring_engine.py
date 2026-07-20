@@ -1,6 +1,6 @@
 from app.domain.resume import ContactInfo, ExperienceItem, ResumeData
 from app.domain.scoring import CATEGORY_WEIGHTS, LayoutMetrics
-from app.services.scoring_engine import build_score_report
+from app.engines.scoring_engine import build_score_report
 
 
 def _full_resume() -> ResumeData:

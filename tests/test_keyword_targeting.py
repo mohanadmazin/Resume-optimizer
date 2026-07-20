@@ -5,7 +5,7 @@ from app.domain.keyword_targeting import (
     ResumeTextIndex,
     normalize,
 )
-from app.services.keyword_targeting import match_requirement, suggest_placement_paths
+from app.engines.keyword_targeting import match_requirement, suggest_placement_paths
 
 
 # ── normalize ──────────────────────────────────────────────────────────────

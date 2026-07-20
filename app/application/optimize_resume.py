@@ -5,7 +5,7 @@ import threading
 from app.domain.analysis import ATSResult
 from app.domain.pipeline import PipelineResult
 from app.domain.resume import ResumeData
-from app.services.ats_engine import analyze
+from app.engines.ats_engine import analyze
 from app.services.optimizer import optimize_resume
 from app.services.cover_letter import generate_cover_letter
 

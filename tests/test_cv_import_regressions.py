@@ -5,8 +5,8 @@ import fitz
 
 from app.domain.resume import ContactInfo, ResumeData
 from app.exports.exporter import export_text_pdf, to_markdown
-from app.services.ats_engine import analyze
-from app.services.resume_parser import parse_resume
+from app.engines.ats_engine import analyze
+from app.infrastructure.resume_parser import parse_resume
 
 
 CV_TEXT = """MOHANAD A. FATHI

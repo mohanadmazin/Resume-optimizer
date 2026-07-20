@@ -494,7 +494,7 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
     score = max(0, min(100, score))
 
     # Build the versioned rule-engine score report
-    from app.services.scoring_engine import build_score_report
+    from app.engines.scoring_engine import build_score_report
     from app.domain.scoring import LayoutMetrics
 
     has_bullets = any(exp.bullets for exp in resume.experience)
@@ -512,7 +512,7 @@ def analyze(resume: ResumeData, jd_text: str) -> ATSResult:
     )
 
     # --- Keyword Targeting new workflow ---
-    from app.services.keyword_targeting import match_requirement
+    from app.engines.keyword_targeting import match_requirement
     from app.domain.keyword_targeting import JobRequirement, ResumeTextIndex
     job_requirements = [JobRequirement(
         name=kw,

@@ -21,7 +21,7 @@ def _ensure_db_exists():
 
 class TestBackup:
     def test_backup_creates_file(self):
-        from app.services.backup import backup_database
+        from app.infrastructure.backup import backup_database
 
         result = backup_database()
         assert result.exists()
@@ -29,7 +29,7 @@ class TestBackup:
         assert result.parent == EXPORT_DIR
 
     def test_backup_integrity(self):
-        from app.services.backup import backup_database
+        from app.infrastructure.backup import backup_database
 
         result = backup_database()
         conn = sqlite3.connect(result)
@@ -38,7 +38,7 @@ class TestBackup:
         assert check[0] == "ok"
 
     def test_backup_custom_path(self, tmp_path):
-        from app.services.backup import backup_database
+        from app.infrastructure.backup import backup_database
 
         dest = tmp_path / "custom_backup.db"
         result = backup_database(export_path=dest)
@@ -46,7 +46,7 @@ class TestBackup:
         assert dest.exists()
 
     def test_backup_no_db_raises(self, tmp_path, monkeypatch):
-        from app.services import backup as mod
+        from app.infrastructure import backup as mod
 
         monkeypatch.setattr(mod, "DB_PATH", tmp_path / "nonexistent.db")
         with pytest.raises(FileNotFoundError, match="No database found"):
@@ -55,20 +55,20 @@ class TestBackup:
 
 class TestRestore:
     def test_restore_replaces_database(self, tmp_path):
-        from app.services.backup import backup_database, restore_database
+        from app.infrastructure.backup import backup_database, restore_database
 
         backup_path = backup_database()
         restore_database(backup_path)
         assert DB_PATH.exists()
 
     def test_restore_nonexistent_raises(self, tmp_path):
-        from app.services.backup import restore_database
+        from app.infrastructure.backup import restore_database
 
         with pytest.raises(FileNotFoundError, match="Backup file not found"):
             restore_database(tmp_path / "nope.db")
 
     def test_restore_corrupt_raises(self, tmp_path):
-        from app.services.backup import restore_database
+        from app.infrastructure.backup import restore_database
 
         corrupt = tmp_path / "corrupt.db"
         corrupt.write_bytes(b"not a database")
@@ -78,7 +78,7 @@ class TestRestore:
 
 class TestListBackups:
     def test_list_backups_empty(self, tmp_path, monkeypatch):
-        from app.services import backup as mod
+        from app.infrastructure import backup as mod
 
         empty = tmp_path / "empty_exports"
         empty.mkdir()
@@ -86,7 +86,7 @@ class TestListBackups:
         assert mod.list_backups() == []
 
     def test_list_backups_sorted(self, tmp_path, monkeypatch):
-        from app.services import backup as mod
+        from app.infrastructure import backup as mod
 
         export_dir = tmp_path / "exports"
         export_dir.mkdir()

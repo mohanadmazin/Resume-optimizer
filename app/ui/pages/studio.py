@@ -24,7 +24,7 @@ from app.database.repositories.resume_repository import ResumeRepository
 from app.database.repositories.versioning_repository import VersioningRepository
 from app.database.session import get_session
 from app.exports.exporter import to_markdown
-from app.services.ats_engine import analyze
+from app.engines.ats_engine import analyze
 from app.ui.components.resume_insights_panel import ResumeInsightsPanel
 from app.ui.components.resume_preview import ResumePreview
 from app.ui.components.resume_review_panel import ResumeReviewPanel
@@ -386,14 +386,14 @@ class ResumeStudioPage(QWidget):
         job_text = self._vm.job_text()
 
         try:
-            from app.services.content_checker import check_content
+            from app.engines.content_checker import check_content
 
             self._insights.update_from_content_check(check_content(resume))
         except Exception:
             logger.debug("Content check failed", exc_info=True)
 
         try:
-            from app.services.resume_scorer import calculate_resume_score
+            from app.engines.resume_scorer import calculate_resume_score
 
             self._insights.update_from_resume_score(
                 calculate_resume_score(resume, job_text)

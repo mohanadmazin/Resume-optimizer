@@ -17,12 +17,12 @@ class TestNoiseTokenMatching:
     """Verify that noise detection uses token-based matching, not substring."""
 
     def test_tokenize_class_attr_with_string(self):
-        from app.services.html_extractor import _tokenize_class_attr
+        from app.infrastructure.html_extractor import _tokenize_class_attr
         tokens = _tokenize_class_attr("job-card related-jobs sidebar")
         assert tokens == {"job", "card", "related", "jobs", "sidebar"}
 
     def test_tokenize_class_attr_with_list(self):
-        from app.services.html_extractor import _tokenize_class_attr
+        from app.infrastructure.html_extractor import _tokenize_class_attr
         tokens = _tokenize_class_attr(["nav-bar", "cookie_banner"])
         assert "nav" in tokens
         assert "bar" in tokens
@@ -30,28 +30,28 @@ class TestNoiseTokenMatching:
         assert "banner" in tokens
 
     def test_tokenize_class_attr_underscores_normalized(self):
-        from app.services.html_extractor import _tokenize_class_attr
+        from app.infrastructure.html_extractor import _tokenize_class_attr
         tokens = _tokenize_class_attr("my_class_name")
         assert tokens == {"my", "class", "name"}
 
     def test_has_noise_tokens_exact_match(self):
-        from app.services.html_extractor import _has_noise_tokens, _NOISE_CLASS_HINTS
+        from app.infrastructure.html_extractor import _has_noise_tokens, _NOISE_CLASS_HINTS
         assert _has_noise_tokens("sidebar", _NOISE_CLASS_HINTS)
         assert _has_noise_tokens("job-sidebar", _NOISE_CLASS_HINTS)
 
     def test_has_noise_tokens_no_false_positive(self):
         """Substring of a noise token should NOT match — only exact token matches."""
-        from app.services.html_extractor import _has_noise_tokens, _NOISE_CLASS_HINTS
+        from app.infrastructure.html_extractor import _has_noise_tokens, _NOISE_CLASS_HINTS
         # "sidebar" IS noise, but "card" is not — verify no substring false positives
         assert not _has_noise_tokens("card", _NOISE_CLASS_HINTS)
         assert not _has_noise_tokens("info-panel", _NOISE_CLASS_HINTS)
 
     def test_has_noise_tokens_empty_class(self):
-        from app.services.html_extractor import _has_noise_tokens, _NOISE_CLASS_HINTS
+        from app.infrastructure.html_extractor import _has_noise_tokens, _NOISE_CLASS_HINTS
         assert not _has_noise_tokens("", _NOISE_CLASS_HINTS)
 
     def test_noise_class_not_in_content(self):
-        from app.services.html_extractor import strip_noise_tags
+        from app.infrastructure.html_extractor import strip_noise_tags
         from bs4 import BeautifulSoup
         html = (
             '<div class="sidebar">'
@@ -66,7 +66,7 @@ class TestNoiseTokenMatching:
 
     def test_real_world_false_positive_no_longer_strips(self):
         """Regression: class names like 'description' should not be noise-stripped."""
-        from app.services.html_extractor import strip_noise_tags
+        from app.infrastructure.html_extractor import strip_noise_tags
         from bs4 import BeautifulSoup
         html = (
             '<div class="job-description">'
@@ -79,7 +79,7 @@ class TestNoiseTokenMatching:
         assert "senior Python engineer" in text
 
     def test_extract_text_full_pipeline(self):
-        from app.services.html_extractor import extract_text_from_html
+        from app.infrastructure.html_extractor import extract_text_from_html
         html = (
             "<html><body>"
             '<div class="job-description">'

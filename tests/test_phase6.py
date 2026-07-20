@@ -298,7 +298,7 @@ class TestResumeVariants:
 
 class TestLinkedInImport:
     def test_import_json(self, tmp_path):
-        from app.services.linkedin_import import import_linkedin
+        from app.infrastructure.linkedin_import import import_linkedin
 
         data = {
             "firstName": "John",
@@ -345,7 +345,7 @@ class TestLinkedInImport:
         assert result.education[0].institution == "MIT"
 
     def test_import_csv(self, tmp_path):
-        from app.services.linkedin_import import import_linkedin
+        from app.infrastructure.linkedin_import import import_linkedin
 
         csv_content = (
             "First Name,Last Name,Email Address,Company,Position,Skills\n"
@@ -362,7 +362,7 @@ class TestLinkedInImport:
         assert "Python" in result.skills
 
     def test_import_unsupported_format(self, tmp_path):
-        from app.services.linkedin_import import import_linkedin
+        from app.infrastructure.linkedin_import import import_linkedin
 
         txt_path = tmp_path / "data.txt"
         txt_path.write_text("not linkedin data")

@@ -27,12 +27,12 @@ from app.ai.ollama_client import OllamaClient
 from app.database import db
 from app.domain.fact_guard import FactGuardResult, ProposedChange
 from app.exports.exporter import export_docx, export_markdown, export_pdf, to_markdown
-from app.services.ats_engine import analyze
-from app.services.diff_highlight import resume_diff_html
-from app.services.document_reader import extract_text
-from app.services.job_fetcher import fetch_job
+from app.engines.ats_engine import analyze
+from app.engines.diff_highlight import resume_diff_html
+from app.infrastructure.document_reader import extract_text
+from app.infrastructure.job_fetcher import fetch_job
 from app.services.optimizer import apply_accepted_changes, optimize_resume
-from app.services.resume_parser import parse_resume
+from app.infrastructure.resume_parser import parse_resume
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 

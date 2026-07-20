@@ -1,5 +1,5 @@
 from app.domain.resume import ContactInfo, ExperienceItem, ResumeData
-from app.services.resume_parser import parse_resume
+from app.infrastructure.resume_parser import parse_resume
 
 SAMPLE = """John Smith
 Cairo, Egypt
@@ -93,7 +93,7 @@ Bachelor of Science · Another University · GPA: 3.8
 
 
 def test_parser_fact_guard_flags_hallucinated_contact():
-    from app.services.parser_fact_guard import verify_parse
+    from app.engines.parser_fact_guard import verify_parse
 
     resume = ResumeData(
         contact=ContactInfo(
@@ -146,7 +146,7 @@ def test_parser_fact_guard_flags_hallucinated_contact():
 
 
 def test_parser_removes_hallucinated_certifications():
-    from app.services.parser_fact_guard import verify_parse
+    from app.engines.parser_fact_guard import verify_parse
 
     resume = ResumeData(
         contact=ContactInfo(name="Alice"),

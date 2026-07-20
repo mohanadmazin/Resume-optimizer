@@ -1,8 +1,8 @@
 """Tests for Phase 9: Content Checker, Resume Scorer, Skill Explorer."""
 from app.domain.content_check import ContentCheckResult, IssueType
 from app.domain.resume import ContactInfo, EducationItem, ExperienceItem, ProjectItem, ResumeData
-from app.services.content_checker import check_content
-from app.services.resume_scorer import ResumeScore, calculate_resume_score
+from app.engines.content_checker import check_content
+from app.engines.resume_scorer import ResumeScore, calculate_resume_score
 from app.services.skill_explorer import SkillSuggestion, explore_skills
 
 

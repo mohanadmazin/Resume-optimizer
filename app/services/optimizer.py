@@ -16,7 +16,7 @@ from app.domain.analysis import ATSResult
 from app.domain.fact_guard import ChangeType, FactGuardResult, ProposedChange
 from app.domain.optimization import OptimizationAIOutput
 from app.schemas import ResumeData
-from app.services.fact_guard import FactGuard
+from app.engines.fact_guard import FactGuard
 from app.services.job_context import select_job_context
 
 logger = logging.getLogger(__name__)

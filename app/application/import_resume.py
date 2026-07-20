@@ -3,8 +3,8 @@ import logging
 from dataclasses import dataclass
 
 from app.domain.resume import ResumeData
-from app.services.document_reader import extract_text
-from app.services.resume_parser import parse_resume, parse_resume_ai
+from app.infrastructure.document_reader import extract_text
+from app.infrastructure.resume_parser import parse_resume, parse_resume_ai
 from app.validators import validate_resume
 
 logger = logging.getLogger(__name__)

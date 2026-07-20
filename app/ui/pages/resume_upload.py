@@ -17,8 +17,8 @@ from PySide6.QtWidgets import (
 
 from app.ai.ollama_client import OllamaClient
 from app.database import db
-from app.services.document_reader import extract_text
-from app.services.resume_parser import parse_resume, parse_resume_ai
+from app.infrastructure.document_reader import extract_text
+from app.infrastructure.resume_parser import parse_resume, parse_resume_ai
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
 

@@ -167,7 +167,7 @@ class DashboardPage(QWidget):
         self._pending_resume_path = path
         self.pipeline_btn.setEnabled(False)
 
-        from app.services.document_reader import extract_text
+        from app.infrastructure.document_reader import extract_text
         from app.ui.workers import Worker
         self._overlay_label = "Extracting text..."
         self._extract_worker = Worker(extract_text, path)
@@ -182,7 +182,7 @@ class DashboardPage(QWidget):
             return
 
         self._raw_text = text
-        from app.services.resume_parser import parse_resume
+        from app.infrastructure.resume_parser import parse_resume
         from app.ui.workers import Worker
         self._parse_worker = Worker(parse_resume, text)
         self._parse_worker.result.connect(self._on_resume_parsed)
@@ -253,7 +253,7 @@ class DashboardPage(QWidget):
             class _FetchThread(QThread):
                 done = Signal(object)
                 def run(self):
-                    from app.services.job_fetcher import fetch_job
+                    from app.infrastructure.job_fetcher import fetch_job
                     self.done.emit(fetch_job(url))
 
             thread = _FetchThread(dialog)

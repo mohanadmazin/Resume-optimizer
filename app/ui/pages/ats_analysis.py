@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from app.database import db
 from app.schemas import ResumeData
-from app.services.ats_engine import analyze
+from app.engines.ats_engine import analyze
 
 
 def _card(title: str) -> tuple[QFrame, QLabel]:

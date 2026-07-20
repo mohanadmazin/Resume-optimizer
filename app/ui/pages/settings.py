@@ -285,7 +285,7 @@ class SettingsPage(QWidget):
         )
 
     def _on_backup(self) -> None:
-        from app.services.backup import backup_database
+        from app.infrastructure.backup import backup_database
 
         ts_path = None
         try:
@@ -312,7 +312,7 @@ class SettingsPage(QWidget):
         if not path_str:
             return
 
-        from app.services.backup import restore_database
+        from app.infrastructure.backup import restore_database
 
         reply = QMessageBox.question(
             self,

@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 from app.database import db
 from app.database.repositories.resume_repository import ResumeRepository
 from app.domain.resume import ResumeData
-from app.services.linkedin_import import import_linkedin
+from app.infrastructure.linkedin_import import import_linkedin
 from app.ui.workers import Worker
 
 logger = logging.getLogger(__name__)

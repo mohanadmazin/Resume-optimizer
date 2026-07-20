@@ -16,7 +16,7 @@ from app.domain.analysis import ATSResult
 from app.domain.content_check import ContentCheckResult
 from app.domain.keyword_targeting import KeywordTarget
 from app.domain.scoring import ResumeScoreReport
-from app.services.resume_scorer import ResumeScore
+from app.engines.resume_scorer import ResumeScore
 
 
 class _ScoreCard(QFrame):

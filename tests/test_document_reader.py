@@ -15,7 +15,7 @@ class TestPdfPageLimit:
         doc.save(str(pdf_path))
         doc.close()
 
-        from app.services.document_reader import extract_text
+        from app.infrastructure.document_reader import extract_text
 
         with pytest.raises(ValueError, match="exceeds 60 pages"):
             extract_text(str(pdf_path))
@@ -33,7 +33,7 @@ class TestPdfPageLimit:
         doc.save(str(pdf_path))
         doc.close()
 
-        from app.services.document_reader import extract_text
+        from app.infrastructure.document_reader import extract_text
 
         result = extract_text(str(pdf_path))
         assert "Hello" in result
@@ -48,7 +48,7 @@ class TestDocxExpansionLimit:
             zf.writestr("word/document.xml", content)
             zf.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
 
-        from app.services.document_reader import extract_text
+        from app.infrastructure.document_reader import extract_text
 
         with pytest.raises(ValueError, match="compression ratio"):
             extract_text(str(docx_path))
@@ -56,7 +56,7 @@ class TestDocxExpansionLimit:
 
 class TestAiParserInputLimit:
     def test_heuristic_parser_works_for_large_input(self):
-        from app.services.resume_parser import parse_resume
+        from app.infrastructure.resume_parser import parse_resume
 
         text = "John Doe\njohn@example.com\n" + "Python, SQL, Docker\n" * 1000
         resume = parse_resume(text)

@@ -3,12 +3,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.browser_fetcher import (
+from app.infrastructure.browser_fetcher import (
     BrowserFetchError,
     fetch_rendered_page,
     requires_browser_render,
 )
-from app.services.job_fetcher import ExtractionError, FetchResult, fetch_from_url
+from app.infrastructure.job_fetcher import ExtractionError, FetchResult, fetch_from_url
 
 
 # ── requires_browser_render ──────────────────────────────────────────────
@@ -60,9 +60,9 @@ class TestFetchRenderedPage:
 
         with (
             patch("playwright.sync_api.sync_playwright") as mock_sync,
-            patch("app.services.browser_fetcher.validate_scheme"),
-            patch("app.services.browser_fetcher.validate_port"),
-            patch("app.services.browser_fetcher.resolve_and_validate"),
+            patch("app.infrastructure.browser_fetcher.validate_scheme"),
+            patch("app.infrastructure.browser_fetcher.validate_port"),
+            patch("app.infrastructure.browser_fetcher.resolve_and_validate"),
         ):
             mock_sync.return_value.__enter__.return_value = mock_pw
             html, final_url = fetch_rendered_page("https://example.com")
@@ -93,13 +93,13 @@ class TestBrowserSecurity:
         mock_request.resource_type = "document"
         mock_route.request = mock_request
 
-        from app.services.browser_fetcher import _secure_route
-        from app.services.security import SSRFError
+        from app.infrastructure.browser_fetcher import _secure_route
+        from app.infrastructure.security import SSRFError
 
         with (
-            patch("app.services.browser_fetcher.validate_scheme"),
-            patch("app.services.browser_fetcher.validate_port"),
-            patch("app.services.browser_fetcher.resolve_and_validate", side_effect=SSRFError("loopback")),
+            patch("app.infrastructure.browser_fetcher.validate_scheme"),
+            patch("app.infrastructure.browser_fetcher.validate_port"),
+            patch("app.infrastructure.browser_fetcher.resolve_and_validate", side_effect=SSRFError("loopback")),
         ):
             _secure_route(mock_route)
 
@@ -112,12 +112,12 @@ class TestBrowserSecurity:
         mock_request.resource_type = "image"
         mock_route.request = mock_request
 
-        from app.services.browser_fetcher import _secure_route
+        from app.infrastructure.browser_fetcher import _secure_route
 
         with (
-            patch("app.services.browser_fetcher.validate_scheme"),
-            patch("app.services.browser_fetcher.validate_port"),
-            patch("app.services.browser_fetcher.resolve_and_validate"),
+            patch("app.infrastructure.browser_fetcher.validate_scheme"),
+            patch("app.infrastructure.browser_fetcher.validate_port"),
+            patch("app.infrastructure.browser_fetcher.resolve_and_validate"),
         ):
             _secure_route(mock_route)
 
@@ -150,10 +150,10 @@ class TestBrowserFallbackIntegration:
         mock_response.__exit__ = MagicMock(return_value=False)
 
         with (
-            patch("app.services.job_fetcher.resolve_and_validate") as mock_resolve,
-            patch("app.services.job_fetcher._connect", return_value=mock_response),
-            patch("app.services.job_fetcher.requires_browser_render", return_value=True),
-            patch("app.services.job_fetcher.fetch_rendered_page", return_value=(rich_html, "https://www.linkedin.com/jobs/view/123")),
+            patch("app.infrastructure.job_fetcher.resolve_and_validate") as mock_resolve,
+            patch("app.infrastructure.job_fetcher._connect", return_value=mock_response),
+            patch("app.infrastructure.job_fetcher.requires_browser_render", return_value=True),
+            patch("app.infrastructure.job_fetcher.fetch_rendered_page", return_value=(rich_html, "https://www.linkedin.com/jobs/view/123")),
         ):
             mock_resolve.return_value = MagicMock(
                 hostname="linkedin.com", port=443, ip="1.2.3.4"
@@ -182,9 +182,9 @@ class TestBrowserFallbackIntegration:
         mock_response.__exit__ = MagicMock(return_value=False)
 
         with (
-            patch("app.services.job_fetcher.resolve_and_validate") as mock_resolve,
-            patch("app.services.job_fetcher._connect", return_value=mock_response),
-            patch("app.services.job_fetcher.fetch_rendered_page") as mock_browser,
+            patch("app.infrastructure.job_fetcher.resolve_and_validate") as mock_resolve,
+            patch("app.infrastructure.job_fetcher._connect", return_value=mock_response),
+            patch("app.infrastructure.job_fetcher.fetch_rendered_page") as mock_browser,
         ):
             mock_resolve.return_value = MagicMock(
                 hostname="company.com", port=443, ip="1.2.3.4"
@@ -206,10 +206,10 @@ class TestBrowserFallbackIntegration:
         mock_response.__exit__ = MagicMock(return_value=False)
 
         with (
-            patch("app.services.job_fetcher.resolve_and_validate") as mock_resolve,
-            patch("app.services.job_fetcher._connect", return_value=mock_response),
-            patch("app.services.job_fetcher.requires_browser_render", return_value=True),
-            patch("app.services.job_fetcher.fetch_rendered_page", side_effect=BrowserFetchError("crash")),
+            patch("app.infrastructure.job_fetcher.resolve_and_validate") as mock_resolve,
+            patch("app.infrastructure.job_fetcher._connect", return_value=mock_response),
+            patch("app.infrastructure.job_fetcher.requires_browser_render", return_value=True),
+            patch("app.infrastructure.job_fetcher.fetch_rendered_page", side_effect=BrowserFetchError("crash")),
         ):
             mock_resolve.return_value = MagicMock(
                 hostname="linkedin.com", port=443, ip="1.2.3.4"
