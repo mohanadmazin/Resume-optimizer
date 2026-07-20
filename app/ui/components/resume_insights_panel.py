@@ -13,8 +13,10 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain.analysis import ATSResult
+from app.domain.content_check import ContentCheckResult
 from app.domain.keyword_targeting import KeywordTarget
 from app.domain.scoring import ResumeScoreReport
+from app.services.resume_scorer import ResumeScore
 
 
 class _ScoreCard(QFrame):
@@ -66,6 +68,14 @@ class ResumeInsightsPanel(QWidget):
         cards_row.addWidget(self.match_card)
         cards_row.addWidget(self.skills_card)
         root.addLayout(cards_row)
+
+        cards_row2 = QHBoxLayout()
+        self.content_card = _ScoreCard("Content")
+        self.resume_score_card = _ScoreCard("Resume")
+        cards_row2.addWidget(self.content_card)
+        cards_row2.addWidget(self.resume_score_card)
+        cards_row2.addStretch()
+        root.addLayout(cards_row2)
 
         # ── Category breakdown ───────────────────────────────────────
         cat_label = QLabel("Category Breakdown")
@@ -147,6 +157,8 @@ class ResumeInsightsPanel(QWidget):
         self.ats_card.set_value("--")
         self.match_card.set_value("--")
         self.skills_card.set_value("--")
+        self.content_card.set_value("--")
+        self.resume_score_card.set_value("--")
         self._clear_layout(self._cat_layout)
         self._clear_layout(self._keywords_layout)
         self._keywords_layout.addStretch()
@@ -154,6 +166,44 @@ class ResumeInsightsPanel(QWidget):
         self._suggestions_layout.addStretch()
         self._clear_layout(self._issues_layout)
         self._issues_layout.addStretch()
+
+    def update_from_content_check(self, result: ContentCheckResult | None) -> None:
+        """Update the content quality card and add content issues to issues list."""
+        if result is None:
+            self.content_card.set_value("--")
+            return
+        self.content_card.set_value(f"{result.score}")
+        if result.score < 70:
+            self.content_card._value.setStyleSheet(
+                "color: #ff5c5c; font-size: 16px; font-weight: bold;"
+            )
+        elif result.score < 85:
+            self.content_card._value.setStyleSheet(
+                "color: #e6a817; font-size: 16px; font-weight: bold;"
+            )
+        else:
+            self.content_card._value.setStyleSheet(
+                "color: #5adc5a; font-size: 16px; font-weight: bold;"
+            )
+
+    def update_from_resume_score(self, score: ResumeScore | None) -> None:
+        """Update the resume score card."""
+        if score is None:
+            self.resume_score_card.set_value("--")
+            return
+        self.resume_score_card.set_value(f"{score.overall:.0f}")
+        if score.overall < 60:
+            self.resume_score_card._value.setStyleSheet(
+                "color: #ff5c5c; font-size: 16px; font-weight: bold;"
+            )
+        elif score.overall < 80:
+            self.resume_score_card._value.setStyleSheet(
+                "color: #e6a817; font-size: 16px; font-weight: bold;"
+            )
+        else:
+            self.resume_score_card._value.setStyleSheet(
+                "color: #5adc5a; font-size: 16px; font-weight: bold;"
+            )
 
     def update_from_suggestions(self, targets: list[KeywordTarget]) -> None:
         """Show keyword suggestions with Accept/Reject buttons."""

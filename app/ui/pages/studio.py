@@ -321,16 +321,38 @@ class ResumeStudioPage(QWidget):
 
     def _recalculate(self) -> None:
         resume = self._vm.resume
-        job_text = self._vm.job_text()
-        if resume is None or not job_text.strip():
+        if resume is None:
             self._insights.clear()
+            return
+
+        job_text = self._vm.job_text()
+
+        # Always run content check (no JD needed)
+        try:
+            from app.services.content_checker import check_content
+            content_result = check_content(resume)
+            self._insights.update_from_content_check(content_result)
+        except Exception:
+            logger.debug("Content check failed", exc_info=True)
+
+        # Always run resume score (no JD needed for most factors)
+        try:
+            from app.services.resume_scorer import calculate_resume_score
+            resume_score = calculate_resume_score(resume, job_text)
+            self._insights.update_from_resume_score(resume_score)
+        except Exception:
+            logger.debug("Resume scoring failed", exc_info=True)
+
+        # ATS analysis requires a JD
+        if not job_text.strip():
+            self._insights.update_from_ats(None)
             return
 
         try:
             ats = analyze(resume, job_text)
             self._vm.ats = ats
         except Exception:
-            self._insights.clear()
+            self._insights.update_from_ats(None)
 
     def _on_ats_changed(self) -> None:
         self._insights.update_from_ats(self._vm.ats)
