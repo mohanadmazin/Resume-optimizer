@@ -14,17 +14,39 @@ _TAGS_TO_REMOVE: frozenset[str] = frozenset({
     "iframe", "dialog", "modal",
 })
 
-# CSS class / id substrings that indicate noise containers
+# Normalized class/id tokens that indicate noise containers (not substrings)
 _NOISE_CLASS_HINTS: frozenset[str] = frozenset({
-    "sign", "login", "modal", "overlay", "auth",
+    "signin", "sign-in", "signup", "sign-up",
+    "login", "modal", "overlay", "auth",
     "similar-jobs", "people-also-viewed",
     "job-alert", "related-jobs", "sidebar",
+    "cookie-banner", "newsletter", "advertisement",
 })
 
 _NOISE_ID_HINTS: frozenset[str] = frozenset({
-    "sign", "login", "modal", "auth", "similar",
-    "related", "sidebar", "footer",
+    "signin", "sign-in", "login", "modal", "auth",
+    "similar", "related", "sidebar", "footer",
 })
+
+
+def _tokenize_class_attr(class_val) -> set[str]:
+    """Normalize a class attribute into a set of lowercased dash-separated tokens."""
+    if isinstance(class_val, list):
+        parts = " ".join(class_val)
+    else:
+        parts = str(class_val)
+    tokens: set[str] = set()
+    for segment in parts.split():
+        for token in segment.replace("_", "-").split("-"):
+            if token:
+                tokens.add(token.lower())
+    return tokens
+
+
+def _has_noise_tokens(text: str, hints: frozenset[str]) -> bool:
+    """Check if *text* contains any normalized noise tokens (exact match, not substring)."""
+    tokens = _tokenize_class_attr(text)
+    return bool(tokens & hints)
 
 # Line-level noise patterns (login prompts, timestamps, etc.)
 _NOISE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
@@ -63,12 +85,6 @@ _NOISE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 )
 
 
-def _has_noise_hint(text: str, hints: frozenset[str]) -> bool:
-    """Check if *text* contains any of the noise hint substrings."""
-    lower = text.lower()
-    return any(h in lower for h in hints)
-
-
 def strip_noise_tags(soup: Tag | BeautifulSoup) -> None:
     """Remove tags and containers that are not part of job content.
 
@@ -87,12 +103,14 @@ def strip_noise_tags(soup: Tag | BeautifulSoup) -> None:
             continue
         class_val = attrs.get("class")
         if class_val:
-            classes = " ".join(class_val) if isinstance(class_val, list) else str(class_val)
-            if _has_noise_hint(classes, _NOISE_CLASS_HINTS):
+            if _has_noise_tokens(
+                " ".join(class_val) if isinstance(class_val, list) else str(class_val),
+                _NOISE_CLASS_HINTS,
+            ):
                 to_remove.append(el)
                 continue
         id_val = attrs.get("id")
-        if id_val and _has_noise_hint(str(id_val), _NOISE_ID_HINTS):
+        if id_val and _has_noise_tokens(str(id_val), _NOISE_ID_HINTS):
             to_remove.append(el)
 
     for el in to_remove:

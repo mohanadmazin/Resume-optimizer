@@ -40,6 +40,7 @@ from app.ui.pages.resume_upload import ResumeUploadPage
 from app.ui.pages.salary_estimate import SalaryEstimatePage
 from app.ui.pages.settings import SettingsPage
 from app.ui.pages.skill_gap import SkillGapPage
+from app.ui.pages.studio import ResumeStudioPage
 
 from app.ui.state import AppState
 from app.core.settings import settings_service
@@ -58,6 +59,7 @@ PAGE_NAMES = [
     "Job Description",
     "ATS Analysis",
     "Optimization",
+    "Resume Studio",
     "Agent",
     "Cover Letter",
     "Skill Gap",
@@ -151,11 +153,14 @@ class MainWindow(QMainWindow):
             [
                 "Light",
                 "Dark",
+                "System",
             ]
         )
-        self.themeComboBox.setCurrentText(
-            self.state.theme.capitalize()
-        )
+        current_theme = self.state.theme.capitalize()
+        if current_theme in ("Light", "Dark", "System"):
+            self.themeComboBox.setCurrentText(current_theme)
+        else:
+            self.themeComboBox.setCurrentText("Dark")
 
 
         theme_layout.addWidget(
@@ -244,6 +249,9 @@ class MainWindow(QMainWindow):
 
         theme = theme.lower()
 
+        if theme == "system":
+            theme = self._detect_system_theme()
+
         if theme == "dark":
 
             palette = create_dark_theme()
@@ -256,9 +264,9 @@ class MainWindow(QMainWindow):
 
         else:
 
-            raise ValueError(
-                "Invalid theme name"
-            )
+            # Fall back to dark for unknown themes
+            palette = create_dark_theme()
+            stylesheet = DARK_STYLESHEET
 
 
         qpalette = self.palette()
@@ -286,19 +294,31 @@ class MainWindow(QMainWindow):
             theme
         )
 
-
         # Keep dropdown synchronized
         if hasattr(self, "themeComboBox"):
-
             if self.themeComboBox.currentText().lower() != theme:
-
                 self.themeComboBox.blockSignals(True)
-
                 self.themeComboBox.setCurrentText(
                     theme.capitalize()
                 )
-
                 self.themeComboBox.blockSignals(False)
+
+    @staticmethod
+    def _detect_system_theme() -> str:
+        """Detect the OS color scheme. Falls back to 'dark'."""
+        try:
+            from PySide6.QtCore import QSettings
+            qs = QSettings()
+            accent = qs.value("AccentColor", "")
+            if isinstance(accent, str) and accent:
+                # Windows accent color presence usually indicates light mode
+                # unless the user has explicitly set dark mode
+                dark_key = qs.value("AppsUseDarkTheme", None)
+                if dark_key is not None:
+                    return "light" if int(dark_key) == 0 else "dark"
+        except Exception:
+            pass
+        return "dark"
 
 
 
@@ -310,6 +330,7 @@ class MainWindow(QMainWindow):
             JobDescriptionPage,
             ATSAnalysisPage,
             OptimizationPage,
+            ResumeStudioPage,
             AgentPage,
             CoverLetterPage,
             SkillGapPage,

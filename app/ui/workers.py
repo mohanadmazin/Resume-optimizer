@@ -128,7 +128,7 @@ class PipelineWorker(QThread):
         self.requestInterruption()
 
     def run(self) -> None:
-        from app.ai.ollama_client import OllamaClient
+        from app.ai.ollama_client import OllamaClient, OllamaCancelledError
         from app.application.optimize_resume import RunPipelineUseCase
 
         client = OllamaClient()
@@ -153,6 +153,8 @@ class PipelineWorker(QThread):
             self._token.raise_if_cancelled()
             self.result.emit(result)
         except OperationCancelled:
+            self.cancelled.emit()
+        except OllamaCancelledError:
             self.cancelled.emit()
         except Exception as exc:
             logger.exception("Pipeline failed")

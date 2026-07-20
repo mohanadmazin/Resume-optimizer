@@ -65,8 +65,10 @@ class ResumeStudioPage(QWidget):
         self._tabs = QTabWidget()
         self._editor = SectionEditor()
         self._editor.section_edited.connect(self._on_section_edited)
+        self._editor.text_changed.connect(self._on_text_changed)
         self._editor.generate_summary_requested.connect(self._on_generate_summary)
         self._editor.generate_headline_requested.connect(self._on_generate_headline)
+        self._editor.set_reload_callback(self._on_editor_reload)
 
         self._preview = ResumePreview()
 
@@ -123,6 +125,12 @@ class ResumeStudioPage(QWidget):
         self._analysis_timer.setInterval(350)
         self._analysis_timer.timeout.connect(self._recalculate)
 
+        # ── Debounce timer for live preview ──────────────────────────
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(300)
+        self._preview_timer.timeout.connect(self._update_preview)
+
         # ── ViewModel signal wiring ──────────────────────────────────
         self._vm.resume_changed.connect(self._on_resume_changed)
         self._vm.section_changed.connect(self._on_section_changed)
@@ -166,6 +174,18 @@ class ResumeStudioPage(QWidget):
         self._vm.update_section(section, old_value, new_value)
         self._analysis_timer.start()
         self._auto_save_timer.start()
+        self._update_preview()
+
+    def _on_text_changed(self, section: str, old_value, new_value) -> None:
+        """Handle live text changes for preview update (debounced)."""
+        self._preview_timer.start()
+
+    def _on_editor_reload(self) -> None:
+        """Reload the editor after structural changes (add/delete entries)."""
+        section = self._vm.selected_section
+        value = self._vm.get_section_value(section)
+        self._editor.load(section, copy.deepcopy(value))
+        self._update_preview()
 
     # ── Undo / redo ──────────────────────────────────────────────────
 
@@ -269,6 +289,12 @@ class ResumeStudioPage(QWidget):
             self._preview.set_markdown(to_markdown(resume))
         else:
             self._preview.clear()
+
+    def _update_preview(self) -> None:
+        """Update the preview tab with the current resume state."""
+        resume = self._vm.resume
+        if resume is not None:
+            self._preview.set_markdown(to_markdown(resume))
 
     # ── ATS recalculation ────────────────────────────────────────────
 

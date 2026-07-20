@@ -1,12 +1,13 @@
 """Tests for ResumeStudioViewModel, SectionNavigator, SectionEditor, InsightsPanel."""
 from __future__ import annotations
 
+import copy
 import sys
 from unittest.mock import MagicMock, patch
 
 
 # ── PySide6 import guard ───────────────────────────────────────────────────
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QTextEdit
 
 from datetime import datetime, timezone
 
@@ -891,3 +892,219 @@ def test_optimization_page_original_resume_none_by_default():
     window = MagicMock()
     page = OptimizationPage(window)
     assert page._original_resume is None
+
+
+# ── Sprint 3: CRUD / Reorder / Live Preview ───────────────────────────────
+
+
+def test_editor_has_text_changed_signal():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    assert hasattr(editor, "text_changed")
+
+
+def test_editor_has_set_reload_callback():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    called = []
+    editor.set_reload_callback(lambda: called.append(True))
+    editor._reload()
+    assert called == [True]
+
+
+def test_editor_experience_has_add_button():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    resume = _make_resume()
+    editor.load("Experience", resume.experience)
+    from PySide6.QtWidgets import QPushButton
+    btns = editor.findChildren(QPushButton)
+    add_btns = [b for b in btns if b.objectName() == "addExpBtn"]
+    assert len(add_btns) == 1
+
+
+def test_editor_experience_has_delete_buttons():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    resume = _make_resume()
+    editor.load("Experience", resume.experience)
+    from PySide6.QtWidgets import QPushButton
+    btns = editor.findChildren(QPushButton)
+    del_btns = [b for b in btns if b.objectName() == "deleteExpBtn"]
+    assert len(del_btns) == len(resume.experience)
+
+
+def test_editor_projects_has_add_button():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    resume = _make_resume()
+    editor.load("Projects", resume.projects)
+    from PySide6.QtWidgets import QPushButton
+    btns = editor.findChildren(QPushButton)
+    add_btns = [b for b in btns if b.objectName() == "addProjBtn"]
+    assert len(add_btns) == 1
+
+
+def test_editor_projects_has_delete_buttons():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    resume = _make_resume()
+    editor.load("Projects", resume.projects)
+    from PySide6.QtWidgets import QPushButton
+    btns = editor.findChildren(QPushButton)
+    del_btns = [b for b in btns if b.objectName() == "deleteProjBtn"]
+    assert len(del_btns) == len(resume.projects)
+
+
+def test_editor_education_has_add_button():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    resume = _make_resume()
+    editor.load("Education", resume.education)
+    from PySide6.QtWidgets import QPushButton
+    btns = editor.findChildren(QPushButton)
+    add_btns = [b for b in btns if b.objectName() == "addEduBtn"]
+    assert len(add_btns) == 1
+
+
+def test_editor_education_has_delete_buttons():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    resume = _make_resume()
+    editor.load("Education", resume.education)
+    from PySide6.QtWidgets import QPushButton
+    btns = editor.findChildren(QPushButton)
+    del_btns = [b for b in btns if b.objectName() == "deleteEduBtn"]
+    assert len(del_btns) == len(resume.education)
+
+
+def test_editor_experience_has_add_bullet_buttons():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    resume = _make_resume()
+    editor.load("Experience", resume.experience)
+    from PySide6.QtWidgets import QPushButton
+    btns = editor.findChildren(QPushButton)
+    add_bullet = [b for b in btns if b.text() == "+ Add Bullet"]
+    assert len(add_bullet) == len(resume.experience)
+
+
+def test_editor_list_has_up_down_buttons():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    resume = _make_resume()
+    editor.load("Skills", resume.skills)
+    from PySide6.QtWidgets import QPushButton
+    btns = editor.findChildren(QPushButton)
+    up_btns = [b for b in btns if b.text() == "\u2191"]
+    down_btns = [b for b in btns if b.text() == "\u2193"]
+    assert len(up_btns) == 1
+    assert len(down_btns) == 1
+
+
+def test_editor_list_move_item():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    editor.load("Skills", ["python", "sql", "docker"])
+    editor._list_widget.setCurrentRow(0)
+    editor._move_list_item(1)
+    items = [editor._list_widget.item(i).text() for i in range(editor._list_widget.count())]
+    assert items == ["sql", "python", "docker"]
+
+
+def test_editor_list_move_item_no_op_at_boundaries():
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    editor.load("Skills", ["python", "sql"])
+    editor._list_widget.setCurrentRow(0)
+    editor._move_list_item(-1)
+    items = [editor._list_widget.item(i).text() for i in range(editor._list_widget.count())]
+    assert items == ["python", "sql"]
+    editor._list_widget.setCurrentRow(1)
+    editor._move_list_item(1)
+    items = [editor._list_widget.item(i).text() for i in range(editor._list_widget.count())]
+    assert items == ["python", "sql"]
+
+
+def test_editor_experience_add_entry_via_vm():
+    """Adding an experience entry via the ViewModel works end-to-end."""
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.resume = _make_resume()
+    old_exp = list(vm.resume.experience)
+    new_exp = old_exp + [ExperienceItem(title="New Role")]
+    vm.update_section("Experience", old_exp, new_exp)
+    assert len(vm.resume.experience) == len(old_exp) + 1
+    assert vm.resume.experience[-1].title == "New Role"
+    assert vm.can_undo
+    vm.undo()
+    assert len(vm.resume.experience) == len(old_exp)
+
+
+def test_editor_experience_delete_entry_via_vm():
+    """Deleting an experience entry via the ViewModel works end-to-end."""
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.resume = _make_resume()
+    old_exp = list(vm.resume.experience)
+    new_exp = old_exp[:-1]
+    vm.update_section("Experience", old_exp, new_exp)
+    assert len(vm.resume.experience) == len(old_exp) - 1
+    vm.undo()
+    assert len(vm.resume.experience) == len(old_exp)
+
+
+def test_editor_bullet_reorder_via_vm():
+    """Reordering bullets via the ViewModel works end-to-end."""
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.resume = _make_resume()
+    old_exp = copy.deepcopy(vm.resume.experience)
+    new_exp = copy.deepcopy(old_exp)
+    bullets = new_exp[0].bullets
+    bullets[0], bullets[1] = bullets[1], bullets[0]
+    vm.update_section("Experience", old_exp, new_exp)
+    assert vm.resume.experience[0].bullets[0] == old_exp[0].bullets[1]
+    vm.undo()
+    assert vm.resume.experience[0].bullets[0] == old_exp[0].bullets[0]
+
+
+def test_editor_text_changed_signal_emitted():
+    """text_changed signal is emitted by the editor."""
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    spy = MagicMock()
+    editor.text_changed.connect(spy)
+    editor.load("Summary", "Hello world")
+    # Simulate text change by calling the handler directly
+    editor._on_text_edit_changed(editor._container.findChildren(QTextEdit)[0])
+    spy.assert_called()
+
+
+def test_editor_reload_callback_invoked():
+    """Reload callback is called after structural changes."""
+    from app.ui.components.section_editor import SectionEditor
+    editor = SectionEditor()
+    reloads = []
+    editor.set_reload_callback(lambda: reloads.append(True))
+    editor._reload()
+    assert reloads == [True]
+
+
+def test_editor_projects_add_entry_via_vm():
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.resume = _make_resume()
+    old_proj = list(vm.resume.projects)
+    new_proj = old_proj + [ProjectItem(title="New Project")]
+    vm.update_section("Projects", old_proj, new_proj)
+    assert len(vm.resume.projects) == len(old_proj) + 1
+    vm.undo()
+    assert len(vm.resume.projects) == len(old_proj)
+
+
+def test_editor_education_add_entry_via_vm():
+    vm = ResumeStudioViewModel(state=_make_state())
+    vm.resume = _make_resume()
+    old_edu = list(vm.resume.education)
+    new_edu = old_edu + [EducationItem(degree="PhD")]
+    vm.update_section("Education", old_edu, new_edu)
+    assert len(vm.resume.education) == len(old_edu) + 1
+    vm.undo()
+    assert len(vm.resume.education) == len(old_edu)
