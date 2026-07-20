@@ -86,5 +86,3 @@ class ReziToggleSwitch(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(int(self._thumb_x - self.THUMB_RADIUS), self.HEIGHT // 2 - self.THUMB_RADIUS,
                             self.THUMB_RADIUS * 2, self.THUMB_RADIUS * 2)
-
-        painter.end()

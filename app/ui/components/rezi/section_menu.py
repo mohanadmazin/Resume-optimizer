@@ -64,8 +64,6 @@ class _Checkbox(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
 
-        painter.end()
-
 
 class _MenuItem(QWidget):
     """A single menu item with optional checkbox."""
@@ -111,7 +109,6 @@ class _MenuItem(QWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(123, 139, 255, 20))
             painter.drawPath(path)
-            painter.end()
         super().paintEvent(event)
 
 
@@ -169,7 +166,6 @@ class _SubmenuItem(QWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(123, 139, 255, 20))
             painter.drawPath(path)
-            painter.end()
         super().paintEvent(event)
 
 

@@ -170,7 +170,6 @@ class SidebarIconButton(QWidget):
 
         if 0 <= self._index < len(_ICON_PAINTERS):
             _ICON_PAINTERS[self._index](painter, 8, 8, 32)
-        painter.end()
 
 
 # ── Bottom sidebar items ──────────────────────────────────────────────────
@@ -296,4 +295,3 @@ class _LogoButton(QWidget):
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "R")
-        painter.end()
