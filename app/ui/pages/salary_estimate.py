@@ -169,13 +169,20 @@ class SalaryEstimatePage(QWidget):
         self._result = result
         self.estimate_btn.setEnabled(True)
 
-        monthly = f"{result.salary_monthly_min} - {result.salary_monthly_max}" if result.salary_monthly_min and result.salary_monthly_max else "N/A"
-        annual = f"{result.salary_annual_min} - {result.salary_annual_max}" if result.salary_annual_min and result.salary_annual_max else "N/A"
+        def _fmt(val):
+            if val is None:
+                return "N/A"
+            return f"{val:,.0f}"
+
+        monthly = f"{_fmt(result.salary_monthly_min)} - {_fmt(result.salary_monthly_max)}" if result.salary_monthly_min is not None and result.salary_monthly_max is not None else "N/A"
+        annual = f"{_fmt(result.salary_annual_min)} - {_fmt(result.salary_annual_max)}" if result.salary_annual_min is not None and result.salary_annual_max is not None else "N/A"
 
         self.monthly_value.setText(monthly)
         self.annual_value.setText(annual)
         self.currency_value.setText(result.currency or "N/A")
-        self.exp_value.setText(result.experience_years or "N/A")
+        self.exp_value.setText(
+            str(result.experience_years) if result.experience_years is not None else "N/A"
+        )
 
         factors_text = "\n".join(
             f"• {f}" for f in result.factors

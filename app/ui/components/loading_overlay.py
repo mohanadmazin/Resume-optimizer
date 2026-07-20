@@ -48,6 +48,8 @@ class LoadingOverlay(QWidget):
 
     def show_with_message(self, message: str = "Processing...") -> None:
         self._message.setText(message)
+        if self.parentWidget():
+            self.setGeometry(self.parentWidget().rect())
         self.show()
         self.raise_()
         self.setFocus()

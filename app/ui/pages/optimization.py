@@ -701,7 +701,7 @@ class OptimizationPage(QWidget):
         if state.fact_guard and state.fact_guard.flagged_count > 0:
             pending = sum(
                 1 for c in state.fact_guard.flagged_changes
-                if not c.accepted and (c.has_new_numbers or c.has_new_entities or c.has_new_skills)
+                if c.accepted is None and (c.has_new_numbers or c.has_new_entities or c.has_new_skills)
             )
             if pending > 0:
                 reply = QMessageBox.question(

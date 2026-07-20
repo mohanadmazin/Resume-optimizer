@@ -227,6 +227,11 @@ class MainWindow(QMainWindow):
     def get_page(self, name: str):
         return self.pages.get(name)
 
+    @property
+    def nav(self):
+        """Compatibility shim for legacy pages that reference self.window.nav."""
+        return _NavCompat(self)
+
     # ── Navigation ──────────────────────────────────────────────────────
 
     def _switch(self, index: int):
@@ -360,6 +365,27 @@ class MainWindow(QMainWindow):
         if result == OnboardingWizard.DialogCode.Accepted:
             self.state.reload_settings()
             self.apply_theme(self.state.theme)
+
+
+class _NavCompat:
+    """Compatibility shim so legacy pages can call self.window.nav.setCurrentRow()."""
+
+    def __init__(self, window: MainWindow) -> None:
+        self._window = window
+
+    def setCurrentRow(self, index: int) -> None:
+        target = _SIDEBAR_PAGE_MAP.get(index)
+        if target and target in PAGE_NAMES:
+            self._window._switch(PAGE_NAMES.index(target))
+
+    def findItems(self, name: str, _flags=None) -> list:
+        if name in PAGE_NAMES:
+            return [name]
+        return []
+
+    def setCurrentItem(self, item) -> None:
+        if item in PAGE_NAMES:
+            self._window._switch(PAGE_NAMES.index(item))
 
 
 if __name__ == "__main__":

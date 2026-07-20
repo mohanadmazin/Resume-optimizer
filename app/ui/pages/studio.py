@@ -195,12 +195,14 @@ class ResumeStudioPage(QWidget):
     # ── Navigation ───────────────────────────────────────────────────
 
     def _on_section_selected(self, name: str) -> None:
+        self._editor.save_pending_list()
         internal = self._vm.get_internal_name(name)
         self._vm.select_section(internal)
         value = self._vm.get_section_value(internal)
         self._editor.load(internal, copy.deepcopy(value))
 
     def _on_section_changed(self, name: str) -> None:
+        self._editor.save_pending_list()
         display = self._vm.get_display_name(name)
         self._nav.select_section(display)
         value = self._vm.get_section_value(name)

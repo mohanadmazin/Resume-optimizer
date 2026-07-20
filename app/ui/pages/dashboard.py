@@ -151,6 +151,8 @@ class DashboardPage(QWidget):
         self._pipeline_worker.progress.connect(self._on_pipeline_progress)
         self._pipeline_worker.result.connect(self._on_pipeline_done)
         self._pipeline_worker.error.connect(self._on_pipeline_error)
+        self._pipeline_worker.cancelled.connect(self._on_pipeline_cancelled)
+        self._pipeline_worker.finished.connect(self._cleanup_pipeline_worker)
         self._pipeline_worker.start()
 
     # ── Resume import prompt ─────────────────────────────────────────────
@@ -289,18 +291,20 @@ class DashboardPage(QWidget):
 
     def _cancel_pipeline(self) -> None:
         if self._pipeline_worker and self._pipeline_worker.isRunning():
+            self.cancel_btn.setEnabled(False)
+            self.step_label.setText("Cancelling...")
             self._pipeline_worker.cancel()
-            self._pipeline_worker.wait(3000)
-        self._reset_pipeline_ui()
-        self.window.notify("Pipeline cancelled.")
+        else:
+            self._reset_pipeline_ui()
+            self.window.notify("Pipeline cancelled.")
 
     def _reset_pipeline_ui(self) -> None:
         self.pipeline_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(True)
         self.cancel_btn.setVisible(False)
         self.progress_bar.setVisible(False)
         self.step_label.setVisible(False)
         self.window.state.pipeline_running = False
-        self._pipeline_worker = None
 
     def _on_pipeline_progress(self, step: str, percent: int) -> None:
         self.progress_bar.setValue(percent)
@@ -342,6 +346,15 @@ class DashboardPage(QWidget):
     def _on_pipeline_error(self, message: str) -> None:
         self._reset_pipeline_ui()
         QMessageBox.critical(self, "Pipeline Failed", message)
+
+    def _on_pipeline_cancelled(self) -> None:
+        self._reset_pipeline_ui()
+        self.window.notify("Pipeline cancelled.")
+
+    def _cleanup_pipeline_worker(self) -> None:
+        if self._pipeline_worker is not None:
+            self._pipeline_worker.deleteLater()
+            self._pipeline_worker = None
 
     # ── Page lifecycle ────────────────────────────────────────────────────
 

@@ -24,15 +24,18 @@ from app.ui.workers import Worker
 class _FetchWorker(QThread):
     """Background thread for fetching job descriptions from URLs."""
 
-    finished = Signal(object)  # FetchResult
+    result = Signal(object)
+    error = Signal(str)
 
     def __init__(self, url: str, parent=None):
         super().__init__(parent)
         self.url = url
 
     def run(self):
-        result = fetch_job(self.url)
-        self.finished.emit(result)
+        try:
+            self.result.emit(fetch_job(self.url))
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 
 class JobDescriptionPage(QWidget):
@@ -100,8 +103,14 @@ class JobDescriptionPage(QWidget):
         self.window.notify("Fetching job description from URL...")
 
         self._fetch_worker = _FetchWorker(url)
-        self._fetch_worker.finished.connect(self._on_fetch_done)
+        self._fetch_worker.result.connect(self._on_fetch_done)
+        self._fetch_worker.error.connect(self._on_fetch_error)
         self._fetch_worker.start()
+
+    def _on_fetch_error(self, message: str) -> None:
+        self.fetch_btn.setEnabled(True)
+        self.fetch_btn.setText("Fetch from URL")
+        QMessageBox.warning(self, "Fetch Failed", message)
 
     def _on_fetch_done(self, result: FetchResult) -> None:
         self.fetch_btn.setEnabled(True)

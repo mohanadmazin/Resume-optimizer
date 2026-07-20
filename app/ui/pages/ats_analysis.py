@@ -47,46 +47,40 @@ def _card(title: str) -> tuple[QFrame, QLabel]:
 def _highlight_keywords(text: str, matched: list[str], missing: list[str]) -> str:
     """Convert text to HTML with highlighted keywords.
 
-    Uses a token-based approach to avoid matching inside HTML tags or
-    previously generated highlight spans.
+    Uses regex to match multi-word keywords correctly.
     """
-    # First escape HTML entities in the original text
     escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    lines = escaped.split("\n")
 
-    # Build a combined regex for all keywords (matched + missing) — longest first
-    # to avoid partial matches
     all_keywords = sorted(set(matched + missing), key=len, reverse=True)
     if not all_keywords:
-        return f"<div style='font-family: Segoe UI; font-size: 13px; line-height: 1.6;'>{'<br>'.join(lines)}</div>"
+        return f"<div style='font-family: Segoe UI; font-size: 13px; line-height: 1.6;'>{escaped.replace(chr(10), '<br>')}</div>"
 
-    # Create keyword lookup sets for fast membership testing
     matched_set = {k.lower() for k in matched}
     missing_set = {k.lower() for k in missing}
 
-    # Tokenize each line and highlight matched tokens
-    result_lines = []
-    for line in lines:
-        # Split on word boundaries while preserving the delimiters
-        tokens = re.split(r'(\b\w+\b)', line)
-        highlighted_parts = []
-        for token in tokens:
-            lower = token.lower()
-            if lower in matched_set:
-                highlighted_parts.append(
-                    f'<span style="background-color: #22C55E; color: white; '
-                    f'font-weight: bold; padding: 2px 4px; border-radius: 3px;">{token}</span>'
-                )
-            elif lower in missing_set:
-                highlighted_parts.append(
-                    f'<span style="background-color: #EF4444; color: white; '
-                    f'font-weight: bold; padding: 2px 4px; border-radius: 3px;">{token}</span>'
-                )
-            else:
-                highlighted_parts.append(token)
-        result_lines.append("".join(highlighted_parts))
+    pattern = re.compile(
+        r"(?<!\w)(" + "|".join(re.escape(k) for k in all_keywords) + r")(?!\w)",
+        re.IGNORECASE,
+    )
 
-    return f"<div style='font-family: Segoe UI; font-size: 13px; line-height: 1.6;'>{'<br>'.join(result_lines)}</div>"
+    def _replace(m: re.Match) -> str:
+        word = m.group(0)
+        lower = word.lower()
+        if lower in matched_set:
+            return (
+                f'<span style="background-color: #22C55E; color: white; '
+                f'font-weight: bold; padding: 2px 4px; border-radius: 3px;">{word}</span>'
+            )
+        elif lower in missing_set:
+            return (
+                f'<span style="background-color: #EF4444; color: white; '
+                f'font-weight: bold; padding: 2px 4px; border-radius: 3px;">{word}</span>'
+            )
+        return word
+
+    highlighted = pattern.sub(_replace, escaped)
+
+    return f"<div style='font-family: Segoe UI; font-size: 13px; line-height: 1.6;'>{highlighted.replace(chr(10), '<br>')}</div>"
 
 
 class ATSAnalysisPage(QWidget):

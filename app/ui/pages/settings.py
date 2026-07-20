@@ -78,11 +78,11 @@ class SettingsPage(QWidget):
         )
 
 
-        refresh_btn = QPushButton(
+        self.refresh_btn = QPushButton(
             "Refresh Models"
         )
 
-        refresh_btn.clicked.connect(
+        self.refresh_btn.clicked.connect(
             self._refresh
         )
 
@@ -93,7 +93,7 @@ class SettingsPage(QWidget):
         )
 
         model_row.addWidget(
-            refresh_btn
+            self.refresh_btn
         )
 
 
@@ -189,40 +189,24 @@ class SettingsPage(QWidget):
 
 
     def _refresh(self):
-
         url = self.url_edit.text().strip()
-
-
-        client = OllamaClient(
-            base_url=url or None
-        )
-
-
-        self._worker = Worker(
-            client.list_models
-        )
-
-
-        self._worker.result.connect(
-            self._on_models
-        )
-
-
+        client = OllamaClient(base_url=url or None)
+        self.refresh_btn.setEnabled(False)
+        self.refresh_btn.setText("Refreshing...")
+        self._worker = Worker(client.list_models)
+        self._worker.result.connect(self._on_models)
         self._worker.error.connect(
-            lambda msg:
-            QMessageBox.warning(
-                self,
-                "Ollama unreachable",
-                msg
+            lambda msg: (
+                self.refresh_btn.setEnabled(True),
+                self.refresh_btn.setText("Refresh Models"),
+                QMessageBox.warning(self, "Ollama unreachable", msg),
             )
         )
-
-
         self._worker.start()
 
-
-
     def _on_models(self, models: list):
+        self.refresh_btn.setEnabled(True)
+        self.refresh_btn.setText("Refresh Models")
 
         if not models:
 
