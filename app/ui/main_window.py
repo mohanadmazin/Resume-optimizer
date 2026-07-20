@@ -157,7 +157,7 @@ class MainWindow(QMainWindow):
         # ── Floating section menu ──
         self._section_menu = SectionMenu()
         self._section_menu.section_toggled.connect(self._on_section_toggled)
-        self._top_nav.tab_bar.overflow_btn.clicked.connect(self._toggle_section_menu)
+        self._top_nav.tab_bar.overflow_button.clicked.connect(self._toggle_section_menu)
 
         self._setup_shortcuts()
 
@@ -250,7 +250,7 @@ class MainWindow(QMainWindow):
         if self._section_menu.isVisible():
             self._section_menu.hide()
             return
-        btn = self._top_nav.tab_bar.overflow_btn
+        btn = self._top_nav.tab_bar.overflow_button
         pos = btn.mapToGlobal(btn.rect().bottomLeft())
         self._section_menu.move(pos.x(), pos.y() + 4)
         self._section_menu.show()
