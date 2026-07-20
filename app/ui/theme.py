@@ -1,9 +1,9 @@
 from PySide6.QtGui import QColor, QFont, QPalette
 
 
-# ── Rezi-style color palette ──────────────────────────────────────────────
+# ── ResumeAI-style color palette ──────────────────────────────────────────────
 
-REZI_COLORS = {
+RESUMEAI_COLORS = {
     "window_bg": "#0d1729",
     "sidebar_bg": "#101c31",
     "card_bg": "#1d293d",
@@ -31,11 +31,11 @@ REZI_COLORS = {
     "toggle_thumb_off": "#172337",
 }
 
-REZI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
+RESUMEAI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
 
 
-def rezi_font(size: int = 14, weight: int = 400) -> QFont:
-    """Create a QFont with the Rezi font stack."""
+def resumeai_font(size: int = 14, weight: int = 400) -> QFont:
+    """Create a QFont with the ResumeAI font stack."""
     font = QFont("Inter", size)
     font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
     if weight >= 700:

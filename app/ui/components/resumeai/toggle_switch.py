@@ -1,4 +1,4 @@
-# app/ui/components/rezi/toggle_switch.py
+# app/ui/components/resumeai/toggle_switch.py
 """Animated toggle switch widget."""
 
 from __future__ import annotations
@@ -8,10 +8,10 @@ from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal, Propert
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath
 from PySide6.QtWidgets import QWidget
 
-from app.ui.theme import REZI_COLORS
+from app.ui.theme import RESUMEAI_COLORS
 
 
-class ReziToggleSwitch(QWidget):
+class ResumeAiToggleSwitch(QWidget):
     """A custom toggle switch with animated thumb."""
 
     toggled = Signal(bool)
@@ -70,9 +70,9 @@ class ReziToggleSwitch(QWidget):
 
         # Track
         if self._checked:
-            track_color = QColor(REZI_COLORS["toggle_track_on"])
+            track_color = QColor(RESUMEAI_COLORS["toggle_track_on"])
         else:
-            track_color = QColor(REZI_COLORS["toggle_track_off"])
+            track_color = QColor(RESUMEAI_COLORS["toggle_track_off"])
 
         track_path = QPainterPath()
         track_path.addRoundedRect(0, 0, self.WIDTH, self.HEIGHT, self.TRACK_RADIUS, self.TRACK_RADIUS)
@@ -81,7 +81,7 @@ class ReziToggleSwitch(QWidget):
         painter.drawPath(track_path)
 
         # Thumb
-        thumb_color = QColor(REZI_COLORS["toggle_thumb_on"] if self._checked else REZI_COLORS["toggle_thumb_off"])
+        thumb_color = QColor(RESUMEAI_COLORS["toggle_thumb_on"] if self._checked else RESUMEAI_COLORS["toggle_thumb_off"])
         painter.setBrush(QBrush(thumb_color))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(int(self._thumb_x - self.THUMB_RADIUS), self.HEIGHT // 2 - self.THUMB_RADIUS,

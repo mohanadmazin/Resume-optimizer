@@ -34,12 +34,12 @@ from app.ui.pages.settings import SettingsPage
 from app.ui.pages.skill_gap import SkillGapPage
 from app.ui.pages.studio import ResumeStudioPage
 
-# Rezi-style components
-from app.ui.components.rezi.sidebar import ReziSidebar
-from app.ui.components.rezi.top_nav import ReziTopNav
-from app.ui.components.rezi.section_menu import SectionMenu
-from app.ui.pages.rezi_contact import ReziContactPage
-from app.ui.pages.rezi_placeholder import ReziPlaceholderPage
+# ResumeAI-style components
+from app.ui.components.resumeai.sidebar import ResumeAiSidebar
+from app.ui.components.resumeai.top_nav import ResumeAiTopNav
+from app.ui.components.resumeai.section_menu import SectionMenu
+from app.ui.pages.resumeai_contact import ResumeAiContactPage
+from app.ui.pages.resumeai_placeholder import ResumeAiPlaceholderPage
 
 from app.ui.state import AppState
 from app.core.settings import settings_service
@@ -86,17 +86,17 @@ _SIDEBAR_PAGE_MAP = {
     6: "Settings",
 }
 
-# Section tab name -> Rezi page key
+# Section tab name -> ResumeAI page key
 _SECTION_PAGE_MAP = {
-    "CONTACT": "rezi_contact",
-    "EXPERIENCE": "rezi_experience",
-    "PROJECT": "rezi_project",
-    "EDUCATION": "rezi_education",
-    "CERTIFICATIONS": "rezi_certifications",
-    "COURSEWORK": "rezi_coursework",
-    "INVOLVEMENT": "rezi_involvement",
-    "SKILLS": "rezi_skills",
-    "SUMMARY": "rezi_summary",
+    "CONTACT": "resumeai_contact",
+    "EXPERIENCE": "resumeai_experience",
+    "PROJECT": "resumeai_project",
+    "EDUCATION": "resumeai_education",
+    "CERTIFICATIONS": "resumeai_certifications",
+    "COURSEWORK": "resumeai_coursework",
+    "INVOLVEMENT": "resumeai_involvement",
+    "SKILLS": "resumeai_skills",
+    "SUMMARY": "resumeai_summary",
 }
 
 
@@ -133,7 +133,7 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(0)
 
         # ── Left: icon sidebar ──
-        self._sidebar = ReziSidebar()
+        self._sidebar = ResumeAiSidebar()
         self._sidebar.page_selected.connect(self._on_sidebar_page)
         main_layout.addWidget(self._sidebar)
 
@@ -143,7 +143,7 @@ class MainWindow(QMainWindow):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
-        self._top_nav = ReziTopNav()
+        self._top_nav = ResumeAiTopNav()
         self._top_nav.section_changed.connect(self._on_section_changed)
         self._top_nav.resume_dropdown_clicked.connect(self._on_resume_dropdown)
         self._top_nav.action_clicked.connect(self._on_action)
@@ -194,7 +194,7 @@ class MainWindow(QMainWindow):
         ]
 
         self.pages = {}
-        self.rezi_pages = {}
+        self.resumeai_pages = {}
 
         # Add legacy pages to the stack
         for idx, page_cls in enumerate(legacy_pages):
@@ -202,27 +202,27 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(page)
             self.pages[PAGE_NAMES[idx]] = page
 
-        # Add Rezi section pages
-        rezi_pages_map = {
-            "rezi_contact": lambda: ReziContactPage(state=self.state),
-            "rezi_experience": lambda: ReziPlaceholderPage("Experience"),
-            "rezi_project": lambda: ReziPlaceholderPage("Project"),
-            "rezi_education": lambda: ReziPlaceholderPage("Education"),
-            "rezi_certifications": lambda: ReziPlaceholderPage("Certifications"),
-            "rezi_coursework": lambda: ReziPlaceholderPage("Coursework"),
-            "rezi_involvement": lambda: ReziPlaceholderPage("Involvement"),
-            "rezi_skills": lambda: ReziPlaceholderPage("Skills"),
-            "rezi_summary": lambda: ReziPlaceholderPage("Summary"),
+        # Add ResumeAI section pages
+        resumeai_pages_map = {
+            "resumeai_contact": lambda: ResumeAiContactPage(state=self.state),
+            "resumeai_experience": lambda: ResumeAiPlaceholderPage("Experience"),
+            "resumeai_project": lambda: ResumeAiPlaceholderPage("Project"),
+            "resumeai_education": lambda: ResumeAiPlaceholderPage("Education"),
+            "resumeai_certifications": lambda: ResumeAiPlaceholderPage("Certifications"),
+            "resumeai_coursework": lambda: ResumeAiPlaceholderPage("Coursework"),
+            "resumeai_involvement": lambda: ResumeAiPlaceholderPage("Involvement"),
+            "resumeai_skills": lambda: ResumeAiPlaceholderPage("Skills"),
+            "resumeai_summary": lambda: ResumeAiPlaceholderPage("Summary"),
         }
 
-        for key, factory in rezi_pages_map.items():
+        for key, factory in resumeai_pages_map.items():
             page = factory()
             self.stack.addWidget(page)
-            self.rezi_pages[key] = page
+            self.resumeai_pages[key] = page
 
         # Show contact page by default
-        if "rezi_contact" in self.rezi_pages:
-            self.stack.setCurrentWidget(self.rezi_pages["rezi_contact"])
+        if "resumeai_contact" in self.resumeai_pages:
+            self.stack.setCurrentWidget(self.resumeai_pages["resumeai_contact"])
 
     def get_page(self, name: str):
         return self.pages.get(name)
@@ -243,8 +243,8 @@ class MainWindow(QMainWindow):
 
     def _on_section_changed(self, name: str) -> None:
         page_key = _SECTION_PAGE_MAP.get(name)
-        if page_key and page_key in self.rezi_pages:
-            self.stack.setCurrentWidget(self.rezi_pages[page_key])
+        if page_key and page_key in self.resumeai_pages:
+            self.stack.setCurrentWidget(self.resumeai_pages[page_key])
 
     def _toggle_section_menu(self) -> None:
         if self._section_menu.isVisible():

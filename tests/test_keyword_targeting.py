@@ -1,4 +1,4 @@
-"""Tests for Rezi-style keyword targeting."""
+"""Tests for ResumeAI-style keyword targeting."""
 from app.domain.keyword_targeting import (
     JobRequirement,
     KeywordStatus,

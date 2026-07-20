@@ -1,4 +1,4 @@
-# app/ui/components/rezi/top_nav.py
+# app/ui/components/resumeai/top_nav.py
 """Top navigation bar with resume dropdown, section tabs, and action buttons."""
 
 from __future__ import annotations
@@ -10,14 +10,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.components.rezi.section_tabs import SectionTabBar
-from app.ui.theme import REZI_COLORS
+from app.ui.components.resumeai.section_tabs import SectionTabBar
+from app.ui.theme import RESUMEAI_COLORS
 
 
-REZI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
+RESUMEAI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
 
 
-class ReziTopNav(QWidget):
+class ResumeAiTopNav(QWidget):
     """Top navigation bar containing resume dropdown, section tabs, and action buttons."""
 
     section_changed = Signal(str)
@@ -39,11 +39,11 @@ class ReziTopNav(QWidget):
         self._resume_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._resume_btn.setStyleSheet(
             f"QPushButton {{"
-            f"  background-color: {REZI_COLORS['window_bg']};"
-            f"  border: 1px solid {REZI_COLORS['border']};"
+            f"  background-color: {RESUMEAI_COLORS['window_bg']};"
+            f"  border: 1px solid {RESUMEAI_COLORS['border']};"
             f"  border-radius: 10px;"
-            f"  color: {REZI_COLORS['text_primary']};"
-            f"  font-family: {REZI_FONT_FAMILY};"
+            f"  color: {RESUMEAI_COLORS['text_primary']};"
+            f"  font-family: {RESUMEAI_FONT_FAMILY};"
             f"  font-size: 13px;"
             f"  font-weight: 700;"
             f"  padding-left: 16px;"
@@ -51,7 +51,7 @@ class ReziTopNav(QWidget):
             f"  text-align: left;"
             f"}}"
             f"QPushButton:hover {{"
-            f"  border-color: {REZI_COLORS['primary']};"
+            f"  border-color: {RESUMEAI_COLORS['primary']};"
             f"}}"
         )
         self._resume_btn.clicked.connect(self.resume_dropdown_clicked.emit)
@@ -88,17 +88,17 @@ class ReziTopNav(QWidget):
         btn.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent;"
-            f"  border: 1px solid {REZI_COLORS['border']};"
+            f"  border: 1px solid {RESUMEAI_COLORS['border']};"
             f"  border-radius: 8px;"
-            f"  color: {REZI_COLORS['text_secondary']};"
-            f"  font-family: {REZI_FONT_FAMILY};"
+            f"  color: {RESUMEAI_COLORS['text_secondary']};"
+            f"  font-family: {RESUMEAI_FONT_FAMILY};"
             f"  font-size: 11px;"
             f"  font-weight: 700;"
             f"  padding: 0 14px;"
             f"}}"
             f"QPushButton:hover {{"
-            f"  border-color: {REZI_COLORS['primary']};"
-            f"  color: {REZI_COLORS['text_primary']};"
+            f"  border-color: {RESUMEAI_COLORS['primary']};"
+            f"  color: {RESUMEAI_COLORS['text_primary']};"
             f"}}"
         )
         return btn

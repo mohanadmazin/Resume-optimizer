@@ -1,4 +1,4 @@
-# app/ui/components/rezi/section_menu.py
+# app/ui/components/resumeai/section_menu.py
 """Floating section menu with checkboxes and submenu support."""
 
 from __future__ import annotations
@@ -12,10 +12,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.theme import REZI_COLORS
+from app.ui.theme import RESUMEAI_COLORS
 
 
-REZI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
+RESUMEAI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
 
 
 class _Checkbox(QWidget):
@@ -53,14 +53,14 @@ class _Checkbox(QWidget):
 
         if self._checked:
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(REZI_COLORS["purple_check"]))
+            painter.setBrush(QColor(RESUMEAI_COLORS["purple_check"]))
             painter.drawPath(path)
             # Checkmark
-            painter.setPen(QPen(QColor(REZI_COLORS["dark_text"]), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.setPen(QPen(QColor(RESUMEAI_COLORS["dark_text"]), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawLine(4, 9, 7, 13)
             painter.drawLine(7, 13, 14, 4)
         else:
-            painter.setPen(QPen(QColor(REZI_COLORS["input_border"]), 1.5))
+            painter.setPen(QPen(QColor(RESUMEAI_COLORS["input_border"]), 1.5))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
 
@@ -85,8 +85,8 @@ class _MenuItem(QWidget):
 
         lbl = QLabel(name)
         lbl.setStyleSheet(
-            f"color: {REZI_COLORS['text_primary']};"
-            f" font-size: 13px; font-family: {REZI_FONT_FAMILY};"
+            f"color: {RESUMEAI_COLORS['text_primary']};"
+            f" font-size: 13px; font-family: {RESUMEAI_FONT_FAMILY};"
             f" border: none; background: transparent;"
         )
         layout.addWidget(lbl)
@@ -128,15 +128,15 @@ class _SubmenuItem(QWidget):
         icon = QLabel("≡")
         icon.setFixedWidth(18)
         icon.setStyleSheet(
-            f"color: {REZI_COLORS['text_secondary']}; font-size: 16px;"
+            f"color: {RESUMEAI_COLORS['text_secondary']}; font-size: 16px;"
             f" border: none; background: transparent;"
         )
         layout.addWidget(icon)
 
         lbl = QLabel(name)
         lbl.setStyleSheet(
-            f"color: {REZI_COLORS['text_primary']};"
-            f" font-size: 13px; font-family: {REZI_FONT_FAMILY};"
+            f"color: {RESUMEAI_COLORS['text_primary']};"
+            f" font-size: 13px; font-family: {RESUMEAI_FONT_FAMILY};"
             f" border: none; background: transparent;"
         )
         layout.addWidget(lbl)
@@ -144,7 +144,7 @@ class _SubmenuItem(QWidget):
 
         chevron = QLabel("›")
         chevron.setStyleSheet(
-            f"color: {REZI_COLORS['text_muted']}; font-size: 16px;"
+            f"color: {RESUMEAI_COLORS['text_muted']}; font-size: 16px;"
             f" border: none; background: transparent;"
         )
         layout.addWidget(chevron)
@@ -178,8 +178,8 @@ class SectionMenu(QWidget):
         super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.setFixedSize(190, 245)
         self.setStyleSheet(
-            f"background-color: {REZI_COLORS['menu_bg']};"
-            f"border: 1px solid {REZI_COLORS['menu_border']};"
+            f"background-color: {RESUMEAI_COLORS['menu_bg']};"
+            f"border: 1px solid {RESUMEAI_COLORS['menu_border']};"
             f"border-radius: 10px;"
         )
 

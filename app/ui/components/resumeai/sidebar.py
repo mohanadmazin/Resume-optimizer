@@ -1,4 +1,4 @@
-# app/ui/components/rezi/sidebar.py
+# app/ui/components/resumeai/sidebar.py
 """Icon-only sidebar with logo, navigation icons, and bottom items."""
 
 from __future__ import annotations
@@ -11,14 +11,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.theme import REZI_COLORS
+from app.ui.theme import RESUMEAI_COLORS
 
 
 # ── Icon painter helpers ──────────────────────────────────────────────────
 
 def _draw_plus_icon(painter: QPainter, x: int, y: int, size: int) -> None:
     """Draw a plus sign (new document)."""
-    pen = QPen(QColor(REZI_COLORS["icon_inactive"]), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+    pen = QPen(QColor(RESUMEAI_COLORS["icon_inactive"]), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
     painter.setPen(pen)
     half = size // 2
     margin = size // 4
@@ -28,7 +28,7 @@ def _draw_plus_icon(painter: QPainter, x: int, y: int, size: int) -> None:
 
 def _draw_document_icon(painter: QPainter, x: int, y: int, size: int) -> None:
     """Draw a document icon (folded corner rectangle)."""
-    pen = QPen(QColor(REZI_COLORS["icon_inactive"]), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+    pen = QPen(QColor(RESUMEAI_COLORS["icon_inactive"]), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     fold = size // 3
@@ -40,7 +40,7 @@ def _draw_document_icon(painter: QPainter, x: int, y: int, size: int) -> None:
 
 def _draw_sparkles_icon(painter: QPainter, x: int, y: int, size: int) -> None:
     """Draw a sparkles/AI icon (star shape)."""
-    pen = QPen(QColor(REZI_COLORS["icon_inactive"]), 1.5)
+    pen = QPen(QColor(RESUMEAI_COLORS["icon_inactive"]), 1.5)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     cx, cy = x + size // 2, y + size // 2
@@ -61,7 +61,7 @@ def _draw_sparkles_icon(painter: QPainter, x: int, y: int, size: int) -> None:
 
 def _draw_layout_icon(painter: QPainter, x: int, y: int, size: int) -> None:
     """Draw a document with layout panel."""
-    pen = QPen(QColor(REZI_COLORS["icon_inactive"]), 1.5)
+    pen = QPen(QColor(RESUMEAI_COLORS["icon_inactive"]), 1.5)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawRect(x + 4, y + 2, size - 8, size - 4)
@@ -76,7 +76,7 @@ def _draw_layout_icon(painter: QPainter, x: int, y: int, size: int) -> None:
 
 def _draw_heart_icon(painter: QPainter, x: int, y: int, size: int) -> None:
     """Draw a document with heart."""
-    pen = QPen(QColor(REZI_COLORS["icon_inactive"]), 1.5)
+    pen = QPen(QColor(RESUMEAI_COLORS["icon_inactive"]), 1.5)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawRect(x + 4, y + 2, size - 8, size - 4)
@@ -88,7 +88,7 @@ def _draw_heart_icon(painter: QPainter, x: int, y: int, size: int) -> None:
 
 def _draw_lines_icon(painter: QPainter, x: int, y: int, size: int) -> None:
     """Draw a document with horizontal text lines."""
-    pen = QPen(QColor(REZI_COLORS["icon_inactive"]), 1.5)
+    pen = QPen(QColor(RESUMEAI_COLORS["icon_inactive"]), 1.5)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawRect(x + 4, y + 2, size - 8, size - 4)
@@ -100,7 +100,7 @@ def _draw_lines_icon(painter: QPainter, x: int, y: int, size: int) -> None:
 
 def _draw_check_icon(painter: QPainter, x: int, y: int, size: int) -> None:
     """Draw a document with checkmark."""
-    pen = QPen(QColor(REZI_COLORS["icon_inactive"]), 1.5)
+    pen = QPen(QColor(RESUMEAI_COLORS["icon_inactive"]), 1.5)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawRect(x + 4, y + 2, size - 8, size - 4)
@@ -163,7 +163,7 @@ class SidebarIconButton(QWidget):
             from PySide6.QtGui import QBrush
             path = QPainterPath()
             path.addRoundedRect(2, 2, 44, 44, 8, 8)
-            bg = QColor(REZI_COLORS["primary"]) if self._selected else QColor(123, 139, 255, 30)
+            bg = QColor(RESUMEAI_COLORS["primary"]) if self._selected else QColor(123, 139, 255, 30)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(bg))
             painter.drawPath(path)
@@ -199,7 +199,7 @@ class SidebarBottomItem(QWidget):
         lbl = QLabel(label)
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl.setStyleSheet(
-            f"color: {REZI_COLORS['text_muted']}; font-size: 8px; "
+            f"color: {RESUMEAI_COLORS['text_muted']}; font-size: 8px; "
             f"font-weight: 600; letter-spacing: 1px; border: none; background: transparent;"
         )
         layout.addWidget(lbl)
@@ -207,7 +207,7 @@ class SidebarBottomItem(QWidget):
 
 # ── Main sidebar widget ──────────────────────────────────────────────────
 
-class ReziSidebar(QWidget):
+class ResumeAiSidebar(QWidget):
     """Fixed-width icon sidebar with logo, nav icons, and bottom items."""
 
     page_selected = Signal(int)
@@ -226,7 +226,7 @@ class ReziSidebar(QWidget):
         super().__init__(parent)
         self.setFixedWidth(80)
         self.setStyleSheet(
-            f"background-color: {REZI_COLORS['sidebar_bg']};"
+            f"background-color: {RESUMEAI_COLORS['sidebar_bg']};"
             f"border: none;"
         )
 
@@ -251,11 +251,11 @@ class ReziSidebar(QWidget):
         layout.addStretch()
 
         # ── Bottom items ──
-        ext_item = SidebarBottomItem("🌐", "REZI\nEXTENSION")
+        ext_item = SidebarBottomItem("🌐", "RESUMEAI\nEXTENSION")
         layout.addWidget(ext_item, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addSpacing(8)
 
-        mcp_item = SidebarBottomItem("🔗", "REZI\nMCP")
+        mcp_item = SidebarBottomItem("🔗", "RESUMEAI\nMCP")
         layout.addWidget(mcp_item, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addSpacing(4)
 

@@ -1,22 +1,22 @@
-# app/ui/components/rezi/card.py
+# app/ui/components/resumeai/card.py
 """Rounded card container widget."""
 
 from __future__ import annotations
 
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QWidget
 
-from app.ui.theme import REZI_COLORS
+from app.ui.theme import RESUMEAI_COLORS
 
 
-class ReziCard(QFrame):
+class ResumeAiCard(QFrame):
     """A dark rounded card container for form content."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setStyleSheet(
             f"QFrame {{"
-            f"  background-color: {REZI_COLORS['card_bg']};"
-            f"  border: 1px solid {REZI_COLORS['border']};"
+            f"  background-color: {RESUMEAI_COLORS['card_bg']};"
+            f"  border: 1px solid {RESUMEAI_COLORS['border']};"
             f"  border-radius: 11px;"
             f"}}"
         )

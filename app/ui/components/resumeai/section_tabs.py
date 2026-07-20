@@ -1,4 +1,4 @@
-# app/ui/components/rezi/section_tabs.py
+# app/ui/components/resumeai/section_tabs.py
 """Horizontal scrollable section tab bar with overflow menu."""
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.theme import REZI_COLORS
+from app.ui.theme import RESUMEAI_COLORS
 
 
 class SectionTab(QPushButton):
@@ -38,12 +38,12 @@ class SectionTab(QPushButton):
         if self._is_selected:
             self.setStyleSheet(
                 f"QPushButton {{"
-                f"  background-color: {REZI_COLORS['primary_dark']};"
-                f"  color: {REZI_COLORS['dark_text']};"
+                f"  background-color: {RESUMEAI_COLORS['primary_dark']};"
+                f"  color: {RESUMEAI_COLORS['dark_text']};"
                 f"  border: none;"
                 f"  border-radius: 8px;"
                 f"  padding: 4px 14px;"
-                f"  font-family: {REZI_FONT_FAMILY};"
+                f"  font-family: {RESUMEAI_FONT_FAMILY};"
                 f"  font-size: 12px;"
                 f"  font-weight: 800;"
                 f"}}"
@@ -52,11 +52,11 @@ class SectionTab(QPushButton):
             self.setStyleSheet(
                 f"QPushButton {{"
                 f"  background: transparent;"
-                f"  color: {REZI_COLORS['text_primary']};"
+                f"  color: {RESUMEAI_COLORS['text_primary']};"
                 f"  border: none;"
                 f"  border-radius: 8px;"
                 f"  padding: 4px 14px;"
-                f"  font-family: {REZI_FONT_FAMILY};"
+                f"  font-family: {RESUMEAI_FONT_FAMILY};"
                 f"  font-size: 12px;"
                 f"  font-weight: 700;"
                 f"}}"
@@ -66,7 +66,7 @@ class SectionTab(QPushButton):
             )
 
 
-REZI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
+RESUMEAI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
 
 
 class SectionTabBar(QWidget):
@@ -93,8 +93,8 @@ class SectionTabBar(QWidget):
         self._selected: str = "CONTACT"
 
         self.setStyleSheet(
-            f"background-color: {REZI_COLORS['window_bg']};"
-            f"border: 1px solid {REZI_COLORS['border']};"
+            f"background-color: {RESUMEAI_COLORS['window_bg']};"
+            f"border: 1px solid {RESUMEAI_COLORS['border']};"
             f"border-radius: 10px;"
         )
 
@@ -115,7 +115,7 @@ class SectionTabBar(QWidget):
         self._overflow_btn.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent;"
-            f"  color: {REZI_COLORS['text_secondary']};"
+            f"  color: {RESUMEAI_COLORS['text_secondary']};"
             f"  border: none;"
             f"  border-radius: 8px;"
             f"  font-size: 16px;"

@@ -1,4 +1,4 @@
-"""Deterministic keyword requirement matching for Rezi-style targeting."""
+"""Deterministic keyword requirement matching for ResumeAI-style targeting."""
 from app.domain.keyword_targeting import (
     JobRequirement, KeywordTarget, KeywordStatus, ResumeTextIndex
 )

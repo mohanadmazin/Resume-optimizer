@@ -549,7 +549,7 @@ Return JSON in this format:
 """
 
 # ============================================================
-# BULLET WRITER — Rezi-style 3-alternative generation
+# BULLET WRITER — ResumeAI-style 3-alternative generation
 # ============================================================
 
 BULLET_WRITER_SYSTEM = """You are an expert resume bullet writer.

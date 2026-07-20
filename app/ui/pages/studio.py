@@ -34,7 +34,7 @@ _AUTO_SAVE_INTERVAL_MS = 2000
 
 
 class ResumeStudioPage(QWidget):
-    """Rezi-style persistent resume editor with live insights.
+    """ResumeAI-style persistent resume editor with live insights.
 
     ┌──────────────┬────────────────────────────┬──────────────────┐
     │ Section nav  │ Editor / preview tabs      │ Score & insights │

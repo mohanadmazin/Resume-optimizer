@@ -1,5 +1,5 @@
-# app/ui/pages/rezi_contact.py
-"""Rezi-style contact form page."""
+# app/ui/pages/resumeai_contact.py
+"""ResumeAI-style contact form page."""
 
 from __future__ import annotations
 
@@ -15,23 +15,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.components.rezi.card import ReziCard
-from app.ui.components.rezi.dropdown import ReziDropdown
-from app.ui.components.rezi.form_field import ReziFormField
-from app.ui.components.rezi.toast import ReziToast
-from app.ui.theme import REZI_COLORS
+from app.ui.components.resumeai.card import ResumeAiCard
+from app.ui.components.resumeai.dropdown import ResumeAiDropdown
+from app.ui.components.resumeai.form_field import ResumeAiFormField
+from app.ui.components.resumeai.toast import ResumeAiToast
+from app.ui.theme import RESUMEAI_COLORS
 
 
-REZI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
+RESUMEAI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
 
 
-class ReziContactPage(QWidget):
-    """Contact information form with Rezi-style dark theme."""
+class ResumeAiContactPage(QWidget):
+    """Contact information form with ResumeAI-style dark theme."""
 
     def __init__(self, state=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._state = state
-        self._toast = ReziToast("", self)
+        self._toast = ResumeAiToast("", self)
 
         # Scroll area wrapper
         scroll = QScrollArea(self)
@@ -46,7 +46,7 @@ class ReziContactPage(QWidget):
         main_layout.setSpacing(0)
 
         # ── Card ──
-        card = ReziCard()
+        card = ResumeAiCard()
 
         # Two-column grid
         grid = QHBoxLayout()
@@ -58,17 +58,17 @@ class ReziContactPage(QWidget):
         right_col.setSpacing(18)
 
         # Row 1
-        self._name_field = ReziFormField("Full Name", value="Mohanad Mazin A. Fathi")
+        self._name_field = ResumeAiFormField("Full Name", value="Mohanad Mazin A. Fathi")
         left_col.addWidget(self._name_field)
 
-        self._email_field = ReziFormField("Email Address", value="mohanad.a.fathi@gmail.com")
+        self._email_field = ResumeAiFormField("Email Address", value="mohanad.a.fathi@gmail.com")
         right_col.addWidget(self._email_field)
 
         # Row 2
-        self._phone_field = ReziFormField("Phone Number", value="(+60)1127670002")
+        self._phone_field = ResumeAiFormField("Phone Number", value="(+60)1127670002")
         left_col.addWidget(self._phone_field)
 
-        self._linkedin_field = ReziFormField(
+        self._linkedin_field = ResumeAiFormField(
             "LinkedIn URL",
             value="https://linkedin.com/in/mohanad-a-fathi",
             show_icon=True,
@@ -78,13 +78,13 @@ class ReziContactPage(QWidget):
         right_col.addWidget(self._linkedin_field)
 
         # Row 3
-        self._website_field = ReziFormField(
+        self._website_field = ResumeAiFormField(
             "Personal Website or Relevant Link",
             placeholder="https://www.example.com",
         )
         left_col.addWidget(self._website_field)
 
-        self._country_dropdown = ReziDropdown(
+        self._country_dropdown = ResumeAiDropdown(
             "Country",
             value="Malaysia",
             items=["Malaysia", "United States", "United Kingdom", "Canada", "Australia",
@@ -93,14 +93,14 @@ class ReziContactPage(QWidget):
         right_col.addWidget(self._country_dropdown)
 
         # Row 4
-        self._state_dropdown = ReziDropdown(
+        self._state_dropdown = ResumeAiDropdown(
             "State",
             value="Kuala Lumpur",
             items=["Kuala Lumpur", "Selangor", "Johor", "Penang", "Perak", "Sarawak", "Sabah"],
         )
         left_col.addWidget(self._state_dropdown)
 
-        self._city_dropdown = ReziDropdown(
+        self._city_dropdown = ResumeAiDropdown(
             "City",
             value="Kuala Lumpur",
             items=["Kuala Lumpur", "Petaling Jaya", "Shah Alam", "Subang Jaya", "George Town", "Johor Bahru"],
@@ -122,19 +122,19 @@ class ReziContactPage(QWidget):
         self._save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._save_btn.setStyleSheet(
             f"QPushButton {{"
-            f"  background-color: {REZI_COLORS['primary']};"
-            f"  color: {REZI_COLORS['dark_text']};"
-            f"  font-family: {REZI_FONT_FAMILY};"
+            f"  background-color: {RESUMEAI_COLORS['primary']};"
+            f"  color: {RESUMEAI_COLORS['dark_text']};"
+            f"  font-family: {RESUMEAI_FONT_FAMILY};"
             f"  font-size: 13px;"
             f"  font-weight: 900;"
             f"  border: none;"
             f"  border-radius: 7px;"
             f"}}"
             f"QPushButton:hover {{"
-            f"  background-color: {REZI_COLORS['primary_hover']};"
+            f"  background-color: {RESUMEAI_COLORS['primary_hover']};"
             f"}}"
             f"QPushButton:pressed {{"
-            f"  background-color: {REZI_COLORS['primary_pressed']};"
+            f"  background-color: {RESUMEAI_COLORS['primary_pressed']};"
             f"}}"
         )
         self._save_btn.clicked.connect(self._on_save)

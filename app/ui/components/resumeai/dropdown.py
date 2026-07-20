@@ -1,4 +1,4 @@
-# app/ui/components/rezi/dropdown.py
+# app/ui/components/resumeai/dropdown.py
 """Styled dropdown button with popup list."""
 
 from __future__ import annotations
@@ -13,13 +13,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.theme import REZI_COLORS
+from app.ui.theme import RESUMEAI_COLORS
 
 
-REZI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
+RESUMEAI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
 
 
-class ReziDropdown(QWidget):
+class ResumeAiDropdown(QWidget):
     """A dropdown control that shows a styled popup list when clicked."""
 
     selected = Signal(str)
@@ -44,9 +44,9 @@ class ReziDropdown(QWidget):
         if label:
             lbl = QLabel(label.upper())
             lbl.setStyleSheet(
-                f"color: {REZI_COLORS['text_primary']};"
+                f"color: {RESUMEAI_COLORS['text_primary']};"
                 f" font-size: 13px; font-weight: 800;"
-                f" font-family: {REZI_FONT_FAMILY};"
+                f" font-family: {RESUMEAI_FONT_FAMILY};"
                 f" border: none; background: transparent;"
             )
             layout.addWidget(lbl)
@@ -57,18 +57,18 @@ class ReziDropdown(QWidget):
         self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn.setStyleSheet(
             f"QPushButton {{"
-            f"  background-color: {REZI_COLORS['input_bg']};"
-            f"  border: 2px solid {REZI_COLORS['input_border']};"
+            f"  background-color: {RESUMEAI_COLORS['input_bg']};"
+            f"  border: 2px solid {RESUMEAI_COLORS['input_border']};"
             f"  border-radius: 5px;"
-            f"  color: {REZI_COLORS['text_primary']};"
-            f"  font-family: {REZI_FONT_FAMILY};"
+            f"  color: {RESUMEAI_COLORS['text_primary']};"
+            f"  font-family: {RESUMEAI_FONT_FAMILY};"
             f"  font-size: 15px;"
             f"  font-weight: 600;"
             f"  padding-left: 18px;"
             f"  text-align: left;"
             f"}}"
             f"QPushButton:hover {{"
-            f"  border-color: {REZI_COLORS['input_border_focus']};"
+            f"  border-color: {RESUMEAI_COLORS['input_border_focus']};"
             f"}}"
         )
         self._btn.clicked.connect(self._toggle_list)
@@ -79,24 +79,24 @@ class ReziDropdown(QWidget):
         self._list.setMaximumHeight(200)
         self._list.setStyleSheet(
             f"QListWidget {{"
-            f"  background-color: {REZI_COLORS['menu_bg']};"
-            f"  border: 1px solid {REZI_COLORS['menu_border']};"
+            f"  background-color: {RESUMEAI_COLORS['menu_bg']};"
+            f"  border: 1px solid {RESUMEAI_COLORS['menu_border']};"
             f"  border-radius: 8px;"
             f"  padding: 4px;"
-            f"  font-family: {REZI_FONT_FAMILY};"
+            f"  font-family: {RESUMEAI_FONT_FAMILY};"
             f"  font-size: 14px;"
-            f"  color: {REZI_COLORS['text_primary']};"
+            f"  color: {RESUMEAI_COLORS['text_primary']};"
             f"}}"
             f"QListWidget::item {{"
             f"  padding: 8px 12px;"
             f"  border-radius: 4px;"
             f"}}"
             f"QListWidget::item:hover {{"
-            f"  background-color: {REZI_COLORS['hover_bg']};"
+            f"  background-color: {RESUMEAI_COLORS['hover_bg']};"
             f"}}"
             f"QListWidget::item:selected {{"
-            f"  background-color: {REZI_COLORS['primary']};"
-            f"  color: {REZI_COLORS['dark_text']};"
+            f"  background-color: {RESUMEAI_COLORS['primary']};"
+            f"  color: {RESUMEAI_COLORS['dark_text']};"
             f"}}"
         )
         self._list.setVisible(False)

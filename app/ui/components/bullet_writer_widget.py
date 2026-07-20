@@ -1,4 +1,4 @@
-"""Bullet writer widget — Rezi-style 3-alternative generation with keyword highlighting."""
+"""Bullet writer widget — ResumeAI-style 3-alternative generation with keyword highlighting."""
 from __future__ import annotations
 
 import re

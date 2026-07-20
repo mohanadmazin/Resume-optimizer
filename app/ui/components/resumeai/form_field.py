@@ -1,4 +1,4 @@
-# app/ui/components/rezi/form_field.py
+# app/ui/components/resumeai/form_field.py
 """Form field with uppercase label, styled input, and optional toggle/icon."""
 
 from __future__ import annotations
@@ -13,36 +13,36 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.components.rezi.toggle_switch import ReziToggleSwitch
-from app.ui.theme import REZI_COLORS
+from app.ui.components.resumeai.toggle_switch import ResumeAiToggleSwitch
+from app.ui.theme import RESUMEAI_COLORS
 
 
-REZI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
+RESUMEAI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
 
 INPUT_STYLE = (
     f"QLineEdit {{"
-    f"  background-color: {REZI_COLORS['input_bg']};"
-    f"  border: 2px solid {REZI_COLORS['input_border']};"
+    f"  background-color: {RESUMEAI_COLORS['input_bg']};"
+    f"  border: 2px solid {RESUMEAI_COLORS['input_border']};"
     f"  border-radius: 5px;"
-    f"  color: {REZI_COLORS['text_primary']};"
-    f"  font-family: {REZI_FONT_FAMILY};"
+    f"  color: {RESUMEAI_COLORS['text_primary']};"
+    f"  font-family: {RESUMEAI_FONT_FAMILY};"
     f"  font-size: 15px;"
     f"  font-weight: 600;"
     f"  padding-left: 18px;"
     f"  padding-right: 10px;"
-    f"  selection-background-color: {REZI_COLORS['primary']};"
+    f"  selection-background-color: {RESUMEAI_COLORS['primary']};"
     f"}}"
     f"QLineEdit:focus {{"
-    f"  border-color: {REZI_COLORS['input_border_focus']};"
+    f"  border-color: {RESUMEAI_COLORS['input_border_focus']};"
     f"}}"
     f"QLineEdit::placeholder {{"
-    f"  color: {REZI_COLORS['text_muted']};"
+    f"  color: {RESUMEAI_COLORS['text_muted']};"
     f"  font-weight: 400;"
     f"}}"
 )
 
 
-class ReziFormField(QWidget):
+class ResumeAiFormField(QWidget):
     """A form field with uppercase label and styled input."""
 
     value_changed = Signal(str)
@@ -73,11 +73,11 @@ class ReziFormField(QWidget):
             top_row.addStretch()
             toggle_label = QLabel("Show on resume")
             toggle_label.setStyleSheet(
-                f"color: {REZI_COLORS['text_muted']}; font-size: 11px; "
-                f"font-family: {REZI_FONT_FAMILY}; border: none; background: transparent;"
+                f"color: {RESUMEAI_COLORS['text_muted']}; font-size: 11px; "
+                f"font-family: {RESUMEAI_FONT_FAMILY}; border: none; background: transparent;"
             )
             top_row.addWidget(toggle_label)
-            self._toggle = ReziToggleSwitch(checked=toggle_checked)
+            self._toggle = ResumeAiToggleSwitch(checked=toggle_checked)
             top_row.addWidget(self._toggle)
             layout.addLayout(top_row)
         else:
@@ -86,9 +86,9 @@ class ReziFormField(QWidget):
         # ── Label ──
         label = QLabel(self._label_text.upper())
         label.setStyleSheet(
-            f"color: {REZI_COLORS['text_primary']};"
+            f"color: {RESUMEAI_COLORS['text_primary']};"
             f" font-size: 13px; font-weight: 800;"
-            f" font-family: {REZI_FONT_FAMILY};"
+            f" font-family: {RESUMEAI_FONT_FAMILY};"
             f" border: none; background: transparent;"
         )
         layout.addWidget(label)
@@ -116,7 +116,7 @@ class ReziFormField(QWidget):
                 f"  font-size: 16px;"
                 f"}}"
                 f"QPushButton:hover {{"
-                f"  color: {REZI_COLORS['primary']};"
+                f"  color: {RESUMEAI_COLORS['primary']};"
                 f"}}"
             )
             icon_btn.setToolTip(icon_tooltip)
@@ -132,7 +132,7 @@ class ReziFormField(QWidget):
         return self._input
 
     @property
-    def toggle(self) -> ReziToggleSwitch | None:
+    def toggle(self) -> ResumeAiToggleSwitch | None:
         return self._toggle
 
     def value(self) -> str:

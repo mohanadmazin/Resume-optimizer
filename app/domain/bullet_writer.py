@@ -1,4 +1,4 @@
-"""Bullet writer domain models — Rezi-style 3-alternative generation from evidence."""
+"""Bullet writer domain models — ResumeAI-style 3-alternative generation from evidence."""
 from typing import Literal
 
 from pydantic import BaseModel, Field

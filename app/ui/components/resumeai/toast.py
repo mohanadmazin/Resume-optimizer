@@ -1,4 +1,4 @@
-# app/ui/components/rezi/toast.py
+# app/ui/components/resumeai/toast.py
 """Toast notification widget."""
 
 from __future__ import annotations
@@ -6,21 +6,21 @@ from __future__ import annotations
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QLabel, QWidget
 
-from app.ui.theme import REZI_COLORS
+from app.ui.theme import RESUMEAI_COLORS
 
 
-REZI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
+RESUMEAI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
 
 
-class ReziToast(QLabel):
+class ResumeAiToast(QLabel):
     """Small auto-dismissing success toast."""
 
     def __init__(self, message: str, parent: QWidget | None = None, duration_ms: int = 2500) -> None:
         super().__init__(message, parent)
         self.setStyleSheet(
-            f"background-color: {REZI_COLORS['primary']};"
-            f"color: {REZI_COLORS['dark_text']};"
-            f"font-family: {REZI_FONT_FAMILY};"
+            f"background-color: {RESUMEAI_COLORS['primary']};"
+            f"color: {RESUMEAI_COLORS['dark_text']};"
+            f"font-family: {RESUMEAI_FONT_FAMILY};"
             f"font-size: 13px;"
             f"font-weight: 700;"
             f"padding: 10px 20px;"
