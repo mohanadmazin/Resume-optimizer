@@ -83,21 +83,21 @@ class SectionEditor(QWidget):
                 w.deleteLater()
 
         if section == "Contact":
-            self._build_contact_editor(value)
+            self._build_contact_editor(value or ContactInfo())
         elif section == "Summary":
-            self._build_text_editor("summary", value)
+            self._build_text_editor("summary", value or "")
         elif section == "Skills":
-            self._build_list_editor("Skills", value)
+            self._build_list_editor("Skills", value or [])
         elif section == "Certifications":
-            self._build_list_editor("Certifications", value)
+            self._build_list_editor("Certifications", value or [])
         elif section == "Languages":
-            self._build_list_editor("Languages", value)
+            self._build_list_editor("Languages", value or [])
         elif section == "Experience":
-            self._build_experience_editor(value)
+            self._build_experience_editor(value or [])
         elif section == "Projects":
-            self._build_projects_editor(value)
+            self._build_projects_editor(value or [])
         elif section == "Education":
-            self._build_education_editor(value)
+            self._build_education_editor(value or [])
         else:
             lbl = QLabel(f"Editor for \'{section}\' is not yet implemented.")
             lbl.setStyleSheet("color: #888; font-style: italic;")
