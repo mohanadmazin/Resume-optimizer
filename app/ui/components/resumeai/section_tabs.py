@@ -66,6 +66,7 @@ class SectionTabBar(QWidget):
         "SKILLS",
         "CERTIFICATIONS",
         "LANGUAGES",
+        "SALARY",
         "REVIEW",
     ]
 

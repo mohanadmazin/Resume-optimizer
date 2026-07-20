@@ -199,4 +199,8 @@ class ResumeUploadPage(QWidget):
         state.resume_id = resume_id
         state.ats = None
         state.optimized = None
+        # Sync the top-nav dropdown button with the newly saved resume
+        state.resume_name = name
+        if hasattr(self.window, "update_resume_dropdown_button"):
+            self.window.update_resume_dropdown_button()
         self.window.notify(f"Resume '{name}' saved.")

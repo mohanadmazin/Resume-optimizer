@@ -21,8 +21,8 @@ EDITABLE_SECTION_NAMES: list[str] = [
     "Certifications",
     "Languages",
 ]
-SECTION_NAMES = EDITABLE_SECTION_NAMES
-_MUTABLE_FIELDS = set(SECTION_NAMES) | {"Headline"}
+SECTION_NAMES = EDITABLE_SECTION_NAMES + ["Salary"]
+_MUTABLE_FIELDS = set(EDITABLE_SECTION_NAMES) | {"Headline"}
 
 
 class ResumeStudioViewModel(QObject):

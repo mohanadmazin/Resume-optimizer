@@ -6,7 +6,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
-    QLabel,
     QVBoxLayout,
     QWidget,
 )
@@ -172,39 +171,6 @@ class SidebarIconButton(QWidget):
             _ICON_PAINTERS[self._index](painter, 8, 8, 32)
 
 
-# ── Bottom sidebar items ──────────────────────────────────────────────────
-
-class SidebarBottomItem(QWidget):
-    """Bottom sidebar item with icon and label."""
-
-    def __init__(self, icon_text: str, label: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
-        layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-
-        # Circle icon
-        icon_label = QLabel(icon_text)
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_label.setFixedSize(36, 36)
-        icon_label.setStyleSheet(
-            "background: qradialgradient(cx:0.5,cy:0.5,radius:0.5,"
-            "fx:0.5,fy:0.5,stop:0 #4a5a73, stop:1 #2a3a53);"
-            "border-radius: 18px; color: white; font-size: 12px; font-weight: bold;"
-        )
-        layout.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignHCenter)
-
-        # Label
-        lbl = QLabel(label)
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet(
-            f"color: {RESUMEAI_COLORS['text_muted']}; font-size: 8px; "
-            f"font-weight: 600; letter-spacing: 1px; border: none; background: transparent;"
-        )
-        layout.addWidget(lbl)
-
-
 # ── Main sidebar widget ──────────────────────────────────────────────────
 
 class ResumeAiSidebar(QWidget):
@@ -250,14 +216,10 @@ class ResumeAiSidebar(QWidget):
 
         layout.addStretch()
 
-        # ── Bottom items ──
-        ext_item = SidebarBottomItem("🌐", "RESUMEAI\nEXTENSION")
-        layout.addWidget(ext_item, alignment=Qt.AlignmentFlag.AlignHCenter)
-        layout.addSpacing(8)
+        # ── Bottom spacer ──
+        layout.addStretch()
 
-        mcp_item = SidebarBottomItem("🔗", "RESUMEAI\nMCP")
-        layout.addWidget(mcp_item, alignment=Qt.AlignmentFlag.AlignHCenter)
-        layout.addSpacing(4)
+        layout.addSpacing(20)
 
     def set_selected(self, index: int) -> None:
         """Update the highlighted sidebar item without emitting navigation."""

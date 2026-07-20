@@ -21,11 +21,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.database import db
 from app.database.repositories.application_repository import (
     ApplicationRepository,
     VALID_STATUSES,
 )
+from app.database.session import get_session
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ class ApplicationsPage(QWidget):
 
     def _refresh(self) -> None:
         try:
-            with db.session_scope() as session:
+            with get_session() as session:
                 repo = ApplicationRepository(session)
                 self._applications = repo.list_all()
         except Exception:
@@ -201,7 +201,7 @@ class ApplicationsPage(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             status, notes = dlg.get_data()
             try:
-                with db.session_scope() as session:
+                with get_session() as session:
                     repo = ApplicationRepository(session)
                     repo.create(resume_id, job_id, status=status, notes=notes)
                 self._refresh()
@@ -225,7 +225,7 @@ class ApplicationsPage(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             status, notes = dlg.get_data()
             try:
-                with db.session_scope() as session:
+                with get_session() as session:
                     repo = ApplicationRepository(session)
                     repo.update_status(app_id, status)
                     repo.update_notes(app_id, notes)
@@ -244,7 +244,7 @@ class ApplicationsPage(QWidget):
         if idx < len(VALID_STATUSES) - 1:
             next_status = VALID_STATUSES[idx + 1]
             try:
-                with db.session_scope() as session:
+                with get_session() as session:
                     repo = ApplicationRepository(session)
                     repo.update_status(app_id, next_status)
                 self._refresh()
@@ -262,7 +262,7 @@ class ApplicationsPage(QWidget):
         )
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                with db.session_scope() as session:
+                with get_session() as session:
                     repo = ApplicationRepository(session)
                     repo.delete(app_id)
                 self._refresh()

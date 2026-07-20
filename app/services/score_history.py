@@ -16,10 +16,10 @@ def save_score_snapshot(
 ) -> int | None:
     """Save a score snapshot to the database. Returns the snapshot ID."""
     try:
-        from app.database import db
         from app.database.models import ScoreSnapshot
+        from app.database.session import get_session
 
-        with db.session_scope() as session:
+        with get_session() as session:
             report_json = score_report.model_dump_json() if score_report else "{}"
             kw_match = 0.0
             skills_match = 0.0
@@ -50,10 +50,10 @@ def save_score_snapshot(
 def get_score_history(resume_id: int) -> list[dict]:
     """Get score history for a resume, ordered by date."""
     try:
-        from app.database import db
         from app.database.models import ScoreSnapshot
+        from app.database.session import get_session
 
-        with db.session_scope() as session:
+        with get_session() as session:
             rows = (
                 session.query(ScoreSnapshot)
                 .filter(ScoreSnapshot.resume_id == resume_id)

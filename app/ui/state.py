@@ -13,6 +13,7 @@ class AppState:
 
         # ── Resume ──────────────────────────────────────────────────
         self.active_resume_id: int | None = None
+        self.resume_name: str | None = None
         self._resume_cache = None
 
         # ── Job ─────────────────────────────────────────────────────

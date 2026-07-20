@@ -81,6 +81,10 @@ class ResumeAiTopNav(QWidget):
     def resume_button(self) -> QPushButton:
         return self._resume_btn
 
+    def set_resume_name(self, name: str) -> None:
+        """Update the button text to show the selected resume name."""
+        self._resume_btn.setText(f"{name.upper()}  ▾")
+
     def _make_action_button(self, text: str) -> QPushButton:
         btn = QPushButton(text)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)

@@ -4,17 +4,21 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QMainWindow,
+    QMenu,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from app.core.settings import settings_service
+from app.database.repositories.resume_repository import ResumeRepository
+from app.database.session import get_session
+from app.domain.resume import ResumeData
 from app.ui.components.resumeai.section_menu import SectionMenu
 from app.ui.components.resumeai.sidebar import ResumeAiSidebar
 from app.ui.components.resumeai.top_nav import ResumeAiTopNav
@@ -92,6 +96,7 @@ _SECTION_STUDIO_MAP = {
     "SKILLS": "Skills",
     "CERTIFICATIONS": "Certifications",
     "LANGUAGES": "Languages",
+    "SALARY": "Salary",
     "REVIEW": "Review",
 }
 _STUDIO_SECTION_MAP = {value: key for key, value in _SECTION_STUDIO_MAP.items()}
@@ -174,6 +179,9 @@ class MainWindow(QMainWindow):
 
         # Top section tabs are the primary resume editing navigation.
         self._show_studio_destination("Contact")
+
+        # Sync the dropdown button with the currently active resume (if any)
+        self.update_resume_dropdown_button()
 
     def get_page(self, name: str):
         return self.pages.get(name)
@@ -258,8 +266,113 @@ class MainWindow(QMainWindow):
         self._top_nav.tab_bar.set_section_visible(tab_name, visible)
 
     def _on_resume_dropdown(self) -> None:
-        self.notify("Resume dropdown — select a saved resume")
+        """Show popup menu with saved resumes and load the selected one."""
+        with get_session() as session:
+            resumes = ResumeRepository(session).get_all()
 
+        if not resumes:
+            self.notify("No saved resumes. Upload one first.")
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu {"
+            "  background-color: #1d293d;"
+            "  border: 1px solid #33425d;"
+            "  border-radius: 8px;"
+            "  padding: 6px;"
+            "}"
+            "QMenu::item {"
+            "  padding: 8px 20px;"
+            "  border-radius: 4px;"
+            "  color: white;"
+            "  font-family: Inter, Arial, sans-serif;"
+            "  font-size: 13px;"
+            "}"
+            "QMenu::item:selected {"
+            "  background-color: rgba(123, 139, 255, 0.25);"
+            "}"
+        )
+
+        for resume in resumes:
+            label = resume["name"]
+            if resume.get("created_at"):
+                label += f"  ({resume['created_at']})"
+            action = QAction(label, self)
+            action.setData(resume["id"])
+            menu.addAction(action)
+
+        btn = self._top_nav.resume_button
+        chosen = menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
+        if chosen is None:
+            return
+
+        resume_id = chosen.data()
+        self._load_resume_by_id(resume_id)
+
+    def _load_resume_by_id(self, resume_id: int) -> None:
+        """Load a resume from the database, parse it, and update app state."""
+        with get_session() as session:
+            row = ResumeRepository(session).get_by_id(resume_id)
+
+        if row is None:
+            self.notify(f"Resume #{resume_id} not found.")
+            return
+
+        try:
+            resume = ResumeData.model_validate_json(row.data_json)
+        except Exception as exc:
+            self.notify(f"Failed to parse resume data: {exc}")
+            return
+
+        self.state.resume = resume
+        self.state.resume_id = resume_id
+        self.state.resume_name = row.name
+        self.state.ats = None
+        self.state.ats_after = None
+        self.state.optimized = None
+        self.state.fact_guard = None
+        self.state.cover_letter_text = ""
+
+        self.update_resume_dropdown_button()
+
+        # Force the Studio page to reload on the next show
+        studio = self.get_page("Resume Studio")
+        if studio is not None and hasattr(studio, "force_reload"):
+            studio.force_reload()
+
+        # Navigate to the Studio page — on_show() will detect the change and
+        # call load_from_state() to populate the editor with the new resume.
+        self._show_studio_destination("Contact")
+
+        self.notify(f"Loaded resume: {row.name}")
+
+    def update_resume_dropdown_button(self) -> None:
+        """Sync the dropdown button text with the currently active resume.
+
+        Public so pages like ResumeUploadPage can call it after saving.
+        """
+        # Prefer the stored DB name (matches what the user clicked in the menu)
+        db_name: str | None = getattr(self.state, "resume_name", None)
+        if db_name:
+            self._top_nav.set_resume_name(db_name)
+            return
+
+        # Fallback: contact name from the loaded resume data
+        if self.state.resume is not None and self.state.resume.contact.name:
+            self._top_nav.set_resume_name(self.state.resume.contact.name)
+            return
+
+        # Last resort: query the DB
+        if self.state.active_resume_id is not None:
+            with get_session() as session:
+                row = ResumeRepository(session).get_by_id(self.state.active_resume_id)
+                if row is not None:
+                    self.state.resume_name = row.name
+                    self._top_nav.set_resume_name(row.name)
+                    return
+
+        self._top_nav.set_resume_name("Select Resume")
     def _on_action(self, action: str) -> None:
         if action == "finish_preview":
             self._show_studio_destination("Review")

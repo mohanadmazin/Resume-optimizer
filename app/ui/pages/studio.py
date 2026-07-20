@@ -23,8 +23,10 @@ from PySide6.QtWidgets import (
 from app.database.repositories.resume_repository import ResumeRepository
 from app.database.repositories.versioning_repository import VersioningRepository
 from app.database.session import get_session
+from app.domain.salary import SalaryEstimate
 from app.exports.exporter import to_markdown
 from app.engines.ats_engine import analyze
+from app.services.salary_estimator import estimate_salary
 from app.ui.components.resume_insights_panel import ResumeInsightsPanel
 from app.ui.components.resume_preview import ResumePreview
 from app.ui.components.resume_review_panel import ResumeReviewPanel
@@ -74,6 +76,7 @@ class ResumeStudioPage(QWidget):
         self._editor.text_changed.connect(self._on_text_changed)
         self._editor.generate_summary_requested.connect(self._on_generate_summary)
         self._editor.generate_headline_requested.connect(self._on_generate_headline)
+        self._editor.generate_salary_requested.connect(self._on_generate_salary)
         self._editor.set_reload_callback(self._on_editor_reload)
 
         self._preview = ResumePreview()
@@ -169,6 +172,10 @@ class ResumeStudioPage(QWidget):
 
     # ── Public lifecycle/navigation ─────────────────────────────────
 
+    def force_reload(self) -> None:
+        """Reset the loaded ID so the next on_show() always triggers a reload."""
+        self._loaded_resume_id = None
+
     def on_show(self) -> None:
         state_resume = self.window.state.resume
         if state_resume is not None and (
@@ -233,8 +240,16 @@ class ResumeStudioPage(QWidget):
         self._tabs.setCurrentWidget(self._editor)
         display = self._vm.get_display_name(name)
         self._nav.select_section(display)
-        value = self._vm.get_section_value(name)
-        self._editor.load(name, copy.deepcopy(value))
+        if name == "Salary":
+            # Salary estimate comes from state; also pass job info for defaults
+            value = {
+                "estimate": copy.deepcopy(self.window.state.salary_estimate),
+                "job_title": self.window.state.job_title or "",
+                "job_location": self.window.state.job_location or "",
+            }
+        else:
+            value = self._vm.get_section_value(name)
+        self._editor.load(name, copy.deepcopy(value) if value is not None else None)
         self.destination_changed.emit(name)
 
     def _on_section_changed(self, name: str) -> None:
@@ -274,8 +289,15 @@ class ResumeStudioPage(QWidget):
 
     def _on_editor_reload(self) -> None:
         section = self._vm.selected_section
-        value = self._vm.get_section_value(section)
-        self._editor.load(section, copy.deepcopy(value))
+        if section == "Salary":
+            value = {
+                "estimate": copy.deepcopy(self.window.state.salary_estimate),
+                "job_title": self.window.state.job_title or "",
+                "job_location": self.window.state.job_location or "",
+            }
+        else:
+            value = self._vm.get_section_value(section)
+        self._editor.load(section, copy.deepcopy(value) if value is not None else None)
         self._update_preview()
 
     def _on_resume_changed(self) -> None:
@@ -429,6 +451,32 @@ class ResumeStudioPage(QWidget):
                 )
         except Exception:
             logger.exception("Auto-save failed")
+
+    # ── Salary estimation ────────────────────────────────────────────
+
+    def _on_generate_salary(self, role: str, location: str) -> None:
+        """Run salary estimation in a background worker."""
+        resume = self._vm.resume
+        if resume is None:
+            self.window.notify("Load a resume first.")
+            return
+
+        self.window.notify(f"Estimating salary for {role} in {location}...")
+
+        def _estimate():
+            return estimate_salary(resume, role, location)
+
+        def _on_result(result: SalaryEstimate) -> None:
+            self.window.state.salary_estimate = result
+            self.window.notify(f"Salary estimate: {result.salary_range} {result.currency}/year")
+            # Reload the editor to show results
+            self._on_editor_reload()
+
+        def _on_error(message: str) -> None:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Salary Estimation Failed", message)
+
+        self._start_generation_worker(_estimate, _on_result, "Salary Estimation")
 
     # ── AI generation ───────────────────────────────────────────────
 

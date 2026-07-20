@@ -39,6 +39,7 @@ class SectionEditor(QWidget):
     text_changed = Signal(str, object, object)
     generate_summary_requested = Signal()
     generate_headline_requested = Signal()
+    generate_salary_requested = Signal(str, str)  # role, location
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -123,6 +124,8 @@ class SectionEditor(QWidget):
             self._build_projects_editor(value or [])
         elif section == "Education":
             self._build_education_editor(value or [])
+        elif section == "Salary":
+            self._build_salary_editor(value)
         else:
             lbl = QLabel(f"Editor for \'{section}\' is not yet implemented.")
             lbl.setStyleSheet("color: #888; font-style: italic;")
@@ -798,6 +801,156 @@ class SectionEditor(QWidget):
         self.section_edited.emit("Education", old_edu, new_edu)
         self._current_value = copy.deepcopy(new_edu)
         self._old_value = copy.deepcopy(new_edu)
+
+    # -- Salary editor --
+
+    def _build_salary_editor(self, data: dict | None) -> None:
+        """Build the salary estimation section.
+
+        ``data`` is a dict with keys:
+          - "estimate": SalaryEstimate | None
+          - "job_title": str (default from job description)
+          - "job_location": str (default from job description)
+        """
+        from PySide6.QtWidgets import QFormLayout
+
+        estimate = data.get("estimate") if isinstance(data, dict) else None
+        job_title = data.get("job_title", "") if isinstance(data, dict) else ""
+        job_location = data.get("job_location", "") if isinstance(data, dict) else ""
+
+        # ── Input section ──
+        input_section = QFrame()
+        input_section.setObjectName("salaryInputCard")
+        input_section.setFrameShape(QFrame.Shape.StyledPanel)
+        input_layout = QVBoxLayout(input_section)
+        input_layout.setContentsMargins(12, 12, 12, 12)
+
+        input_title = QLabel("Target Role & Location")
+        input_title.setStyleSheet("font-weight: bold; font-size: 14px;")
+        input_layout.addWidget(input_title)
+
+        form = QFormLayout()
+        self._salary_role_input = QLineEdit()
+        self._salary_role_input.setPlaceholderText("e.g. Software Engineer")
+        # Pre-fill from previous estimate, or fall back to job description title
+        if estimate is not None and estimate.role:
+            self._salary_role_input.setText(estimate.role)
+        elif job_title:
+            self._salary_role_input.setText(job_title)
+        form.addRow("Role:", self._salary_role_input)
+
+        self._salary_location_input = QLineEdit()
+        self._salary_location_input.setPlaceholderText("e.g. Kuala Lumpur, Malaysia")
+        if estimate is not None and estimate.location:
+            self._salary_location_input.setText(estimate.location)
+        elif job_location:
+            self._salary_location_input.setText(job_location)
+        form.addRow("Location:", self._salary_location_input)
+
+        input_layout.addLayout(form)
+
+        estimate_btn = QPushButton("Estimate with AI")
+        estimate_btn.setObjectName("estimateSalaryBtn")
+        estimate_btn.setFixedHeight(40)
+        estimate_btn.clicked.connect(self._on_estimate_salary_clicked)
+        input_layout.addWidget(estimate_btn)
+
+        self._container_layout.addWidget(input_section)
+        self._container_layout.addSpacing(16)
+
+        # ── Results section ──
+        if estimate is not None and estimate.role:
+            results_card = QFrame()
+            results_card.setObjectName("salaryResultsCard")
+            results_card.setFrameShape(QFrame.Shape.StyledPanel)
+            results_layout = QVBoxLayout(results_card)
+            results_layout.setContentsMargins(12, 12, 12, 12)
+
+            results_title = QLabel("Salary Estimate Results")
+            results_title.setStyleSheet("font-weight: bold; font-size: 14px;")
+            results_layout.addWidget(results_title)
+
+            # Summary row
+            summary_row = QHBoxLayout()
+            summary_row.setSpacing(12)
+
+            def _make_stat_card(label: str, value: str) -> QFrame:
+                card = QFrame()
+                card.setObjectName("statCard")
+                card.setFrameShape(QFrame.Shape.StyledPanel)
+                card.setStyleSheet(
+                    "QFrame#statCard { background-color: rgba(129, 144, 255, 0.1);"
+                    " border: 1px solid rgba(129, 144, 255, 0.25); border-radius: 8px; }"
+                )
+                cl = QVBoxLayout(card)
+                cl.setContentsMargins(10, 8, 10, 8)
+                cl.setSpacing(2)
+                lbl = QLabel(label)
+                lbl.setStyleSheet("font-size: 10px; color: #9aa7bd; font-weight: 600;")
+                cl.addWidget(lbl)
+                val = QLabel(value)
+                val.setStyleSheet("font-size: 16px; font-weight: 800; color: white;")
+                cl.addWidget(val)
+                return card
+
+            def _fmt(val):
+                if val is None:
+                    return "N/A"
+                return f"{val:,.0f}"
+
+            monthly = f"{_fmt(estimate.salary_monthly_min)} - {_fmt(estimate.salary_monthly_max)}" if estimate.salary_monthly_min is not None and estimate.salary_monthly_max is not None else "N/A"
+            annual = f"{_fmt(estimate.salary_annual_min)} - {_fmt(estimate.salary_annual_max)}" if estimate.salary_annual_min is not None and estimate.salary_annual_max is not None else "N/A"
+            currency = estimate.currency or "N/A"
+
+            summary_row.addWidget(_make_stat_card("MONTHLY RANGE", monthly))
+            summary_row.addWidget(_make_stat_card("ANNUAL RANGE", annual))
+            summary_row.addWidget(_make_stat_card("CURRENCY", currency))
+            summary_row.addWidget(_make_stat_card("CONFIDENCE", estimate.confidence.capitalize() if estimate.confidence else "N/A"))
+
+            results_layout.addLayout(summary_row)
+
+            # Factors
+            factors_label = QLabel("Factors affecting estimate:")
+            factors_label.setStyleSheet("font-weight: 600; margin-top: 8px;")
+            results_layout.addWidget(factors_label)
+
+            factors_text = "\n".join(
+                f"• {f}" for f in estimate.factors
+            ) if estimate.factors else "No factors listed."
+            factors_view = QLabel(factors_text)
+            factors_view.setWordWrap(True)
+            factors_view.setStyleSheet("color: #9aa7bd; font-size: 12px;")
+            results_layout.addWidget(factors_view)
+
+            # Notes
+            if estimate.notes:
+                notes_label = QLabel("Notes:")
+                notes_label.setStyleSheet("font-weight: 600; margin-top: 4px;")
+                results_layout.addWidget(notes_label)
+                notes_view = QLabel(estimate.notes)
+                notes_view.setWordWrap(True)
+                notes_view.setStyleSheet("color: #9aa7bd; font-size: 12px; font-style: italic;")
+                results_layout.addWidget(notes_view)
+
+            self._container_layout.addWidget(results_card)
+
+        # Disclaimer
+        disclaimer = QLabel(
+            "This is an AI-generated compensation estimate, not verified market data. "
+            "Treat the numbers as a rough discussion point only."
+        )
+        disclaimer.setWordWrap(True)
+        disclaimer.setStyleSheet(
+            "color: #F59E0B; font-size: 10px; font-style: italic;"
+            " padding: 6px; margin-top: 8px;"
+        )
+        self._container_layout.addWidget(disclaimer)
+
+    def _on_estimate_salary_clicked(self) -> None:
+        role = self._salary_role_input.text().strip()
+        location = self._salary_location_input.text().strip()
+        if role and location:
+            self.generate_salary_requested.emit(role, location)
 
     # -- Pending list commit --
 

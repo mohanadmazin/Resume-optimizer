@@ -58,10 +58,10 @@ class SalaryEstimatePage(QWidget):
         layout.addWidget(desc)
 
         disclaimer = QLabel(
-            "WARNING: This is an AI-generated compensation estimate, NOT verified "
-            "market salary data. No external salary dataset, API, or cited report "
-            "is used. The AI does not have access to current salary data. "
-            "Treat the numbers as a rough discussion point only."
+            "Benchmark-based estimate: salary arithmetic is calculated from a "
+            "versioned local market dataset. AI is used only to classify the role "
+            "and interpret candidate evidence. It is not a guaranteed offer and "
+            "does not include bonus, AWS, commission, allowances, equity, or benefits."
         )
         disclaimer.setWordWrap(True)
         disclaimer.setStyleSheet("color: #F59E0B; font-size: 11px; font-style: italic; "
@@ -174,27 +174,67 @@ class SalaryEstimatePage(QWidget):
         self._result = result
         self.estimate_btn.setEnabled(True)
 
-        def _fmt(val):
-            if val is None:
+        def _fmt(value):
+            if value is None:
                 return "N/A"
-            return f"{val:,.0f}"
+            return f"{value:,.0f}"
 
-        monthly = f"{_fmt(result.salary_monthly_min)} - {_fmt(result.salary_monthly_max)}" if result.salary_monthly_min is not None and result.salary_monthly_max is not None else "N/A"
-        annual = f"{_fmt(result.salary_annual_min)} - {_fmt(result.salary_annual_max)}" if result.salary_annual_min is not None and result.salary_annual_max is not None else "N/A"
+        if result.status != "ok":
+            self.monthly_value.setText("Insufficient data")
+            self.annual_value.setText("Insufficient data")
+            self.currency_value.setText(result.currency or "N/A")
+            self.exp_value.setText("Low confidence")
+            self.factors.setPlainText(
+                "A supported, versioned local benchmark dataset is required."
+            )
+            self.notes.setPlainText(result.notes or "No defensible estimate is available.")
+            self.window.notify("Salary estimate unavailable for this market or role.")
+            self.analysis_finished.emit()
+            return
 
-        self.monthly_value.setText(monthly)
-        self.annual_value.setText(annual)
-        self.currency_value.setText(result.currency or "N/A")
-        self.exp_value.setText(
-            str(result.experience_years) if result.experience_years is not None else "N/A"
+        monthly = (
+            f"{_fmt(result.salary_monthly_min)} - "
+            f"{_fmt(result.salary_monthly_mid)} - "
+            f"{_fmt(result.salary_monthly_max)}"
+        )
+        annual = (
+            f"{_fmt(result.salary_annual_min)} - "
+            f"{_fmt(result.salary_annual_mid)} - "
+            f"{_fmt(result.salary_annual_max)}"
         )
 
-        factors_text = "\n".join(
-            f"• {f}" for f in result.factors
-        ) if result.factors else "No factors listed."
-        self.factors.setPlainText(factors_text)
+        self.monthly_value.setText(monthly)
+        self.monthly_value.setToolTip("Minimum - midpoint - maximum")
+        self.annual_value.setText(annual)
+        self.annual_value.setToolTip("Minimum - midpoint - maximum")
+        self.currency_value.setText(result.currency or "N/A")
+        self.exp_value.setText(
+            f"{result.seniority.title()} | {result.experience_years}"
+        )
 
-        self.notes.setPlainText(result.notes or "No additional notes.")
+        factor_rows = [f"• {factor}" for factor in result.factors]
+        factor_rows.append(
+            f"• Confidence: {result.confidence_details.level.title()} "
+            f"({result.confidence_details.score:.0%})"
+        )
+        factor_rows.extend(
+            f"• Missing input: {item}"
+            for item in result.confidence_details.missing_inputs
+        )
+        self.factors.setPlainText("\n".join(factor_rows))
+
+        note_rows = [
+            result.notes or "No additional notes.",
+            "",
+            f"Source: {result.salary_source} ({result.source_date})",
+            f"Basis: {result.compensation_basis}",
+        ]
+        if result.additional_compensation_notes:
+            note_rows.extend(["", result.additional_compensation_notes])
+        if result.assumptions:
+            note_rows.extend(["", "Assumptions:"])
+            note_rows.extend(f"• {item}" for item in result.assumptions)
+        self.notes.setPlainText("\n".join(note_rows))
 
         self.window.notify(
             f"Salary estimate: {annual} {result.currency}/year"
