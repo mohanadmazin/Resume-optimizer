@@ -1,4 +1,46 @@
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QFont, QPalette
+
+
+# ── Rezi-style color palette ──────────────────────────────────────────────
+
+REZI_COLORS = {
+    "window_bg": "#0d1729",
+    "sidebar_bg": "#101c31",
+    "card_bg": "#1d293d",
+    "input_bg": "#1d293d",
+    "border": "#34425b",
+    "input_border": "#4a5a73",
+    "input_border_focus": "#8493ff",
+    "primary": "#8190f7",
+    "primary_hover": "#929fff",
+    "primary_pressed": "#6e7ee5",
+    "primary_dark": "#7d8cf8",
+    "purple": "#7a22ad",
+    "purple_check": "#8997ff",
+    "text_primary": "#ffffff",
+    "text_secondary": "#9aa7bd",
+    "text_muted": "#66738b",
+    "dark_text": "#08101e",
+    "icon_inactive": "#d9e2f0",
+    "hover_bg": "rgba(123, 139, 255, 0.12)",
+    "menu_bg": "#1d293d",
+    "menu_border": "#33425d",
+    "toggle_track_on": "#8191ff",
+    "toggle_thumb_on": "#d8ddff",
+    "toggle_track_off": "#344258",
+    "toggle_thumb_off": "#172337",
+}
+
+REZI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
+
+
+def rezi_font(size: int = 14, weight: int = 400) -> QFont:
+    """Create a QFont with the Rezi font stack."""
+    font = QFont("Inter", size)
+    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+    if weight >= 700:
+        font.setBold(True)
+    return font
 
 
 DARK_STYLESHEET = """

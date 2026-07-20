@@ -16,7 +16,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("Resume Optimizer")
-    app.setFont(QFont("Segoe UI", 10))
+    app.setFont(QFont("Inter", 10))
 
     window = MainWindow()
     window.show()

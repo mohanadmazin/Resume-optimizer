@@ -8,19 +8,11 @@ from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QVBoxLayout,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
     QStackedWidget,
-    QLineEdit,
     QWidget,
-    QComboBox,
-    QLabel,
-    QSpacerItem,
-    QSizePolicy,
 )
 
-from app.ui.components.ollama_status import OllamaStatusLabel
 from app.ui.pages.agent import AgentPage
 from app.ui.pages.applications import ApplicationsPage
 from app.ui.pages.ats_analysis import ATSAnalysisPage
@@ -41,6 +33,13 @@ from app.ui.pages.salary_estimate import SalaryEstimatePage
 from app.ui.pages.settings import SettingsPage
 from app.ui.pages.skill_gap import SkillGapPage
 from app.ui.pages.studio import ResumeStudioPage
+
+# Rezi-style components
+from app.ui.components.rezi.sidebar import ReziSidebar
+from app.ui.components.rezi.top_nav import ReziTopNav
+from app.ui.components.rezi.section_menu import SectionMenu
+from app.ui.pages.rezi_contact import ReziContactPage
+from app.ui.pages.rezi_placeholder import ReziPlaceholderPage
 
 from app.ui.state import AppState
 from app.core.settings import settings_service
@@ -76,6 +75,30 @@ PAGE_NAMES = [
     "Settings",
 ]
 
+# Sidebar icon index -> page name
+_SIDEBAR_PAGE_MAP = {
+    0: "Resume Upload",
+    1: "Dashboard",
+    2: "Optimization",
+    3: "Resume Studio",
+    4: "Cover Letter",
+    5: "Applications",
+    6: "Settings",
+}
+
+# Section tab name -> Rezi page key
+_SECTION_PAGE_MAP = {
+    "CONTACT": "rezi_contact",
+    "EXPERIENCE": "rezi_experience",
+    "PROJECT": "rezi_project",
+    "EDUCATION": "rezi_education",
+    "CERTIFICATIONS": "rezi_certifications",
+    "COURSEWORK": "rezi_coursework",
+    "INVOLVEMENT": "rezi_involvement",
+    "SKILLS": "rezi_skills",
+    "SUMMARY": "rezi_summary",
+}
+
 
 class MainWindow(QMainWindow):
 
@@ -83,7 +106,8 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Resume Optimizer")
-        self.resize(1180, 760)
+        self.setMinimumSize(1366, 768)
+        self.resize(2048, 1042)
 
         self.state = AppState()
 
@@ -96,235 +120,57 @@ class MainWindow(QMainWindow):
 
         self._show_onboarding_if_needed()
 
-        # Pre-warm Ollama model in background after 1 second
         QTimer.singleShot(1000, self._prewarm_model)
 
-    def setup_ui(self):
+    # ── UI setup ───────────────────────────────────────────────────────
 
+    def setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
 
-        main_layout = QVBoxLayout(central)
+        main_layout = QHBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
+        # ── Left: icon sidebar ──
+        self._sidebar = ReziSidebar()
+        self._sidebar.page_selected.connect(self._on_sidebar_page)
+        main_layout.addWidget(self._sidebar)
 
-        content_layout = QHBoxLayout()
+        # ── Right: top nav + content stack ──
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
 
-        nav_panel = QWidget()
-        nav_panel.setFixedWidth(220)
-        nav_layout = QVBoxLayout(nav_panel)
-        nav_layout.setContentsMargins(0, 0, 0, 0)
-        nav_layout.setSpacing(4)
-
-        self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Search...")
-        self._search_input.setClearButtonEnabled(True)
-        self._search_input.textChanged.connect(self._on_search)
-        nav_layout.addWidget(self._search_input)
-
-        self._search_results = QListWidget()
-        self._search_results.setObjectName("nav")
-        self._search_results.setMaximumHeight(150)
-        self._search_results.currentRowChanged.connect(self._on_search_result_clicked)
-        self._search_results.hide()
-        nav_layout.addWidget(self._search_results)
-
-        self.nav = QListWidget()
-        self.nav.setObjectName("nav")
-        self.nav.addItems(PAGE_NAMES)
-        nav_layout.addWidget(self.nav)
+        self._top_nav = ReziTopNav()
+        self._top_nav.section_changed.connect(self._on_section_changed)
+        self._top_nav.resume_dropdown_clicked.connect(self._on_resume_dropdown)
+        self._top_nav.action_clicked.connect(self._on_action)
+        right_layout.addWidget(self._top_nav)
 
         self.stack = QStackedWidget()
+        right_layout.addWidget(self.stack, 1)
 
-        content_layout.addWidget(nav_panel)
-        content_layout.addWidget(self.stack)
+        main_layout.addWidget(right_panel, 1)
 
-
-        main_layout.addLayout(content_layout)
-
-
-        # Theme selector
-        theme_layout = QHBoxLayout()
-
-        self.theme_label = QLabel("Theme:")
-
-        self.themeComboBox = QComboBox()
-        self.themeComboBox.addItems(
-            [
-                "Light",
-                "Dark",
-                "System",
-            ]
-        )
-        current_theme = self.state.theme.capitalize()
-        if current_theme in ("Light", "Dark", "System"):
-            self.themeComboBox.setCurrentText(current_theme)
-        else:
-            self.themeComboBox.setCurrentText("Dark")
-
-
-        theme_layout.addWidget(
-            self.theme_label
-        )
-
-        theme_layout.addWidget(
-            self.themeComboBox
-        )
-
-
-        spacer = QSpacerItem(
-            40,
-            20,
-            QSizePolicy.Expanding,
-            QSizePolicy.Minimum
-        )
-
-        theme_layout.addItem(spacer)
-
-        main_layout.addLayout(theme_layout)
-
-
-        self.nav.currentRowChanged.connect(
-            self._switch
-        )
-
-
-        self.themeComboBox.currentTextChanged.connect(
-            lambda x: self.apply_theme(x.lower())
-        )
-
-        # Ollama status indicator in the status bar
-        self.ollama_status = OllamaStatusLabel(self.state.ollama_url)
-        self.statusBar().addPermanentWidget(self.ollama_status)
+        # ── Floating section menu ──
+        self._section_menu = SectionMenu()
+        self._section_menu.section_toggled.connect(self._on_section_toggled)
+        self._top_nav.tab_bar.overflow_btn.clicked.connect(self._toggle_section_menu)
 
         self._setup_shortcuts()
 
-
-
     def _setup_shortcuts(self) -> None:
-        """Register keyboard shortcuts."""
         QShortcut(QKeySequence("Ctrl+S"), self, self._shortcut_save)
         QShortcut(QKeySequence("Ctrl+E"), self, self._shortcut_export)
         QShortcut(QKeySequence("Ctrl+N"), self, self._shortcut_new_resume)
-        QShortcut(QKeySequence("Ctrl+Left"), self, self._shortcut_prev_page)
-        QShortcut(QKeySequence("Ctrl+Right"), self, self._shortcut_next_page)
-        for i in range(1, 10):
-            QShortcut(QKeySequence(f"Ctrl+{i}"), self, lambda idx=i: self._shortcut_goto_page(idx - 1))
-        QShortcut(QKeySequence("Ctrl+0"), self, lambda: self._shortcut_goto_page(9))
+        QShortcut(QKeySequence("Escape"), self, self._on_escape)
 
-    def _shortcut_save(self) -> None:
-        page = self.stack.currentWidget()
-        if hasattr(page, "force_save"):
-            page.force_save()
-            self.notify("Saved.")
-        else:
-            self.notify("No save action available on this page.")
-
-    def _shortcut_export(self) -> None:
-        page = self.stack.currentWidget()
-        if hasattr(page, "export"):
-            page.export()
-        else:
-            self.notify("No export action available on this page.")
-
-    def _shortcut_new_resume(self) -> None:
-        idx = PAGE_NAMES.index("Resume Upload") if "Resume Upload" in PAGE_NAMES else 0
-        self.nav.setCurrentRow(idx)
-
-    def _shortcut_prev_page(self) -> None:
-        current = self.nav.currentRow()
-        if current > 0:
-            self.nav.setCurrentRow(current - 1)
-
-    def _shortcut_next_page(self) -> None:
-        current = self.nav.currentRow()
-        if current < len(PAGE_NAMES) - 1:
-            self.nav.setCurrentRow(current + 1)
-
-    def _shortcut_goto_page(self, index: int) -> None:
-        if 0 <= index < len(PAGE_NAMES):
-            self.nav.setCurrentRow(index)
-
-    def apply_theme(self, theme):
-
-        theme = theme.lower()
-
-        if theme == "system":
-            theme = self._detect_system_theme()
-
-        if theme == "dark":
-
-            palette = create_dark_theme()
-            stylesheet = DARK_STYLESHEET
-
-        elif theme == "light":
-
-            palette = create_light_theme()
-            stylesheet = LIGHT_STYLESHEET
-
-        else:
-
-            # Fall back to dark for unknown themes
-            palette = create_dark_theme()
-            stylesheet = DARK_STYLESHEET
-
-
-        qpalette = self.palette()
-
-        for role, color in palette.items():
-
-            qpalette.setColor(
-                role,
-                color
-            )
-
-
-        self.setPalette(
-            qpalette
-        )
-
-
-        self.setStyleSheet(
-            stylesheet
-        )
-
-
-        # Save selected theme
-        self.state.set_theme(
-            theme
-        )
-
-        # Keep dropdown synchronized
-        if hasattr(self, "themeComboBox"):
-            if self.themeComboBox.currentText().lower() != theme:
-                self.themeComboBox.blockSignals(True)
-                self.themeComboBox.setCurrentText(
-                    theme.capitalize()
-                )
-                self.themeComboBox.blockSignals(False)
-
-    @staticmethod
-    def _detect_system_theme() -> str:
-        """Detect the OS color scheme. Falls back to 'dark'."""
-        try:
-            from PySide6.QtCore import QSettings
-            qs = QSettings()
-            accent = qs.value("AccentColor", "")
-            if isinstance(accent, str) and accent:
-                # Windows accent color presence usually indicates light mode
-                # unless the user has explicitly set dark mode
-                dark_key = qs.value("AppsUseDarkTheme", None)
-                if dark_key is not None:
-                    return "light" if int(dark_key) == 0 else "dark"
-        except Exception:
-            pass
-        return "dark"
-
-
+    # ── Page setup ─────────────────────────────────────────────────────
 
     def setup_pages(self):
-
-        pages = [
+        legacy_pages = [
             DashboardPage,
             ResumeUploadPage,
             JobDescriptionPage,
@@ -348,38 +194,149 @@ class MainWindow(QMainWindow):
         ]
 
         self.pages = {}
+        self.rezi_pages = {}
 
-        for idx, page_cls in enumerate(pages):
+        # Add legacy pages to the stack
+        for idx, page_cls in enumerate(legacy_pages):
             page = page_cls(self)
             self.stack.addWidget(page)
             self.pages[PAGE_NAMES[idx]] = page
 
+        # Add Rezi section pages
+        rezi_pages_map = {
+            "rezi_contact": lambda: ReziContactPage(state=self.state),
+            "rezi_experience": lambda: ReziPlaceholderPage("Experience"),
+            "rezi_project": lambda: ReziPlaceholderPage("Project"),
+            "rezi_education": lambda: ReziPlaceholderPage("Education"),
+            "rezi_certifications": lambda: ReziPlaceholderPage("Certifications"),
+            "rezi_coursework": lambda: ReziPlaceholderPage("Coursework"),
+            "rezi_involvement": lambda: ReziPlaceholderPage("Involvement"),
+            "rezi_skills": lambda: ReziPlaceholderPage("Skills"),
+            "rezi_summary": lambda: ReziPlaceholderPage("Summary"),
+        }
+
+        for key, factory in rezi_pages_map.items():
+            page = factory()
+            self.stack.addWidget(page)
+            self.rezi_pages[key] = page
+
+        # Show contact page by default
+        if "rezi_contact" in self.rezi_pages:
+            self.stack.setCurrentWidget(self.rezi_pages["rezi_contact"])
+
     def get_page(self, name: str):
         return self.pages.get(name)
 
-
+    # ── Navigation ──────────────────────────────────────────────────────
 
     def _switch(self, index: int):
-
         self.stack.setCurrentIndex(index)
-
         page = self.stack.widget(index)
-
         if hasattr(page, "on_show"):
-
             page.on_show()
 
+    def _on_sidebar_page(self, index: int) -> None:
+        target = _SIDEBAR_PAGE_MAP.get(index)
+        if target and target in PAGE_NAMES:
+            idx = PAGE_NAMES.index(target)
+            self._switch(idx)
 
+    def _on_section_changed(self, name: str) -> None:
+        page_key = _SECTION_PAGE_MAP.get(name)
+        if page_key and page_key in self.rezi_pages:
+            self.stack.setCurrentWidget(self.rezi_pages[page_key])
+
+    def _toggle_section_menu(self) -> None:
+        if self._section_menu.isVisible():
+            self._section_menu.hide()
+            return
+        btn = self._top_nav.tab_bar.overflow_btn
+        pos = btn.mapToGlobal(btn.rect().bottomLeft())
+        self._section_menu.move(pos.x(), pos.y() + 4)
+        self._section_menu.show()
+        self._section_menu.raise_()
+
+    def _on_section_toggled(self, name: str, visible: bool) -> None:
+        self._top_nav.tab_bar.set_section_visible(name, visible)
+
+    def _on_resume_dropdown(self) -> None:
+        self.notify("Resume dropdown — select a saved resume")
+
+    def _on_action(self, action: str) -> None:
+        if action == "ai_cover_letter":
+            self._switch(PAGE_NAMES.index("Cover Letter"))
+        else:
+            self.notify(action.replace("_", " ").title())
+
+    def _on_escape(self) -> None:
+        if self._section_menu.isVisible():
+            self._section_menu.hide()
+
+    # ── Shortcuts ───────────────────────────────────────────────────────
+
+    def _shortcut_save(self) -> None:
+        page = self.stack.currentWidget()
+        if hasattr(page, "force_save"):
+            page.force_save()
+            self.notify("Saved.")
+        else:
+            self.notify("No save action available on this page.")
+
+    def _shortcut_export(self) -> None:
+        page = self.stack.currentWidget()
+        if hasattr(page, "export"):
+            page.export()
+        else:
+            self.notify("No export action available on this page.")
+
+    def _shortcut_new_resume(self) -> None:
+        idx = PAGE_NAMES.index("Resume Upload")
+        self._switch(idx)
+
+    # ── Theme ───────────────────────────────────────────────────────────
+
+    def apply_theme(self, theme):
+        theme = theme.lower()
+        if theme == "system":
+            theme = self._detect_system_theme()
+
+        if theme == "dark":
+            palette = create_dark_theme()
+            stylesheet = DARK_STYLESHEET
+        elif theme == "light":
+            palette = create_light_theme()
+            stylesheet = LIGHT_STYLESHEET
+        else:
+            palette = create_dark_theme()
+            stylesheet = DARK_STYLESHEET
+
+        qpalette = self.palette()
+        for role, color in palette.items():
+            qpalette.setColor(role, color)
+        self.setPalette(qpalette)
+        self.setStyleSheet(stylesheet)
+        self.state.set_theme(theme)
+
+    @staticmethod
+    def _detect_system_theme() -> str:
+        try:
+            from PySide6.QtCore import QSettings
+            qs = QSettings()
+            dark_key = qs.value("AppsUseDarkTheme", None)
+            if dark_key is not None:
+                return "light" if int(dark_key) == 0 else "dark"
+        except Exception:
+            pass
+        return "dark"
+
+    # ── Notifications ───────────────────────────────────────────────────
 
     def notify(self, message: str):
+        self.statusBar().showMessage(message, 8000)
 
-        self.statusBar().showMessage(
-            message,
-            8000
-        )
+    # ── Background tasks ────────────────────────────────────────────────
 
     def _prewarm_model(self) -> None:
-        """Pre-warm Ollama model in background to reduce first-request latency."""
         from app.ui.workers import Worker
 
         def _do_warm():
@@ -387,73 +344,26 @@ class MainWindow(QMainWindow):
             return OllamaClient().pre_warm()
 
         self._warm_worker = Worker(_do_warm)
-        self._warm_worker.result.connect(
-            lambda ok: None  # silently succeed or skip
-        )
+        self._warm_worker.result.connect(lambda ok: None)
         self._warm_worker.start()
 
     def _on_settings_changed(self, settings) -> None:
-        """React to settings changes from any source."""
         if hasattr(self, 'ollama_status'):
             self.ollama_status.set_base_url(settings.ai.ollama_url)
 
     def _show_onboarding_if_needed(self) -> None:
-        """Show the onboarding wizard on first launch."""
         if settings_service.settings.onboarding_completed:
             return
-
         from app.ui.dialogs.onboarding import OnboardingWizard
-
         wizard = OnboardingWizard(self)
         result = wizard.exec()
         if result == OnboardingWizard.DialogCode.Accepted:
             self.state.reload_settings()
             self.apply_theme(self.state.theme)
 
-    def _on_search(self, text: str) -> None:
-        from app.services.global_search import global_search
-
-        q = text.strip()
-        if not q:
-            self._search_results.hide()
-            self._search_results.clear()
-            return
-
-        hits = global_search(q, limit=10)
-        self._search_results.clear()
-        self._search_hits = hits
-
-        for hit in hits:
-            label = f"[{hit.entity_type}] {hit.title}"
-            item = QListWidgetItem(label)
-            item.setToolTip(hit.snippet)
-            self._search_results.addItem(item)
-
-        self._search_results.setVisible(len(hits) > 0)
-
-    def _on_search_result_clicked(self, row: int) -> None:
-        if row < 0 or not hasattr(self, "_search_hits"):
-            return
-        hits = self._search_hits
-        if row >= len(hits):
-            return
-
-        hit = hits[row]
-        target_page = hit.page
-
-        if target_page in PAGE_NAMES:
-            idx = PAGE_NAMES.index(target_page)
-            self.nav.setCurrentRow(idx)
-
-        self._search_input.clear()
-        self._search_results.hide()
-
 
 if __name__ == "__main__":
-
     app = QApplication(sys.argv)
-
     window = MainWindow()
     window.show()
-
     sys.exit(app.exec())
