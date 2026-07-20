@@ -13,7 +13,7 @@ from app.domain.resume import ParseWarning, ResumeData
 logger = logging.getLogger(__name__)
 
 # Punctuation and whitespace normalizer for substring matching.
-_NORM_RE = re.compile(r"[\s/\-.,;:()]+")
+_NORM_RE = re.compile(r"[\s/\-\u2013\u2014.,;:()|\u00b7]+")
 _SHORT_THRESHOLD = 3
 
 
@@ -72,7 +72,7 @@ def verify_parse(resume: ResumeData, raw_text: str) -> ParseFactGuardResult:
 
     # ── education ───────────────────────────────────────────────────────
     for i, edu in enumerate(resume.education):
-        for field in ("institution", "degree", "year"):
+        for field in ("institution", "degree", "location", "cgpa", "year"):
             verify("education", i, field, getattr(edu, field, ""))
 
     # ── certifications ──────────────────────────────────────────────────

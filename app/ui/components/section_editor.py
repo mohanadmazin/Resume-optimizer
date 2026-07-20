@@ -1,4 +1,4 @@
-"""SectionEditor � dynamic form that adapts to the selected resume section."""
+"""Dynamic form editor for structured resume sections."""
 from __future__ import annotations
 
 import copy
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.domain.certification import certification_parts, format_certification
 from app.domain.resume import (
     ContactInfo,
     EducationItem,
@@ -45,6 +46,8 @@ class SectionEditor(QWidget):
         self._current_value: Any = None
         self._old_value: Any = None
         self._reload_callback: Callable[[], None] | None = None
+        self._list_widget: QListWidget | None = None
+        self._text_widget: QTextEdit | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -53,15 +56,38 @@ class SectionEditor(QWidget):
         self._title.setObjectName("editorTitle")
         root.addWidget(self._title)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._container = QWidget()
-        self._container_layout = QVBoxLayout(self._container)
-        self._container_layout.setContentsMargins(8, 8, 8, 8)
-        self._container_layout.setSpacing(8)
-        scroll.setWidget(self._container)
-        root.addWidget(scroll)
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._container: QWidget | None = None
+        self._container_layout: QVBoxLayout | None = None
+        self._replace_container()
+        root.addWidget(self._scroll)
+
+    def _replace_container(self) -> None:
+        """Install a fresh editor container and detach the previous tree.
+
+        Reusing one layout while its widgets are pending ``deleteLater()`` can
+        leave old controls visible for another event-loop cycle. Rapid section
+        changes then make those controls overlap. Swapping the scroll area's
+        widget removes the old tree from view immediately.
+        """
+        old_container = self._scroll.takeWidget()
+        if old_container is not None:
+            old_container.hide()
+            old_container.setParent(None)
+            old_container.deleteLater()
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self._container = container
+        self._container_layout = layout
+        self._scroll.setWidget(container)
+        self._scroll.verticalScrollBar().setValue(0)
 
     def set_reload_callback(self, callback: Callable[[], None]) -> None:
         self._reload_callback = callback
@@ -73,14 +99,13 @@ class SectionEditor(QWidget):
     def load(self, section: str, value: Any) -> None:
         self._current_section = section
         self._old_value = copy.deepcopy(value)
-        self._current_value = value
+        self._current_value = copy.deepcopy(value)
+        self._list_widget = None
+        self._text_widget = None
         self._title.setText(section)
 
-        while self._container_layout.count():
-            child = self._container_layout.takeAt(0)
-            w = child.widget()
-            if w is not None:
-                w.deleteLater()
+        self._replace_container()
+        assert self._container_layout is not None
 
         if section == "Contact":
             self._build_contact_editor(value or ContactInfo())
@@ -89,7 +114,7 @@ class SectionEditor(QWidget):
         elif section == "Skills":
             self._build_list_editor("Skills", value or [])
         elif section == "Certifications":
-            self._build_list_editor("Certifications", value or [])
+            self._build_certifications_editor(value or [])
         elif section == "Languages":
             self._build_list_editor("Languages", value or [])
         elif section == "Experience":
@@ -143,9 +168,11 @@ class SectionEditor(QWidget):
         )
 
     def _on_contact_field(self, field_name: str) -> None:
-        old_contact = copy.deepcopy(self._old_value)
+        old_contact = copy.deepcopy(self._current_value)
         new_contact = copy.deepcopy(self._current_value)
         setattr(new_contact, field_name, self._line_edits[field_name].text())
+        if new_contact == old_contact:
+            return
         self.section_edited.emit("Contact", old_contact, new_contact)
         self._current_value = copy.deepcopy(new_contact)
         self._old_value = copy.deepcopy(new_contact)
@@ -154,6 +181,7 @@ class SectionEditor(QWidget):
 
     def _build_text_editor(self, field_name: str, text: str) -> None:
         te = QTextEdit()
+        self._text_widget = te
         te.setPlainText(text or "")
         te.setAcceptRichText(False)
         te.setMinimumHeight(100)
@@ -165,9 +193,11 @@ class SectionEditor(QWidget):
             _orig_focus(event)
             new_val = te.toPlainText()
             if new_val != (self._old_value or ""):
+                old_value = copy.deepcopy(self._current_value)
                 self.section_edited.emit(
-                    self._current_section, self._old_value, new_val
+                    self._current_section, old_value, new_val
                 )
+                self._current_value = new_val
                 self._old_value = new_val
 
         te.focusOutEvent = _on_focus_out  # type: ignore[assignment]
@@ -190,8 +220,10 @@ class SectionEditor(QWidget):
 
     def _build_list_editor(self, label: str, items: list[str]) -> None:
         self._list_widget = QListWidget()
-        for item in items:
-            self._list_widget.addItem(item)
+        for value in items:
+            self._list_widget.addItem(value)
+            item = self._list_widget.item(self._list_widget.count() - 1)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
 
         self._list_widget.itemChanged.connect(self._commit_list)
         self._list_widget.model().rowsRemoved.connect(
@@ -233,15 +265,111 @@ class SectionEditor(QWidget):
             self._list_widget.takeItem(row)
 
     def _move_list_item(self, direction: int) -> None:
-        row = self._list_widget.currentRow()
+        widget = self._list_widget
+        if widget is None:
+            return
+        row = widget.currentRow()
         if row < 0:
             return
         new_row = row + direction
-        if new_row < 0 or new_row >= self._list_widget.count():
+        if new_row < 0 or new_row >= widget.count():
             return
-        item = self._list_widget.takeItem(row)
-        self._list_widget.insertItem(new_row, item)
-        self._list_widget.setCurrentRow(new_row)
+        widget.blockSignals(True)
+        widget.model().blockSignals(True)
+        try:
+            item = widget.takeItem(row)
+            widget.insertItem(new_row, item)
+            widget.setCurrentRow(new_row)
+        finally:
+            widget.model().blockSignals(False)
+            widget.blockSignals(False)
+        self._commit_list()
+
+    # -- Certifications editor --
+
+    def _build_certifications_editor(self, certifications: list[str]) -> None:
+        for idx, certification in enumerate(certifications):
+            title, issuer, year = certification_parts(certification)
+            card = QFrame()
+            card.setObjectName("certCard")
+            card.setFrameShape(QFrame.Shape.StyledPanel)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(8, 8, 8, 8)
+
+            top_row = QHBoxLayout()
+            label = QLabel(f"Certification #{idx + 1}")
+            label.setStyleSheet("font-weight: bold;")
+            top_row.addWidget(label)
+            top_row.addStretch()
+            delete_btn = QPushButton("Delete")
+            delete_btn.setFixedWidth(60)
+            delete_btn.clicked.connect(lambda _checked=False, i=idx: self._delete_certification(i))
+            top_row.addWidget(delete_btn)
+            card_layout.addLayout(top_row)
+
+            form = QFormLayout()
+            title_edit = QLineEdit(title)
+            issuer_edit = QLineEdit(issuer)
+            year_edit = QLineEdit(year)
+            year_edit.setPlaceholderText("e.g. 2025")
+
+            title_edit.editingFinished.connect(
+                lambda i=idx, widget=title_edit: self._on_certification_field(i, "title", widget.text())
+            )
+            issuer_edit.editingFinished.connect(
+                lambda i=idx, widget=issuer_edit: self._on_certification_field(i, "issuer", widget.text())
+            )
+            year_edit.editingFinished.connect(
+                lambda i=idx, widget=year_edit: self._on_certification_field(i, "year", widget.text())
+            )
+            form.addRow("Certification:", title_edit)
+            form.addRow("Issuer:", issuer_edit)
+            form.addRow("Year obtained:", year_edit)
+            card_layout.addLayout(form)
+            self._container_layout.addWidget(card)
+
+        add_btn = QPushButton("+ Add Certification")
+        add_btn.setObjectName("addCertificationBtn")
+        add_btn.clicked.connect(self._add_certification)
+        self._container_layout.addWidget(add_btn)
+
+    def _on_certification_field(self, idx: int, field: str, value: str) -> None:
+        if idx >= len(self._current_value):
+            return
+        new_values = copy.deepcopy(self._current_value)
+        title, issuer, year = certification_parts(new_values[idx])
+        fields = {"title": title, "issuer": issuer, "year": year}
+        fields[field] = value
+        new_values[idx] = format_certification(
+            fields["title"], fields["issuer"], fields["year"]
+        )
+        old_values = copy.deepcopy(self._current_value)
+        if new_values == old_values:
+            return
+        self.section_edited.emit("Certifications", old_values, new_values)
+        self._current_value = copy.deepcopy(new_values)
+        self._old_value = copy.deepcopy(new_values)
+
+    def _add_certification(self) -> None:
+        new_values = copy.deepcopy(self._current_value)
+        new_values.append("")
+        self.section_edited.emit(
+            "Certifications", copy.deepcopy(self._current_value), new_values
+        )
+        self._current_value = copy.deepcopy(new_values)
+        self._old_value = copy.deepcopy(new_values)
+        self._reload()
+
+    def _delete_certification(self, idx: int) -> None:
+        new_values = copy.deepcopy(self._current_value)
+        if idx < len(new_values):
+            new_values.pop(idx)
+        self.section_edited.emit(
+            "Certifications", copy.deepcopy(self._current_value), new_values
+        )
+        self._current_value = copy.deepcopy(new_values)
+        self._old_value = copy.deepcopy(new_values)
+        self._reload()
 
     # -- Experience editor --
 
@@ -443,37 +571,67 @@ class SectionEditor(QWidget):
             del_btn = QPushButton("Delete")
             del_btn.setObjectName("deleteProjBtn")
             del_btn.setFixedWidth(60)
-            del_btn.clicked.connect(lambda i=idx: self._delete_project(i))
+            del_btn.clicked.connect(lambda _checked=False, i=idx: self._delete_project(i))
             top_row.addWidget(del_btn)
             card_layout.addLayout(top_row)
 
             form = QFormLayout()
-
             title_le = QLineEdit(proj.title)
-            title_le.editingFinished.connect(
-                lambda i=idx, le=title_le: self._on_proj_field(i, "title", le.text())
-            )
-            form.addRow("Title:", title_le)
-
+            meta_le = QLineEdit(proj.meta)
+            start_le = QLineEdit(proj.start_date)
+            end_le = QLineEdit(proj.end_date)
             desc_te = QTextEdit(proj.description)
             desc_te.setAcceptRichText(False)
             desc_te.setMaximumHeight(80)
-            _orig_focus = desc_te.focusOutEvent
 
-            def _on_desc_focus(ev, i=idx, te=desc_te, original=_orig_focus):
-                original(ev)
-                self._on_proj_field(i, "description", te.toPlainText())
+            title_le.editingFinished.connect(
+                lambda i=idx, le=title_le: self._on_proj_field(i, "title", le.text())
+            )
+            meta_le.editingFinished.connect(
+                lambda i=idx, le=meta_le: self._on_proj_field(i, "meta", le.text())
+            )
+            start_le.editingFinished.connect(
+                lambda i=idx, le=start_le: self._on_proj_field(i, "start_date", le.text())
+            )
+            end_le.editingFinished.connect(
+                lambda i=idx, le=end_le: self._on_proj_field(i, "end_date", le.text())
+            )
+            original_focus = desc_te.focusOutEvent
+
+            def _on_desc_focus(event, i=idx, editor=desc_te, original=original_focus):
+                original(event)
+                self._on_proj_field(i, "description", editor.toPlainText())
 
             desc_te.focusOutEvent = _on_desc_focus  # type: ignore[assignment]
+            form.addRow("Title:", title_le)
+            form.addRow("Context / Client:", meta_le)
+            form.addRow("Start date:", start_le)
+            form.addRow("End date:", end_le)
             form.addRow("Description:", desc_te)
-
             card_layout.addLayout(form)
 
+            bullets_label = QLabel("Bullets:")
+            bullets_label.setStyleSheet("font-weight: bold;")
+            card_layout.addWidget(bullets_label)
+            for bullet_idx, bullet in enumerate(proj.bullets):
+                row = QHBoxLayout()
+                edit = QLineEdit(bullet)
+                edit.editingFinished.connect(
+                    lambda i=idx, b=bullet_idx, widget=edit: self._on_project_bullet_edit(i, b, widget.text())
+                )
+                remove = QPushButton("Remove")
+                remove.setFixedWidth(70)
+                remove.clicked.connect(
+                    lambda _checked=False, i=idx, b=bullet_idx: self._delete_project_bullet(i, b)
+                )
+                row.addWidget(edit, 1)
+                row.addWidget(remove)
+                card_layout.addLayout(row)
+
+            add_bullet = QPushButton("+ Add Bullet")
+            add_bullet.clicked.connect(lambda _checked=False, i=idx: self._add_project_bullet(i))
+            card_layout.addWidget(add_bullet)
             self._container_layout.addWidget(card)
-            if idx < len(projects) - 1:
-                sep = QLabel("")
-                sep.setFixedHeight(1)
-                self._container_layout.addWidget(sep)
 
         add_btn = QPushButton("+ Add Project")
         add_btn.setObjectName("addProjBtn")
@@ -484,7 +642,7 @@ class SectionEditor(QWidget):
         new_proj = copy.deepcopy(self._current_value)
         new_proj.append(ProjectItem())
         self.section_edited.emit(
-            self._current_section, copy.deepcopy(self._old_value), new_proj
+            self._current_section, copy.deepcopy(self._current_value), new_proj
         )
         self._current_value = copy.deepcopy(new_proj)
         self._old_value = copy.deepcopy(new_proj)
@@ -495,16 +653,51 @@ class SectionEditor(QWidget):
         if idx < len(new_proj):
             new_proj.pop(idx)
         self.section_edited.emit(
-            self._current_section, copy.deepcopy(self._old_value), new_proj
+            self._current_section, copy.deepcopy(self._current_value), new_proj
         )
         self._current_value = copy.deepcopy(new_proj)
         self._old_value = copy.deepcopy(new_proj)
         self._reload()
 
     def _on_proj_field(self, idx: int, field: str, value: str) -> None:
+        if idx >= len(self._current_value):
+            return
+        old_proj = copy.deepcopy(self._current_value)
         new_proj = copy.deepcopy(self._current_value)
-        old_proj = copy.deepcopy(self._old_value)
         setattr(new_proj[idx], field, value)
+        if new_proj == old_proj:
+            return
+        self.section_edited.emit("Projects", old_proj, new_proj)
+        self._current_value = copy.deepcopy(new_proj)
+        self._old_value = copy.deepcopy(new_proj)
+
+    def _add_project_bullet(self, project_idx: int) -> None:
+        new_proj = copy.deepcopy(self._current_value)
+        if project_idx < len(new_proj):
+            new_proj[project_idx].bullets.append("")
+        self.section_edited.emit("Projects", copy.deepcopy(self._current_value), new_proj)
+        self._current_value = copy.deepcopy(new_proj)
+        self._old_value = copy.deepcopy(new_proj)
+        self._reload()
+
+    def _delete_project_bullet(self, project_idx: int, bullet_idx: int) -> None:
+        new_proj = copy.deepcopy(self._current_value)
+        if project_idx < len(new_proj) and bullet_idx < len(new_proj[project_idx].bullets):
+            new_proj[project_idx].bullets.pop(bullet_idx)
+        self.section_edited.emit("Projects", copy.deepcopy(self._current_value), new_proj)
+        self._current_value = copy.deepcopy(new_proj)
+        self._old_value = copy.deepcopy(new_proj)
+        self._reload()
+
+    def _on_project_bullet_edit(self, project_idx: int, bullet_idx: int, value: str) -> None:
+        if project_idx >= len(self._current_value):
+            return
+        old_proj = copy.deepcopy(self._current_value)
+        new_proj = copy.deepcopy(self._current_value)
+        if bullet_idx < len(new_proj[project_idx].bullets):
+            new_proj[project_idx].bullets[bullet_idx] = value
+        if new_proj == old_proj:
+            return
         self.section_edited.emit("Projects", old_proj, new_proj)
         self._current_value = copy.deepcopy(new_proj)
         self._old_value = copy.deepcopy(new_proj)
@@ -544,6 +737,19 @@ class SectionEditor(QWidget):
                 lambda i=idx, le=inst_le: self._on_edu_field(i, "institution", le.text())
             )
             form.addRow("Institution:", inst_le)
+
+            location_le = QLineEdit(edu.location)
+            location_le.editingFinished.connect(
+                lambda i=idx, le=location_le: self._on_edu_field(i, "location", le.text())
+            )
+            form.addRow("Institution location:", location_le)
+
+            cgpa_le = QLineEdit(edu.cgpa)
+            cgpa_le.setPlaceholderText("e.g. 3.625 or 3.625/4.0")
+            cgpa_le.editingFinished.connect(
+                lambda i=idx, le=cgpa_le: self._on_edu_field(i, "cgpa", le.text())
+            )
+            form.addRow("CGPA / GPA:", cgpa_le)
 
             year_le = QLineEdit(edu.year)
             year_le.editingFinished.connect(
@@ -596,19 +802,35 @@ class SectionEditor(QWidget):
     # -- Pending list commit --
 
     def save_pending_list(self) -> None:
-        self._commit_list()
+        """Commit the active list or text editor before navigation/export."""
+        if self._list_widget is not None:
+            self._commit_list()
+        if self._text_widget is not None:
+            new_value = self._text_widget.toPlainText()
+            if new_value != self._current_value:
+                old_value = copy.deepcopy(self._current_value)
+                self.section_edited.emit(
+                    self._current_section,
+                    old_value,
+                    new_value,
+                )
+                self._current_value = new_value
+                self._old_value = new_value
 
-    def _commit_list(self) -> None:
-        if not hasattr(self, "_list_widget"):
+    def _commit_list(self, *_args) -> None:
+        widget = self._list_widget
+        if widget is None:
             return
         new_items = [
-            self._list_widget.item(i).text()
-            for i in range(self._list_widget.count())
+            widget.item(index).text().strip()
+            for index in range(widget.count())
+            if widget.item(index).text().strip()
         ]
-        if new_items != self._old_value:
+        if new_items != self._current_value:
+            old_items = copy.deepcopy(self._current_value)
             self.section_edited.emit(
                 self._current_section,
-                copy.deepcopy(self._old_value),
+                old_items,
                 new_items,
             )
             self._current_value = copy.deepcopy(new_items)

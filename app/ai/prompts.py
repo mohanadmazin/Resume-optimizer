@@ -342,6 +342,8 @@ Return JSON exactly in this structure:
     {{
       "degree": "",
       "institution": "",
+      "location": "",
+      "cgpa": "",
       "year": ""
     }}
   ],
@@ -371,6 +373,8 @@ RULES
 - Never append a skills heading or skills list to "summary".
 - Do not move projects into experience.
 - Do not move certifications into skills.
+- Preserve certification issuer and year when present.
+- Preserve education institution location and CGPA/GPA when present.
 - Do not infer missing information.
 - Do not create placeholder values.
 

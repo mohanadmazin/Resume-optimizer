@@ -84,9 +84,12 @@ def fetch_rendered_page(url: str, timeout: int = 30_000) -> tuple[str, str]:
     Raises:
         BrowserFetchError: If Playwright is unavailable or rendering fails.
     """
+    # Validate syntax immediately, but defer DNS resolution until after
+    # Playwright is available and Chromium launches. This keeps missing-browser
+    # errors deterministic in offline environments while still validating the
+    # target before any navigation occurs.
     validate_scheme(url)
     validate_port(url)
-    resolve_and_validate(url)
 
     try:
         from playwright.sync_api import sync_playwright
@@ -99,6 +102,8 @@ def fetch_rendered_page(url: str, timeout: int = 30_000) -> tuple[str, str]:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             try:
+                # Resolve immediately before creating a page or navigating.
+                resolve_and_validate(url)
                 context = browser.new_context(
                     user_agent=_USER_AGENT,
                     service_workers="block",

@@ -25,6 +25,7 @@ class AppState:
         # ── Analysis ────────────────────────────────────────────────
         self.active_analysis_id: int | None = None
         self._ats_cache = None
+        self._ats_after_cache = None
 
         # ── Optimization ────────────────────────────────────────────
         self.active_optimization_id: int | None = None
@@ -112,6 +113,14 @@ class AppState:
     @ats.setter
     def ats(self, value):
         self._ats_cache = value
+
+    @property
+    def ats_after(self):
+        return self._ats_after_cache
+
+    @ats_after.setter
+    def ats_after(self, value):
+        self._ats_after_cache = value
 
     # ── Optimization accessors ─────────────────────────────────────
 

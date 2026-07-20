@@ -180,6 +180,7 @@ class OptimizationPage(QWidget):
             state.selected_keywords = list(state.ats.missing_keywords)
 
         before_score = state.ats.ats_score
+        state.ats_after = None
 
         ats_for_optimizer = state.ats
         if state.selected_keywords is not None:
@@ -371,8 +372,9 @@ class OptimizationPage(QWidget):
         self.revert_btn.setVisible(True)
         self.edit_in_studio_btn.setVisible(True)
 
-        # Calculate after score
+        # Calculate and store the score for the current optimized revision.
         new_result = analyze(optimized, state.job_text)
+        state.ats_after = new_result
 
         # Only save to database when there are no flagged changes
         if fact_result.flagged_count == 0:
@@ -540,11 +542,13 @@ class OptimizationPage(QWidget):
             proposal.accepted = True
             sl.setText("Accepted")
             sl.setStyleSheet("color: #22C55E; font-size: 11px; font-weight: bold;")
+            self._refresh_review_preview()
 
         def _on_reject(_checked: bool = False, proposal=change, sl=status_label):
             proposal.accepted = False
             sl.setText("Rejected")
             sl.setStyleSheet("color: #EF4444; font-size: 11px; font-weight: bold;")
+            self._refresh_review_preview()
 
         accept_btn.clicked.connect(_on_accept)
         reject_btn.clicked.connect(_on_reject)
@@ -556,6 +560,17 @@ class OptimizationPage(QWidget):
 
         self._change_cards[idx] = (change, card)
         self.review_layout.addWidget(card)
+
+    def _refresh_review_preview(self) -> None:
+        """Rebuild provisional content and ATS score after each decision."""
+        state = self.window.state
+        if state.resume is None or state.fact_guard is None:
+            return
+        provisional = apply_accepted_changes(state.resume, state.fact_guard)
+        state.optimized = provisional
+        state.ats_after = analyze(provisional, state.job_text)
+        self.after.setHtml(resume_diff_html(state.resume, provisional))
+        self._update_score_display()
 
     def _revert_to_original(self) -> None:
         """Revert to the pre-optimization resume with confirmation."""
@@ -574,6 +589,7 @@ class OptimizationPage(QWidget):
         state.resume = self._original_resume
         state.optimized = None
         state.fact_guard = None
+        state.ats_after = None
         self.before.setPlainText(to_markdown(self._original_resume))
         self._original_resume = None
         self.after.clear()
@@ -602,6 +618,7 @@ class OptimizationPage(QWidget):
 
         accepted_count = state.fact_guard.accepted_count
         state.optimized = apply_accepted_changes(state.resume, state.fact_guard)
+        state.ats_after = analyze(state.optimized, state.job_text)
         self.after.setHtml(resume_diff_html(state.resume, state.optimized))
         self._update_score_display()
 
@@ -625,6 +642,7 @@ class OptimizationPage(QWidget):
 
         if state.optimized is not None and state.ats is not None:
             after_result = analyze(state.optimized, state.job_text)
+            state.ats_after = after_result
             self.after_score_label.setText(f"Optimized ATS Score: {after_result.ats_score} / 100")
             self._style_after_score(state.ats.ats_score, after_result.ats_score)
 

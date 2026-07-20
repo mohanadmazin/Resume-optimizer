@@ -17,6 +17,7 @@ from docx.shared import Pt, RGBColor, Mm
 
 from dataclasses import dataclass
 
+from app.domain.certification import certification_parts
 from app.schemas import ResumeData
 
 logger = logging.getLogger(__name__)
@@ -386,30 +387,26 @@ def _compact_year_range(value: str) -> str:
 
 
 def _education_display(education) -> tuple[str, str]:
-    """Return the bold degree label and the remaining reference-template text."""
+    """Return degree and institution details including location and CGPA."""
     degree = (education.degree or "").strip().rstrip(":")
-    institution = re.sub(r"\s*,\s*(GPA\s*[:]?\s*)", r" | \1", education.institution or "", flags=re.I)
-    institution = re.sub(r"GPA\s*:\s*", "GPA ", institution, flags=re.I).strip()
+    institution = (education.institution or "").strip()
+    location = (getattr(education, "location", "") or "").strip()
+    cgpa = (getattr(education, "cgpa", "") or "").strip()
     year = _compact_year_range(education.year)
-    tail = institution
+
+    institution_part = ", ".join(filter(None, [institution, location]))
+    details = [institution_part]
+    if cgpa:
+        details.append(f"CGPA {cgpa}")
     if year:
-        tail = f"{tail} | {year}" if tail else year
+        details.append(year)
+    tail = " | ".join(part for part in details if part)
     return (degree + ":" if degree else ""), tail
 
 
 def _certification_parts(certification: str) -> tuple[str, str, str]:
-    """Split a certification into title, issuer, and year columns."""
-    parts = [part.strip() for part in certification.split("|") if part.strip()]
-    if len(parts) >= 3:
-        return parts[0], parts[1], parts[2]
-    if len(parts) == 2:
-        year_match = re.fullmatch(r"(?:19|20)\d{2}", parts[1])
-        return (parts[0], "", parts[1]) if year_match else (parts[0], parts[1], "")
-    text = parts[0] if parts else certification.strip()
-    year_match = re.search(r"\b((?:19|20)\d{2})\s*$", text)
-    if year_match:
-        return text[:year_match.start()].rstrip(" -\u00b7|\t"), "", year_match.group(1)
-    return text, "", ""
+    """Backward-compatible wrapper for shared certification parsing."""
+    return certification_parts(certification)
 
 
 def export_docx(resume: ResumeData, path: str, theme: ExportTheme | None = None) -> None:
@@ -891,3 +888,62 @@ def export_text_docx(text: str, path: str, theme: ExportTheme | None = None) -> 
     for paragraph in text.split("\n"):
         doc.add_paragraph(paragraph)
     doc.save(path)
+
+
+def export_text_pdf(text: str, path: str, theme: ExportTheme | None = None) -> None:
+    """Save plain text, such as an editable cover letter, as a clean PDF."""
+    t = theme or CLASSIC_THEME
+    logger.info("Exporting text to PDF [%s]: %s", t.name, path)
+    document = fitz.open()
+    page = document.new_page(width=PAGE_WIDTH_PT, height=PAGE_HEIGHT_PT)
+    margin = max(54.0, t.margin_left_right)
+    top = max(54.0, t.margin_top_bottom)
+    bottom = PAGE_HEIGHT_PT - max(54.0, t.margin_top_bottom)
+    width = PAGE_WIDTH_PT - (2 * margin)
+    font_size = max(10.0, t.body_font_size + 1.0)
+    line_height = font_size * 1.45
+    y = top
+
+    def add_page() -> None:
+        nonlocal page, y
+        page = document.new_page(width=PAGE_WIDTH_PT, height=PAGE_HEIGHT_PT)
+        y = top
+
+    paragraphs = text.splitlines() or [""]
+    for paragraph in paragraphs:
+        clean = paragraph.rstrip()
+        if not clean:
+            y += line_height
+            if y > bottom:
+                add_page()
+            continue
+
+        words = clean.split()
+        lines: list[str] = []
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            if fitz.get_text_length(candidate, fontname="helv", fontsize=font_size) <= width:
+                current = candidate
+            else:
+                if current:
+                    lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+
+        for line in lines:
+            if y + line_height > bottom:
+                add_page()
+            page.insert_text(
+                (margin, y),
+                line,
+                fontname="helv",
+                fontsize=font_size,
+                color=t.text_float(),
+            )
+            y += line_height
+        y += line_height * 0.35
+
+    document.save(path)
+    document.close()

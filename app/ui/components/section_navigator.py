@@ -44,6 +44,7 @@ class SectionNavigator(QFrame):
         self._list.setSpacing(2)
         for name in sections:
             item = QListWidgetItem(name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
             item.setTextAlignment(Qt.AlignmentFlag.AlignLeft)
             self._list.addItem(item)
 
@@ -129,6 +130,7 @@ class SectionNavigator(QFrame):
         self._list.clear()
         for name in names:
             item = QListWidgetItem(name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
             item.setTextAlignment(Qt.AlignmentFlag.AlignLeft)
             self._list.addItem(item)
         self._list.blockSignals(False)

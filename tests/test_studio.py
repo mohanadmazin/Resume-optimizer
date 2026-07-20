@@ -1178,7 +1178,7 @@ def test_studio_load_from_state_enables_buttons():
     window.state.active_resume_id = None
     page = ResumeStudioPage(window)
     page.load_from_state()
-    assert page._export_btn.isEnabled()
+    assert not page._export_btn.isEnabled()
     assert page._dup_btn.isEnabled()
 
 
@@ -1241,3 +1241,93 @@ def test_optimization_page_edit_in_studio_noop_without_optimized():
     page = OptimizationPage(window)
     page._edit_in_studio()
     window.get_page.assert_not_called()
+
+
+def test_editor_education_exposes_location_and_cgpa_fields():
+    from app.ui.components.section_editor import SectionEditor
+    from PySide6.QtWidgets import QLineEdit
+
+    editor = SectionEditor()
+    editor.load(
+        "Education",
+        [EducationItem(
+            degree="MSc Computer Networks",
+            institution="Universiti Putra Malaysia",
+            location="Selangor",
+            cgpa="3.625",
+            year="2015 – 2019",
+        )],
+    )
+    values = {widget.text() for widget in editor.findChildren(QLineEdit)}
+    assert "Selangor" in values
+    assert "3.625" in values
+
+
+def test_editor_certifications_exposes_issuer_and_year_fields():
+    from app.ui.components.section_editor import SectionEditor
+    from PySide6.QtWidgets import QLineEdit
+
+    editor = SectionEditor()
+    editor.load("Certifications", ["CCNP Routing & Switching | Cisco | 2014"])
+    values = {widget.text() for widget in editor.findChildren(QLineEdit)}
+    assert {"CCNP Routing & Switching", "Cisco", "2014"}.issubset(values)
+
+
+def test_editor_projects_exposes_context_dates_and_bullets():
+    from app.ui.components.section_editor import SectionEditor
+    from PySide6.QtWidgets import QLineEdit
+
+    editor = SectionEditor()
+    editor.load(
+        "Projects",
+        [ProjectItem(
+            title="Data Center Build",
+            meta="Project within Example role",
+            start_date="Mar 2025",
+            end_date="May 2025",
+            bullets=["Migrated production traffic."],
+        )],
+    )
+    values = {widget.text() for widget in editor.findChildren(QLineEdit)}
+    assert "Project within Example role" in values
+    assert "Mar 2025" in values
+    assert "May 2025" in values
+    assert "Migrated production traffic." in values
+
+
+def test_optimization_review_preview_recalculates_ats_score():
+    from types import SimpleNamespace
+    from app.domain.fact_guard import ChangeType, FactGuardResult, ProposedChange
+    from app.services.ats_engine import analyze
+    from app.ui.pages.optimization import OptimizationPage
+
+    original = ResumeData(
+        contact=ContactInfo(email="alice@test.com", phone="5551234567"),
+        summary="Python engineer",
+        skills=["Python"],
+    )
+    job_text = "Requirements:\nPython and Docker"
+    before = analyze(original, job_text)
+    change = ProposedChange(
+        change_type=ChangeType.SKILL_ADD,
+        section="skills",
+        original="",
+        rewritten="Docker",
+        accepted=True,
+    )
+    state = SimpleNamespace(
+        resume=original,
+        optimized=None,
+        fact_guard=FactGuardResult(safe_changes=[change]),
+        job_text=job_text,
+        ats=before,
+        ats_after=None,
+    )
+    window = MagicMock()
+    window.state = state
+    page = OptimizationPage(window)
+
+    page._refresh_review_preview()
+
+    assert "Docker" in state.optimized.skills
+    assert state.ats_after.ats_score > before.ats_score

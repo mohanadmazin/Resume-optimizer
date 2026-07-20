@@ -103,6 +103,14 @@ _KNOWN_SKILLS: set[str] = {
     "sonarqube", "codecov", "coveralls",
     # Networking & Security
     "tcp/ip", "dns", "load balancing", "firewall", "vpn", "ssl/tls",
+    "sd-wan", "cisco sd-wan", "sase", "cato networks", "palo alto",
+    "palo alto networks", "network security", "security architecture",
+    "network segmentation", "firewall policy management", "ipsec", "ipsec vpn",
+    "lan", "wan", "lan/wan", "routing", "switching", "routing & switching",
+    "bgp", "ospf", "eigrp", "vlan", "nat", "aruba", "aruba wireless",
+    "ekahau", "wi-fi", "wifi", "high-density wi-fi", "p2p", "p2mp",
+    "olt", "gpon", "ont", "fttx", "network troubleshooting",
+    "configuration standardization", "operational handover", "sla management",
     "owasp", "burp suite", "nessus", "wireshark", "nmap",
     "penetration testing", "vulnerability assessment", "siem",
     "iso 27001", "soc 2", "gdpr", "hipaa", "pci-dss",
@@ -177,29 +185,22 @@ _WEIGHTInSection: float = 0.5
 _WEIGHT_FREQUENCY: float = 0.2
 
 
-def _extract_section_text(jd_text: str) -> str:
-    """Extract text from high-signal requirements sections of a JD.
-
-    Finds section headers (Requirements, Qualifications, Must Have, etc.)
-    and returns the text from those sections combined.  If no sections are
-    found, returns the full JD text so frequency-based extraction still works.
-    """
+def _extract_section_text_with_flag(jd_text: str) -> tuple[str, bool]:
+    """Return requirement-section text and whether an explicit section existed."""
     lines = jd_text.splitlines()
     section_lines: list[str] = []
     in_section = False
+    found_header = False
 
     for line in lines:
         stripped = line.strip()
-
-        # Blank line ends the current section
         if in_section and not stripped:
             in_section = False
             continue
-
         if _SECTION_HEADERS.match(stripped):
             in_section = True
+            found_header = True
             continue
-        # A new non-empty header-like line (ALL CAPS or short header with colon) ends the section
         if in_section and stripped:
             if stripped.upper() == stripped and len(stripped) > 3:
                 in_section = False
@@ -212,7 +213,12 @@ def _extract_section_text(jd_text: str) -> str:
         if in_section and stripped:
             section_lines.append(stripped)
 
-    return "\n".join(section_lines) if section_lines else jd_text
+    return ("\n".join(section_lines) if section_lines else jd_text, found_header and bool(section_lines))
+
+
+def _extract_section_text(jd_text: str) -> str:
+    """Backward-compatible text-only wrapper."""
+    return _extract_section_text_with_flag(jd_text)[0]
 
 
 def _extract_weighted_keywords(jd_text: str, top_n: int = 25) -> list[Tuple[str, float]]:
@@ -228,7 +234,7 @@ def _extract_weighted_keywords(jd_text: str, top_n: int = 25) -> list[Tuple[str,
     descending, then frequency descending.
     """
     known_skills = get_known_skills()
-    section_text = _extract_section_text(jd_text)
+    section_text, has_explicit_requirements = _extract_section_text_with_flag(jd_text)
     full_lower = jd_text.lower()
     section_lower = section_text.lower()
 
@@ -236,12 +242,14 @@ def _extract_weighted_keywords(jd_text: str, top_n: int = 25) -> list[Tuple[str,
     def _tokens(text: str) -> list[str]:
         return [t.strip(".-/") for t in re.findall(r"[a-z][a-z0-9+#.\-/]*", text)]
 
+    section_tokens = _tokens(section_lower)
+    full_tokens = _tokens(full_lower)
     section_words = [
-        t for t in _tokens(section_lower)
+        t for t in section_tokens
         if t and t not in STOPWORDS and (len(t) > 2 or t in SHORT_KEEP)
     ]
     full_words = [
-        t for t in _tokens(full_lower)
+        t for t in full_tokens
         if t and t not in STOPWORDS and (len(t) > 2 or t in SHORT_KEEP)
     ]
 
@@ -249,13 +257,14 @@ def _extract_weighted_keywords(jd_text: str, top_n: int = 25) -> list[Tuple[str,
     section_counts = Counter(section_words)
     full_counts = Counter(full_words)
 
-    # Bigrams from full text (frequency >= 2)
-    full_bigrams: Counter = Counter()
-    for first, second in zip(full_words, full_words[1:]):
-        full_bigrams[f"{first} {second}"] += 1
-    section_bigrams: Counter = Counter()
-    for first, second in zip(section_words, section_words[1:]):
-        section_bigrams[f"{first} {second}"] += 1
+    # Build bigrams from the unfiltered token stream. Building them after
+    # stopword removal creates fake phrases such as "security security".
+    full_bigrams: Counter = Counter(
+        f"{first} {second}" for first, second in zip(full_tokens, full_tokens[1:])
+    )
+    section_bigrams: Counter = Counter(
+        f"{first} {second}" for first, second in zip(section_tokens, section_tokens[1:])
+    )
 
     candidates: dict[str, tuple[float, int]] = {}  # keyword → (weight, freq)
 
@@ -264,8 +273,22 @@ def _extract_weighted_keywords(jd_text: str, top_n: int = 25) -> list[Tuple[str,
         if existing is None or weight > existing[0] or (weight == existing[0] and freq > existing[1]):
             candidates[word] = (weight, freq)
 
-    # Score bigrams
+    # Scan the curated vocabulary directly so punctuation and multi-word
+    # skills are preserved exactly rather than reconstructed from tokens.
+    for skill in known_skills:
+        if not _contains(full_lower, skill):
+            continue
+        count = len(re.findall(r"(?<![a-z0-9])" + re.escape(skill) + r"(?![a-z0-9])", full_lower))
+        if has_explicit_requirements and _contains(section_lower, skill):
+            _update(skill, _WEIGHT_SKILL_IN_SECTION, max(1, count))
+        else:
+            _update(skill, _WEIGHT_SKILL_ANYWHERE, max(1, count))
+
+    # Score genuine adjacent bigrams. Unknown phrases are accepted only when
+    # repeated inside an explicit requirements section.
     for bg, count in full_bigrams.most_common(30):
+        if any(part in STOPWORDS for part in bg.split()):
+            continue
         is_known = bg in known_skills or _canonicalize(bg) in SKILL_ALIASES
         if count < 2 and not is_known:
             continue
@@ -274,29 +297,37 @@ def _extract_weighted_keywords(jd_text: str, top_n: int = 25) -> list[Tuple[str,
             _update(bg, _WEIGHT_SKILL_IN_SECTION, count)
         elif is_known:
             _update(bg, _WEIGHT_SKILL_ANYWHERE, count)
-        elif in_section:
+        elif has_explicit_requirements and in_section and count >= 2:
+            # Unknown phrases are considered only when they are repeated in an
+            # explicit requirements section. This prevents locations and page
+            # metadata from becoming ATS keywords.
             _update(bg, _WEIGHTInSection, count)
-        else:
-            _update(bg, _WEIGHT_FREQUENCY, count)
 
     # Score unigrams
     for word, count in full_counts.most_common(top_n * 3):
-        is_known = word in _KNOWN_SKILLS or _canonicalize(word) in SKILL_ALIASES
+        is_known = word in known_skills or _canonicalize(word) in SKILL_ALIASES
         in_section = word in section_counts
         if is_known and in_section:
             _update(word, _WEIGHT_SKILL_IN_SECTION, count)
         elif is_known:
             _update(word, _WEIGHT_SKILL_ANYWHERE, count)
-        elif in_section:
+        elif has_explicit_requirements and in_section and count >= 2:
             _update(word, _WEIGHTInSection, count)
-        else:
-            _update(word, _WEIGHT_FREQUENCY, count)
 
     # Remove unigrams that appear inside a kept bigram
     kept_bigrams = {kw for kw in candidates if " " in kw}
     for bg in kept_bigrams:
         for part in bg.split():
             candidates.pop(part, None)
+
+    # Prefer specific phrases over contained short forms (``sd-wan`` over
+    # ``wan``, ``palo alto networks`` over ``palo alto``).
+    selected_terms: list[str] = []
+    for term in sorted(candidates, key=len, reverse=True):
+        if any(_contains(existing, term) for existing in selected_terms):
+            candidates.pop(term, None)
+            continue
+        selected_terms.append(term)
 
     # Sort by weight desc, then frequency desc
     ranked = sorted(candidates.items(), key=lambda x: (x[1][0], x[1][1]), reverse=True)
@@ -340,44 +371,29 @@ def extract_keywords(text: str, top_n: int = 25) -> list[str]:
 
 
 def extract_required_skills(text: str) -> list[str]:
-    """Extract skill-like terms from a job description.
-
-    Returns unique skill terms that appear in the JD and are known
-    technical skills (from the curated vocabulary).  Generic words like
-    "environment", "support", or "business" are excluded.
-    """
+    """Extract curated technical skills without inventing token bigrams."""
+    lower = text.lower()
     known_skills = get_known_skills()
-    tokens = [t.strip(".-/") for t in re.findall(r"[a-z][a-z0-9+#.\-/]*", text.lower())]
-    words = [
-        t for t in tokens
-        if t and t not in STOPWORDS and (len(t) > 2 or t in SHORT_KEEP)
-    ]
+    found = [skill for skill in known_skills if _contains(lower, skill)]
 
-    # Collect frequent bigrams first (e.g. "machine learning", "CI/CD")
-    bigram_counts: Counter = Counter()
-    for first, second in zip(words, words[1:]):
-        bigram_counts[f"{first} {second}"] += 1
-    # Keep bigrams that are known skills (even if mentioned once) or frequent
-    bigrams = [
-        b for b, c in bigram_counts.most_common(20)
-        if (_canonicalize(b) in SKILL_ALIASES or b in known_skills) or c >= 2
-    ]
+    # Prefer longer phrases over contained short forms (for example,
+    # ``palo alto networks`` over ``palo alto`` and ``sd-wan`` over ``wan``).
+    selected: list[str] = []
+    for skill in sorted(found, key=lambda value: (-len(value), lower.find(value))):
+        if any(_contains(existing, skill) for existing in selected):
+            continue
+        selected.append(skill)
 
-    # Single-word candidates — must be known skills
-    bigram_words = set()
-    for b in bigrams:
-        bigram_words.update(b.split())
-    singles = [
-        w for w, _ in Counter(words).most_common(60)
-        if w not in bigram_words and (w in known_skills or _canonicalize(w) in SKILL_ALIASES)
-    ]
-
+    # Deduplicate aliases by canonical form and return in document order.
+    selected.sort(key=lambda value: lower.find(value))
     seen: set[str] = set()
     result: list[str] = []
-    for skill in bigrams + singles:
-        if skill not in seen:
-            seen.add(skill)
-            result.append(skill)
+    for skill in selected:
+        canonical = _canonicalize(skill)
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        result.append(skill)
     return result
 
 
@@ -394,16 +410,28 @@ def _keyword_matches(resume_text: str, keyword: str) -> bool:
 
 
 def _resume_text(resume: ResumeData) -> str:
+    """Build ATS text from structured fields, using raw text only as fallback.
+
+    Appending ``raw_text`` to an optimized structured resume kept stale content
+    in the ATS index, so accept/reject decisions appeared not to change scores.
+    """
     parts = [resume.headline, resume.summary, " ".join(resume.skills), " ".join(resume.languages)]
     for exp in resume.experience:
-        parts += [exp.title, exp.company, " ".join(exp.bullets)]
+        parts += [exp.title, exp.company, exp.location, " ".join(exp.bullets)]
     for proj in resume.projects:
         parts += [proj.title, proj.meta, proj.description, " ".join(proj.bullets)]
     for edu in resume.education:
-        parts.append(f"{edu.degree} {edu.institution}")
+        parts.append(
+            " ".join(filter(None, [
+                edu.degree,
+                edu.institution,
+                getattr(edu, "location", ""),
+                getattr(edu, "cgpa", ""),
+            ]))
+        )
     parts += resume.certifications
-    parts.append(resume.raw_text)
-    return " ".join(p for p in parts if p)
+    structured = " ".join(part for part in parts if part).strip()
+    return structured or resume.raw_text
 
 
 def analyze(resume: ResumeData, jd_text: str) -> ATSResult:

@@ -16,11 +16,11 @@ MAX_DOCX_COMPRESSION_RATIO = 100
 
 _SECTION_HEADERS = {
     "summary", "professional summary",
-    "skills", "technical skills",
+    "skills", "technical skills", "core technical skills",
     "experience", "professional experience", "work experience", "employment",
     "education", "academic background",
     "certifications", "certificates",
-    "projects", "key projects",
+    "projects", "key projects", "selected projects", "selected project delivery",
     "languages",
 }
 

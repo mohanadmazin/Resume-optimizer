@@ -32,6 +32,8 @@ class ExperienceItem(BaseModel):
 class EducationItem(BaseModel):
     degree: str = ""
     institution: str = ""
+    location: str = ""
+    cgpa: str = ""
     year: str = ""
 
 
