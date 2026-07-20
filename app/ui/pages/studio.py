@@ -164,10 +164,27 @@ class ResumeStudioPage(QWidget):
     def on_show(self) -> None:
         """Called by MainWindow when this page becomes visible."""
         if self.window.state.resume is not None and self._vm.resume is None:
-            self._vm.resume = copy.deepcopy(self.window.state.resume)
-            self._nav.select_section("Contact")
-            self._on_section_selected("Contact")
-            self._recalculate()
+            self.load_from_state()
+        has = self._vm.has_resume()
+        self._dup_btn.setEnabled(has)
+        self._export_btn.setEnabled(has)
+        self._save_version_btn.setEnabled(
+            has and self.window.state.active_resume_id is not None
+        )
+
+    def load_from_state(self) -> None:
+        """Force-reload the resume from global state into the Studio.
+
+        Call this from other pages (e.g. Optimization) after updating
+        ``state.resume`` so the Studio picks up the new version.
+        """
+        state_resume = self.window.state.resume
+        if state_resume is None:
+            return
+        self._vm.resume = state_resume.model_copy(deep=True)
+        self._nav.select_section("Contact")
+        self._on_section_selected("Contact")
+        self._recalculate()
         has = self._vm.has_resume()
         self._dup_btn.setEnabled(has)
         self._export_btn.setEnabled(has)

@@ -140,6 +140,15 @@ class OptimizationPage(QWidget):
             btn = QPushButton(label)
             btn.clicked.connect(lambda _=False, f=fmt: self._export(f))
             exports.addWidget(btn)
+
+        exports.addSpacing(16)
+
+        self.edit_in_studio_btn = QPushButton("Edit in Studio")
+        self.edit_in_studio_btn.setToolTip("Send the optimized resume to the Studio for manual editing before export")
+        self.edit_in_studio_btn.clicked.connect(self._edit_in_studio)
+        self.edit_in_studio_btn.setVisible(False)
+        exports.addWidget(self.edit_in_studio_btn)
+
         exports.addStretch()
         layout.addLayout(exports)
 
@@ -189,7 +198,7 @@ class OptimizationPage(QWidget):
         self.fact_banner.setVisible(False)
         self.review_scroll.setVisible(False)
         self.revert_btn.setVisible(False)
-        # Save original resume for rollback
+        self.edit_in_studio_btn.setVisible(False)
         import copy
         self._original_resume = copy.deepcopy(state.resume)
         model = settings_service.model
@@ -360,6 +369,7 @@ class OptimizationPage(QWidget):
         self.after.setHtml(resume_diff_html(state.resume, optimized))
         self.run_btn.setEnabled(True)
         self.revert_btn.setVisible(True)
+        self.edit_in_studio_btn.setVisible(True)
 
         # Calculate after score
         new_result = analyze(optimized, state.job_text)
@@ -571,6 +581,7 @@ class OptimizationPage(QWidget):
         self.review_scroll.setVisible(False)
         self.apply_btn.setVisible(False)
         self.revert_btn.setVisible(False)
+        self.edit_in_studio_btn.setVisible(False)
         self.after_score_label.setText("Optimized ATS Score: -- / 100")
         self._change_cards.clear()
         self.window.notify("Reverted to original resume.")
@@ -601,6 +612,7 @@ class OptimizationPage(QWidget):
         self.fact_banner.setVisible(False)
 
         self.window.notify(f"Applied {accepted_count} accepted change(s).")
+        self.edit_in_studio_btn.setVisible(True)
 
     # ── Score styling ──────────────────────────────────────────────────────
 
@@ -722,3 +734,22 @@ class OptimizationPage(QWidget):
             QMessageBox.critical(self, "Export failed", str(exc))
             return
         self.window.notify(f"Exported to {path}")
+
+    # ── Edit in Studio ───────────────────────────────────────────────────
+
+    def _edit_in_studio(self) -> None:
+        """Send the optimized resume to the Studio for manual editing."""
+        import copy as _copy
+
+        state = self.window.state
+        if state.optimized is None:
+            return
+        state.resume = _copy.deepcopy(state.optimized)
+        self.window.state.active_resume_id = None  # unsaved copy
+        studio_page = self.window.get_page("Resume Studio")
+        if studio_page is not None:
+            studio_page.load_from_state()
+        items = self.window.nav.findItems("Resume Studio", Qt.MatchExactly)
+        if items:
+            self.window.nav.setCurrentItem(items[0])
+        self.window.notify("Optimized resume loaded into the Studio for editing.")

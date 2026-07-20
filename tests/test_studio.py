@@ -1108,3 +1108,136 @@ def test_editor_education_add_entry_via_vm():
     assert len(vm.resume.education) == len(old_edu) + 1
     vm.undo()
     assert len(vm.resume.education) == len(old_edu)
+
+
+# ── Studio load_from_state ─────────────────────────────────────────────────
+
+
+def test_studio_load_from_state_populates_vm():
+    """load_from_state() copies state.resume into the Studio VM."""
+    from app.ui.pages.studio import ResumeStudioPage
+    window = MagicMock()
+    original = _make_resume()
+    window.state.resume = original
+    window.state.active_resume_id = None
+    page = ResumeStudioPage(window)
+    assert page._vm.resume is None
+    page.load_from_state()
+    assert page._vm.resume is not None
+    assert page._vm.resume.contact.name == "Alice"
+
+
+def test_studio_load_from_state_noop_when_none():
+    """load_from_state() does nothing if state.resume is still None."""
+    from app.ui.pages.studio import ResumeStudioPage
+    window = MagicMock()
+    window.state.resume = None
+    page = ResumeStudioPage(window)
+    page.load_from_state()
+    assert page._vm.resume is None
+
+
+def test_studio_load_from_state_replaces_existing():
+    """load_from_state() replaces any resume already in the VM."""
+    from app.ui.pages.studio import ResumeStudioPage
+    window = MagicMock()
+    first = _make_resume()
+    second = _make_resume()
+    second.contact = ContactInfo(name="Bob", email="bob@test.com")
+    window.state.resume = first
+    window.state.active_resume_id = None
+    page = ResumeStudioPage(window)
+    page.load_from_state()
+    assert page._vm.resume.contact.name == "Alice"
+    window.state.resume = second
+    page.load_from_state()
+    assert page._vm.resume.contact.name == "Bob"
+
+
+def test_studio_load_from_state_deep_copies():
+    """load_from_state() deep-copies so mutations don't leak into previous state."""
+    from app.ui.pages.studio import ResumeStudioPage
+    window = MagicMock()
+    original = _make_resume()
+    window.state.resume = original
+    window.state.active_resume_id = None
+    page = ResumeStudioPage(window)
+    # Mutate the VM resume
+    page.load_from_state()
+    page._vm.resume.contact.name = "CHANGED"
+    # The VM setter writes back to state, so state follows the VM.
+    # Verify the deep copy is independent of the ORIGINAL object we started with.
+    assert original.contact.name == "Alice"
+
+
+def test_studio_load_from_state_enables_buttons():
+    """load_from_state() enables the export and duplicate buttons."""
+    from app.ui.pages.studio import ResumeStudioPage
+    window = MagicMock()
+    window.state.resume = _make_resume()
+    window.state.active_resume_id = None
+    page = ResumeStudioPage(window)
+    page.load_from_state()
+    assert page._export_btn.isEnabled()
+    assert page._dup_btn.isEnabled()
+
+
+# ── OptimizationPage: Edit in Studio ───────────────────────────────────────
+
+
+def test_optimization_page_has_edit_in_studio_button():
+    from app.ui.pages.optimization import OptimizationPage
+    window = MagicMock()
+    page = OptimizationPage(window)
+    assert hasattr(page, "edit_in_studio_btn")
+    assert not page.edit_in_studio_btn.isVisible()
+
+
+def test_optimization_page_edit_in_studio_hidden_by_default():
+    from app.ui.pages.optimization import OptimizationPage
+    window = MagicMock()
+    page = OptimizationPage(window)
+    assert not page.edit_in_studio_btn.isVisibleTo(None) or not page.edit_in_studio_btn.isVisible()
+
+
+def test_optimization_page_edit_in_studio_replaces_state():
+    """_edit_in_studio() copies optimized resume into state.resume."""
+    from app.ui.pages.optimization import OptimizationPage
+    window = MagicMock()
+    original = _make_resume()
+    optimized = _make_resume()
+    optimized.contact = ContactInfo(name="Optimized", email="opt@test.com")
+    window.state.resume = original
+    window.state.optimized = optimized
+    window.state.active_resume_id = 42
+    window.nav.findItems.return_value = [MagicMock()]
+    page = OptimizationPage(window)
+    page._edit_in_studio()
+    assert window.state.resume.contact.name == "Optimized"
+    assert window.state.active_resume_id is None
+
+
+def test_optimization_page_edit_in_studio_navigates():
+    """_edit_in_studio() navigates to the Studio page."""
+    from app.ui.pages.optimization import OptimizationPage
+    window = MagicMock()
+    window.state.optimized = _make_resume()
+    window.state.active_resume_id = None
+    studio_mock = MagicMock()
+    window.get_page.return_value = studio_mock
+    nav_item = MagicMock()
+    window.nav.findItems.return_value = [nav_item]
+    page = OptimizationPage(window)
+    page._edit_in_studio()
+    studio_mock.load_from_state.assert_called_once()
+    window.nav.setCurrentItem.assert_called_once_with(nav_item)
+
+
+def test_optimization_page_edit_in_studio_noop_without_optimized():
+    """_edit_in_studio() is a no-op if state.optimized is None."""
+    from app.ui.pages.optimization import OptimizationPage
+    window = MagicMock()
+    window.state.optimized = None
+    page = OptimizationPage(window)
+    page._edit_in_studio()
+    window.get_page.assert_not_called()
