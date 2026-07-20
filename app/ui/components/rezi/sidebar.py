@@ -28,7 +28,7 @@ def _draw_plus_icon(painter: QPainter, x: int, y: int, size: int) -> None:
 
 def _draw_document_icon(painter: QPainter, x: int, y: int, size: int) -> None:
     """Draw a document icon (folded corner rectangle)."""
-    pen = QPen(QColor(REZI_COLORS["icon_inactive"]), 1.5, Qt.PenStyle.SolidLine, Qt.PenJoinStyle.RoundJoin)
+    pen = QPen(QColor(REZI_COLORS["icon_inactive"]), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     fold = size // 3
