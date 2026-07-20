@@ -201,7 +201,7 @@ STRICT RULES
    - experience
 
 5. The first line MUST start with:
-Dear
+Dear Hiring Manager,
 
 6. No text is allowed before the greeting.
 
