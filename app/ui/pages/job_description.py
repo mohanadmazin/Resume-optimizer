@@ -2,7 +2,7 @@
 
 """Job Description page: paste, upload, or fetch from URL."""
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -211,5 +211,12 @@ class JobDescriptionPage(QWidget):
             return
 
         name, page = self._sequential_analyses.pop(0)
+        if hasattr(page, 'analysis_finished'):
+            page.analysis_finished.connect(
+                self._run_next_analysis,
+                Qt.ConnectionType.SingleShotConnection,
+            )
         if hasattr(page, 'run_analysis'):
-            page.run_analysis(silent=True)
+            started = page.run_analysis(silent=True)
+            if not started and self._sequential_analyses:
+                self._run_next_analysis()

@@ -60,7 +60,7 @@ class CoverLetterPage(QWidget):
         layout.addWidget(self.output, 1)
 
     def on_show(self) -> None:
-        """Load resume and job when page is shown."""
+        """Load resume and job when page is shown; display cached result if available."""
         state = self.window.state
         if state.resume is None:
             row = db.latest_resume()
@@ -73,6 +73,9 @@ class CoverLetterPage(QWidget):
                 state.job_text = row["content"]
                 state.job_title = row["title"]
                 state.job_id = row["id"]
+        if state.cover_letter_text and not self.output.toPlainText().strip():
+            self.output.setPlainText(state.cover_letter_text)
+            self.save_btn.setEnabled(True)
 
     def _run(self) -> None:
         state = self.window.state

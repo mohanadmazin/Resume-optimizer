@@ -9,6 +9,8 @@ from PySide6.QtCore import QThread, Signal
 
 logger = logging.getLogger(__name__)
 
+_MISSING = object()
+
 
 class OperationCancelled(Exception):
     """Raised when a cooperative operation is cancelled."""
@@ -81,17 +83,16 @@ class Worker(QThread):
         finally:
             timeout_timer.cancel()
 
-    def _emit_once(self, signal: Signal, value: Any = None) -> None:
+    def _emit_once(self, signal: Signal, value: Any = _MISSING) -> None:
         with self._terminal_lock:
             if self._terminal_emitted:
                 return
-
             self._terminal_emitted = True
 
-            if value is None:
-                signal.emit()
-            else:
-                signal.emit(value)
+        if value is _MISSING:
+            signal.emit()
+        else:
+            signal.emit(value)
 
 
 class PipelineWorker(QThread):

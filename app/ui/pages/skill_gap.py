@@ -1,5 +1,5 @@
 """Skill Gap Analysis page — compare skills vs job description requirements."""
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -35,6 +35,8 @@ def _card(title: str) -> tuple[QFrame, QLabel]:
 
 
 class SkillGapPage(QWidget):
+
+    analysis_finished = Signal()
 
     def __init__(self, window):
         super().__init__()
@@ -112,6 +114,8 @@ class SkillGapPage(QWidget):
         if state.job_title and not self.role_input.text().strip():
             self.role_input.setText(state.job_title)
         self._load_resume()
+        if state.skill_gap is not None and self._result is None:
+            self._on_done(state.skill_gap)
 
     def _load_resume(self) -> ResumeData | None:
         from app.database import db
@@ -127,7 +131,7 @@ class SkillGapPage(QWidget):
     def _run(self) -> None:
         self.run_analysis()
 
-    def run_analysis(self, silent: bool = False) -> None:
+    def run_analysis(self, silent: bool = False) -> bool:
         """Run skill gap analysis — can be called internally or from another page."""
         state = self.window.state
         resume = self._load_resume()
@@ -139,7 +143,7 @@ class SkillGapPage(QWidget):
                     "Missing input",
                     "Import a resume first.",
                 )
-            return
+            return False
 
         role = self.role_input.text().strip()
         if not role:
@@ -149,7 +153,7 @@ class SkillGapPage(QWidget):
                     "Missing input",
                     "Enter a target role.",
                 )
-            return
+            return False
 
         if not state.job_text.strip():
             if not silent:
@@ -158,7 +162,7 @@ class SkillGapPage(QWidget):
                     "Missing input",
                     "Load a job description first.",
                 )
-            return
+            return False
 
         self.analyze_btn.setEnabled(False)
         self.window.notify("Analyzing skill gap — this may take a minute...")
@@ -167,6 +171,7 @@ class SkillGapPage(QWidget):
         self._worker.result.connect(self._on_done)
         self._worker.error.connect(self._on_error)
         self._worker.start()
+        return True
 
     def _on_done(self, result: SkillGapResult) -> None:
         self._overlay.hide(self)
@@ -193,8 +198,10 @@ class SkillGapPage(QWidget):
             f"Skill gap analysis complete — {len(result.matched)} matched, "
             f"{len(result.missing)} missing."
         )
+        self.analysis_finished.emit()
 
     def _on_error(self, message: str) -> None:
         self._overlay.hide(self)
         self.analyze_btn.setEnabled(True)
         QMessageBox.critical(self, "Analysis failed", message)
+        self.analysis_finished.emit()

@@ -52,22 +52,37 @@ class OllamaStatusLabel(QWidget):
         self.check()
 
     def set_base_url(self, url: str) -> None:
-        self.base_url = url.rstrip("/")
+        new_url = url.rstrip("/")
+        if new_url == self.base_url:
+            return
+        self.base_url = new_url
         self.check()
 
     def check(self) -> None:
-        if self._checker and self._checker.isRunning():
+        if self._checker is not None and self._checker.isRunning():
             return
-        self._cleanup_checker()
-        self._checker = OllamaCheckerThread(self.base_url)
-        self._checker.status_changed.connect(self._update_ui)
-        self._checker.finished.connect(self._cleanup_checker)
-        self._checker.start()
+        self._set_checking()
+        checker = OllamaCheckerThread(self.base_url, parent=self)
+        self._checker = checker
+        checker.status_changed.connect(
+            lambda online, c=checker: self._apply_checker_result(c, online)
+        )
+        checker.finished.connect(
+            lambda c=checker: self._cleanup_checker(c)
+        )
+        checker.start()
 
-    def _cleanup_checker(self) -> None:
-        if self._checker:
-            self._checker.deleteLater()
+    def _apply_checker_result(self, checker: OllamaCheckerThread, is_online: bool) -> None:
+        if checker is not self._checker:
+            return
+        if checker.base_url != self.base_url.rstrip("/"):
+            return
+        self._update_ui(is_online)
+
+    def _cleanup_checker(self, checker: OllamaCheckerThread) -> None:
+        if checker is self._checker:
             self._checker = None
+        checker.deleteLater()
 
     def _set_checking(self) -> None:
         self._dot.setStyleSheet(

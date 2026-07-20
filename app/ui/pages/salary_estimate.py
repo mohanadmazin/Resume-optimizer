@@ -1,5 +1,5 @@
 """Salary Estimation page — estimate salary range via Ollama."""
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -33,6 +33,8 @@ def _card(title: str) -> tuple[QFrame, QLabel]:
 
 
 class SalaryEstimatePage(QWidget):
+
+    analysis_finished = Signal()
 
     def __init__(self, window):
         super().__init__()
@@ -116,6 +118,8 @@ class SalaryEstimatePage(QWidget):
         if state.job_location and not self.location_input.text().strip():
             self.location_input.setText(state.job_location)
         self._load_resume()
+        if state.salary_estimate is not None and self._result is None:
+            self._on_done(state.salary_estimate)
 
     def _load_resume(self) -> ResumeData | None:
         from app.database import db
@@ -131,7 +135,7 @@ class SalaryEstimatePage(QWidget):
     def _run(self) -> None:
         self.run_analysis()
 
-    def run_analysis(self, silent: bool = False) -> None:
+    def run_analysis(self, silent: bool = False) -> bool:
         """Run salary estimation — can be called internally or from another page."""
         resume = self._load_resume()
 
@@ -142,7 +146,7 @@ class SalaryEstimatePage(QWidget):
                     "Missing input",
                     "Import a resume first.",
                 )
-            return
+            return False
 
         role = self.role_input.text().strip()
         location = self.location_input.text().strip()
@@ -154,7 +158,7 @@ class SalaryEstimatePage(QWidget):
                     "Missing input",
                     "Enter both a target role and location.",
                 )
-            return
+            return False
 
         self.estimate_btn.setEnabled(False)
         self.window.notify("Estimating salary — this may take a minute...")
@@ -163,6 +167,7 @@ class SalaryEstimatePage(QWidget):
         self._worker.result.connect(self._on_done)
         self._worker.error.connect(self._on_error)
         self._worker.start()
+        return True
 
     def _on_done(self, result: SalaryEstimate) -> None:
         self._overlay.hide(self)
@@ -194,6 +199,7 @@ class SalaryEstimatePage(QWidget):
         self.window.notify(
             f"Salary estimate: {annual} {result.currency}/year"
         )
+        self.analysis_finished.emit()
 
     def _on_error(self, message: str) -> None:
         self._overlay.hide(self)
@@ -203,3 +209,4 @@ class SalaryEstimatePage(QWidget):
             "Estimation failed",
             f"{message}\n\nTip: Check that your model in Settings is installed and supports text generation.",
         )
+        self.analysis_finished.emit()
