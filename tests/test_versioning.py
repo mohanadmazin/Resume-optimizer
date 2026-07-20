@@ -87,7 +87,7 @@ def test_migration_0004_creates_all_new_tables(tmp_path, monkeypatch):
         "score_snapshots",
     }
     assert expected.issubset(tables)
-    assert _get_version(db) == "0004"
+    assert _get_version(db) == "0006"
 
 
 def test_migration_0004_is_idempotent(tmp_path, monkeypatch):
@@ -97,7 +97,7 @@ def test_migration_0004_is_idempotent(tmp_path, monkeypatch):
     run_migrations()
     # Run again — should not fail
     run_migrations()
-    assert _get_version(db) == "0004"
+    assert _get_version(db) == "0006"
 
 
 def test_migration_0004_preserves_existing_data(tmp_path, monkeypatch):

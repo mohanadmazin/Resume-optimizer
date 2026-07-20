@@ -24,9 +24,7 @@ The application uses deterministic analysis for measurable ATS scoring and local
 Legend:
 
 * ✅ Implemented
-* 🚧 Planned
 * 🔭 Future
-* ⚠️ Requires validation or redesign
 
 | Feature                             | Status |
 | ----------------------------------- | ------ |
@@ -41,8 +39,9 @@ Legend:
 | Per-change accept/reject review     | ✅      |
 | Resume comparison and diff          | ✅      |
 | Cover-letter generation             | ✅      |
+| Cover-letter library                | ✅      |
 | Skill-gap analysis                  | ✅      |
-| Salary estimation                   | ⚠️     |
+| Salary estimation                   | ✅      |
 | DOCX/PDF/Markdown export            | ✅      |
 | One-click optimization pipeline     | ✅      |
 | Ollama connection status indicator  | ✅      |
@@ -79,24 +78,27 @@ Legend:
 | Salary experience calculation (DI)  | ✅      |
 | Dev tooling (ruff, mypy, bandit)    | ✅      |
 | CI workflow (Win/Mac/Linux)         | ✅      |
-| Resume library and version history  | 🚧     |
-| Resume duplication                  | 🚧     |
-| Section reorder and rename          | 🚧     |
-| Click issue to navigate to field    | 🚧     |
-| Auto-save                           | 🚧     |
-| Live template switching             | 🚧     |
-| Export validation                   | 🚧     |
-| AI agent workflow                   | 🚧     |
-| Application tracker                 | 🚧     |
-| Interview preparation               | 🚧     |
-| Cover-letter library                | 🚧     |
-| Job-specific resume variants        | 🚧     |
-| LinkedIn data import                | 🚧     |
-| Batch job comparison                | 🚧     |
-| Career analytics dashboard          | 🚧     |
-| Backup and restore                  | 🚧     |
-| Optional encrypted sensitive fields | 🔭     |
-| Optional job-board integrations     | 🔭     |
+| Auto-save                           | ✅      |
+| Resume duplication                  | ✅      |
+| Section reorder and rename          | ✅      |
+| Click issue to navigate to field    | ✅      |
+| Live template switching             | ✅      |
+| Export validation                   | ✅      |
+| Keyboard shortcuts (Ctrl+S, etc.)   | ✅      |
+| AI agent workflow                   | ✅      |
+| Multi-turn agent conversations      | ✅      |
+| Application tracker                 | ✅      |
+| Interview preparation               | ✅      |
+| Job-specific resume variants        | ✅      |
+| LinkedIn data import                | ✅      |
+| Score history tracking              | ✅      |
+| Application analytics dashboard     | ✅      |
+| Backup and restore                  | ✅      |
+| Resume comparison view              | ✅      |
+| Global search                       | ✅      |
+| Onboarding wizard                   | ✅      |
+| Optional encrypted sensitive fields | 🔭      |
+| Optional job-board integrations     | 🔭      |
 
 ---
 
@@ -152,7 +154,8 @@ Legend:
 │                    PySide6 Desktop UI                      │
 │                                                            │
 │ Dashboard │ Studio │ Resumes │ Jobs │ Analysis │ Optimize  │
-│ Letters   │ Skill Gap │ Salary │ Settings                   │
+│ Agent │ Letters │ Skill Gap │ Salary │ Apps │ Library     │
+│ Interview │ LinkedIn │ Compare │ Settings                   │
 └──────────────┬─────────────────────────────────────────────┘
                │ Commands / Queries
                ▼
@@ -173,6 +176,8 @@ Legend:
 │ Fact guard       │ │ Circuit breaker   │ │ Alembic         │
 │ Diff engine      │ │ Streaming NDJSON  │ │ Migrations      │
 │ Auto-fit         │ │ JSON-schema out   │ │ Backup          │
+│ Agent proposals  │ │                   │ │ Global search   │
+│ Interview prep   │ │                   │ │ Score history   │
 └──────────────────┘ └───────────────────┘ └─────────────────┘
            │                   │                     │
            └───────────────────┴─────────────────────┘
@@ -238,6 +243,7 @@ Select Resume Version + Job
     → Show side-by-side diff with red highlighting
     → Accept or reject individual changes
     → Save new ResumeVersion
+    → Snapshot score history
 ```
 
 ### 5.5 Cover Letter
@@ -250,6 +256,7 @@ Select Resume Version + Job
     → Show warnings separately from letter text
     → Edit and save
     → Export or copy
+    → Browse in Cover Letter Library
 ```
 
 ### 5.6 Resume Studio
@@ -265,6 +272,11 @@ Open Studio
     → Bullet writer with 3 alternatives
     → Template selection (7 presets)
     → Auto-adjust to fit page target
+    → Auto-save (2s debounce)
+    → Duplicate resumes, create versions
+    → Reorder/rename sections
+    → Click issue to navigate to field
+    → Revert to original snapshot
 ```
 
 ### 5.7 Skill-Gap Analysis
@@ -292,17 +304,62 @@ Role + Location + Experience
     → Save SalaryEstimateRun
 ```
 
+### 5.9 AI Agent Workflow
+
+```text
+Select Resume + Tool
+    → Agent picks appropriate tool (score, target, suggest_bullets, etc.)
+    → Format tool-specific prompt
+    → Call Ollama with JSON-mode structured output
+    → Parse and validate response
+    → Run FactGuard validation on proposed changes
+    → Show proposal card (original vs proposed, Accept/Reject)
+    → Persist conversation history to DB
+    → Support multi-turn follow-up messages
+```
+
+### 5.10 Application Tracking
+
+```text
+Add Application
+    → Link to resume + job
+    → Set initial status (draft / wishlist / applied)
+    → Add notes
+    → Advance through workflow: applied → interview → offer/rejected
+    → View analytics dashboard (total, applied, interviews, offers, rejected)
+```
+
+### 5.11 Interview Preparation
+
+```text
+Select Resume + Role + Company
+    → Generate behavioral, technical, situational questions via AI
+    → Display question cards with STAR outlines
+    → Export questions to clipboard or save to DB
+    → Review saved sessions
+```
+
+### 5.12 Resume Comparison
+
+```text
+Select Resume A (Original) + Resume B (Modified)
+    → Structured field-by-field diff
+    → Highlight name, headline, summary, skills changes
+    → Bullet-level diff within experience entries
+    → Side-by-side rendering with color-coded changes
+```
+
 ---
 
 ## 6. ARCHITECTURE
 
 ```text
 Pattern:      Modular monolith with layered boundaries
-UI:           PySide6 QMainWindow + sidebar nav + QStackedWidget
+UI:           PySide6 QMainWindow + sidebar nav + QStackedWidget (16 pages)
 ViewModel:    ResumeStudioViewModel (MVVM for Studio page)
 State:        Session-scoped AppState containing IDs, not full domain objects
 Domain:       Pure scoring, matching, validation, and transformation logic
-Services:     Application use cases and transaction coordination
+Services:     Application use cases, AI orchestration, and transaction coordination
 Persistence:  Repository interfaces backed by SQLAlchemy
 Database:     SQLite with Alembic migrations (WAL, foreign keys, busy timeout)
 AI:           OllamaClient with streaming, circuit breaker, JSON-schema output
@@ -344,15 +401,15 @@ Rules:
 
 | Module            | Responsibility                                                 |
 | ----------------- | -------------------------------------------------------------- |
-| `app/core/`       | Paths, typed settings (Pydantic), app constants                |
-| `app/domain/`     | Pydantic schemas: resume, salary, skill gap, pipeline, scoring, fact guard, templates, keyword targeting, bullet writer, job requirements, skill lexicon |
-| `app/ai/`         | Ollama HTTP client (streaming, circuit breaker, JSON-schema), prompt templates, post-processor |
-| `app/database/`   | ORM models (16 tables), engine (WAL + FK enforcement), session, repositories (5), legacy CRUD facade, migration helper |
+| `app/core/`       | Paths, typed settings (Pydantic with `onboarding_completed`), app constants |
+| `app/domain/`     | Pydantic schemas: resume, analysis, salary, skill gap, pipeline, scoring, fact guard, templates, keyword targeting, bullet writer, agent, job requirements, skill lexicon |
+| `app/ai/`         | Ollama HTTP client (streaming, circuit breaker, JSON-schema), prompt templates (~600 lines), post-processor |
+| `app/database/`   | ORM models (20 tables), engine (WAL + FK enforcement), session, repositories (8), legacy CRUD facade, migration helper |
 | `app/application/`| Use cases: import, analyze, optimize, pipeline                 |
-| `app/services/`   | ATS engine (weighted keyword extraction, section-aware scoring), scoring engine (versioned rule engine), optimizer, cover letter, parser, fact guard, security, HTML extraction, metadata, job fetcher, browser fetcher, document reader, salary estimator, skill gap, diff highlight, auto-fit, bullet writer, keyword targeting, job context |
+| `app/services/`   | ATS engine, scoring engine (versioned rules), optimizer, cover letter, parser, fact guard, security, HTML extraction, metadata, job fetcher, browser fetcher, document reader, salary estimator, skill gap, diff highlight, auto-fit, bullet writer, keyword targeting, job context, agent, interview prep, linkedin import, backup, global search, resume comparison, score history, summary/headline generators |
 | `app/exports/`    | Deterministic DOCX/PDF/Markdown export (PyMuPDF + python-docx) |
 | `app/config/`     | Legacy compatibility shim (delegates to `app/core/`)           |
-| `app/ui/`         | Main window, state, workers, theme, undo stack, components (8), pages (10), view models |
+| `app/ui/`         | Main window (16-page nav), state, workers, theme, undo stack, components (9), pages (16), view models, dialogs (onboarding) |
 
 ---
 
@@ -381,7 +438,7 @@ resume-optimizer-main/
 │       └── 0004_add_versioning_and_targeting.py
 │
 ├── tasks/
-│   ├── plan.md                         # Implementation plan (33 tasks, 6 phases)
+│   ├── plan.md                         # Implementation plan (33 tasks, 6 phases — ALL COMPLETE)
 │   └── todo.md                         # Task checklist
 │
 ├── app/
@@ -409,34 +466,38 @@ resume-optimizer-main/
 │   │   ├── keyword_targeting.py        # KeywordStatus, KeywordTarget, JobRequirement, ResumeTextIndex
 │   │   ├── bullet_writer.py            # BulletEvidence, BulletSuggestion, BulletSuggestionResult
 │   │   ├── skill_lexicon.py            # SKILL_ALIASES dictionary, extract_skills()
-│   │   └── templates.py               # TemplateManifest, FitResult, CannotFitResumeError, 7 presets
+│   │   ├── templates.py                # TemplateManifest, FitResult, CannotFitResumeError, 7 presets
+│   │   └── agent.py                    # AgentTool enum (7 tools), AgentAction, AgentProposal
 │   │
 │   ├── ai/
 │   │   ├── __init__.py
 │   │   ├── ollama_client.py            # OllamaClient: streaming, circuit breaker, JSON-schema, cancellation
-│   │   ├── prompts.py                  # All prompt templates (~490 lines)
+│   │   ├── prompts.py                  # All prompt templates (~600 lines, 7 agent prompts)
 │   │   └── post_processor.py           # Context-aware AI text cleaning
 │   │
 │   ├── database/
 │   │   ├── __init__.py                 # Public API exports
 │   │   ├── engine.py                   # SQLAlchemy SQLite engine (WAL, FK, busy timeout)
 │   │   ├── session.py                  # SessionLocal, get_session() context manager
-│   │   ├── models.py                   # 16 ORM models (Resume, ResumeVersion, JobDescription, Analysis, CoverLetter, etc.)
+│   │   ├── models.py                   # 20 ORM models (Resume, ResumeVersion, JobDescription, Analysis, CoverLetter, AgentConversation, AgentMessage, JobApplication, InterviewSession, ScoreSnapshot, etc.)
 │   │   ├── db.py                       # Backward-compatible CRUD facade
 │   │   ├── migrate.py                  # Alembic migration helper with backup
 │   │   └── repositories/
 │   │       ├── __init__.py
 │   │       ├── base.py                 # Abstract base repository
-│   │       ├── resume_repository.py    # Resume CRUD + SHA-256 content hash
+│   │       ├── resume_repository.py    # Resume CRUD + SHA-256 content hash + variants
 │   │       ├── job_repository.py       # JobDescription CRUD
 │   │       ├── analysis_repository.py  # Analysis CRUD with JOIN queries
-│   │       └── versioning_repository.py # ResumeVersion, TargetingSession, SuggestionRecord CRUD
+│   │       ├── versioning_repository.py # ResumeVersion, TargetingSession, SuggestionRecord, TemplatePreference CRUD
+│   │       ├── agent_repository.py     # Agent conversation + message CRUD (JSON proposal serialization)
+│   │       ├── application_repository.py # JobApplication CRUD (workflow status validation)
+│   │       └── cover_letter_repository.py # CoverLetter CRUD + full-text search
 │   │
 │   ├── application/
 │   │   ├── __init__.py
 │   │   ├── import_resume.py            # ImportResumeUseCase
 │   │   ├── analyze_resume.py           # AnalyzeResumeUseCase
-│   │   └── optimize_resume.py          # OptimizeResumeUseCase + RunPipelineUseCase
+│   │   └── optimize_resume.py          # OptimizeResumeUseCase + RunPipelineUseCase + score history snapshot
 │   │
 │   ├── services/
 │   │   ├── __init__.py
@@ -444,7 +505,7 @@ resume-optimizer-main/
 │   │   ├── scoring_engine.py           # Versioned rule engine (5 categories, per-finding penalties)
 │   │   ├── optimizer.py                # AI resume optimization (indexed operations, safe-only apply)
 │   │   ├── cover_letter.py             # AI cover letter generation + fact checking
-│   │   ├── resume_parser.py            # Heuristic + AI resume parsing (largest service, 534 lines)
+│   │   ├── resume_parser.py            # Heuristic + AI resume parsing
 │   │   ├── fact_guard.py               # Deterministic fact validation (SequenceMatcher, semantic reversals)
 │   │   ├── parser_fact_guard.py        # Parser-specific hallucination detection
 │   │   ├── document_reader.py          # PDF/DOCX/TXT extraction (page/compression limits)
@@ -459,7 +520,16 @@ resume-optimizer-main/
 │   │   ├── auto_fit.py                 # Binary search font/spacing scale for page target
 │   │   ├── bullet_writer.py            # AI bullet writer (3 alternatives from evidence)
 │   │   ├── keyword_targeting.py        # Deterministic keyword requirement matching
-│   │   └── job_context.py              # Bounded JD context for AI prompts (max 12k chars)
+│   │   ├── job_context.py              # Bounded JD context for AI prompts (max 12k chars)
+│   │   ├── summary_generator.py        # AI standalone summary generation
+│   │   ├── headline_generator.py       # AI standalone headline generation
+│   │   ├── agent.py                    # AgentService.propose() pipeline (7 tools, FactGuard validation)
+│   │   ├── interview_prep.py           # AI interview question generation (behavioral/technical/situational)
+│   │   ├── linkedin_import.py          # LinkedIn JSON/CSV profile import
+│   │   ├── backup.py                   # Database backup & restore (export/import with integrity check)
+│   │   ├── global_search.py            # Cross-entity full-text search (resumes, jobs, cover letters, applications)
+│   │   ├── resume_comparison.py        # Structured side-by-side resume diff
+│   │   └── score_history.py            # Score snapshot persistence for trend tracking
 │   │
 │   ├── exports/
 │   │   ├── __init__.py
@@ -473,7 +543,7 @@ resume-optimizer-main/
 │   │
 │   └── ui/
 │       ├── __init__.py
-│       ├── main_window.py              # QMainWindow with sidebar nav + QStackedWidget (9 pages)
+│       ├── main_window.py              # QMainWindow with sidebar nav + search bar + QStackedWidget (16 pages)
 │       ├── state.py                    # AppState (resume, job, ats, pipeline, keywords, cancel)
 │       ├── workers.py                  # Worker + PipelineWorker (QThread) + cooperative cancellation
 │       ├── theme.py                    # DARK_STYLESHEET + LIGHT_STYLESHEET
@@ -487,7 +557,11 @@ resume-optimizer-main/
 │       │   ├── section_navigator.py    # Left panel section list
 │       │   ├── resume_preview.py       # Read-only text preview
 │       │   ├── resume_insights_panel.py # Score cards, keywords, issues
-│       │   └── bullet_writer_widget.py # 3-alternative bullet generation widget
+│       │   ├── bullet_writer_widget.py # 3-alternative bullet generation widget
+│       │   └── agent_proposal_card.py  # Agent proposal card (original vs proposed, Accept/Reject)
+│       │
+│       ├── dialogs/
+│       │   └── onboarding.py           # First-launch onboarding wizard (3-step)
 │       │
 │       ├── view_models/
 │       │   ├── __init__.py
@@ -503,49 +577,64 @@ resume-optimizer-main/
 │           ├── cover_letter.py         # AI cover letter + fact-check warnings
 │           ├── skill_gap.py            # Skill gap analysis with disclaimer
 │           ├── salary_estimate.py      # Salary estimation with disclaimer
-│           ├── settings.py             # Ollama URL, model, temperature, theme
-│           └── studio.py               # Resume Studio: 3-panel MVVM editor
+│           ├── settings.py             # Ollama URL, model, temperature, backup/restore
+│           ├── studio.py               # Resume Studio: 3-panel MVVM editor
+│           ├── agent.py                # AI agent chat interface (multi-turn, 7 tools)
+│           ├── applications.py         # Application tracker with analytics dashboard
+│           ├── cover_letter_library.py # Cover letter library (search, browse, copy, delete)
+│           ├── interview_prep.py       # Interview question generator (behavioral/technical/situational)
+│           ├── import_linkedin.py       # LinkedIn JSON/CSV import
+│           └── comparison.py           # Resume comparison view (side-by-side diff)
 │
-└── tests/                              # 399+ tests across 25 test files
+└── tests/                              # 613 tests across 33 test files
     ├── __init__.py
-    ├── test_ats_engine.py
-    ├── test_browser_fetcher.py
-    ├── test_bullet_writer.py
-    ├── test_cover_letter.py
-    ├── test_exporter.py
-    ├── test_fact_guard.py
-    ├── test_job_fetcher.py
-    ├── test_keyword_targeting.py
-    ├── test_migrations.py
-    ├── test_ollama_cancellation.py
-    ├── test_ollama_client.py
-    ├── test_optimizer.py
-    ├── test_parser.py
-    ├── test_parser_fact_guard.py
-    ├── test_parser_fallback.py
-    ├── test_post_processor.py
-    ├── test_salary_estimator.py
-    ├── test_settings.py
-    ├── test_skill_gap.py
-    ├── test_skill_gap_salary.py
-    ├── test_studio.py
-    ├── test_templates.py
-    ├── test_versioning.py
-    └── test_workers.py
+    ├── test_agent.py                   # Agent domain, repository, service, UI (34 tests)
+    ├── test_ats_engine.py              # ATS scoring, keyword extraction, skill matching
+    ├── test_backup.py                  # Backup & restore, integrity check, listing (9 tests)
+    ├── test_bullet_writer.py           # 3-alternative bullet generation, undo stack
+    ├── test_comparison.py              # Resume comparison service (9 tests)
+    ├── test_cover_letter.py            # Fact checking, tuple warnings, DI
+    ├── test_diff_highlight.py          # Side-by-side diff rendering (19 tests)
+    ├── test_document_reader.py         # PDF/DOCX/TXT extraction limits
+    ├── test_exporter.py                # Markdown export structure
+    ├── test_fact_guard.py              # Normalization, entities, skills, changes
+    ├── test_global_search.py           # Cross-entity search (10 tests)
+    ├── test_job_fetcher.py             # SSRF protection, HTML extraction, metadata
+    ├── test_keyword_targeting.py       # Keyword requirement matching
+    ├── test_migrations.py              # Schema, backup, restore, cascade delete, FK
+    ├── test_onboarding.py              # Onboarding wizard navigation and settings (5 tests)
+    ├── test_ollama_cancellation.py     # Cancellation, streaming cancel, no retry
+    ├── test_ollama_client.py           # Ollama client, circuit breaker
+    ├── test_optimizer.py               # Safe-only apply, accepted changes
+    ├── test_parser.py                  # Resume parsing
+    ├── test_parser_fact_guard.py       # Parser hallucination detection
+    ├── test_parser_fallback.py         # OllamaError fallback, edge cases
+    ├── test_phase6.py                  # Application tracker, cover letter library, variants, LinkedIn import, interview prep (21 tests)
+    ├── test_post_processor.py          # AI text post-processing
+    ├── test_salary_estimator.py        # Experience calculation, DI, future dates
+    ├── test_scoring_engine.py          # Versioned rule engine scoring
+    ├── test_settings.py                # Atomic write, backup, recovery, concurrency
+    ├── test_skill_gap.py               # Skill gap analysis
+    ├── test_skill_gap_salary.py        # Skill gap + salary estimation
+    ├── test_studio.py                  # Studio ViewModel, components
+    ├── test_templates.py               # Template manifests, auto-fit
+    ├── test_versioning.py              # Resume versions, targeting, suggestions
+    └── test_workers.py                 # Worker timeout, cancellation, signals
 ```
 
 ---
 
 ## 9. DATABASE
 
-### ORM Models (16 tables)
+### ORM Models (20 tables)
 
 | Table                | Purpose                                    |
 | -------------------- | ------------------------------------------ |
 | resumes              | Resume metadata (name, target role)        |
 | resume_versions      | Immutable snapshots with version_number    |
-| job_descriptions     | Job posting data (title, company, text)    |
+| job_descriptions     | Job posting data (title, content)          |
 | analyses             | ATS analysis results                       |
+| optimizations        | Optimization run records                   |
 | cover_letters        | Generated cover letters                    |
 | cover_letter_versions| Cover letter snapshots                     |
 | skill_gap_runs       | Skill gap analysis runs                    |
@@ -553,10 +642,13 @@ resume-optimizer-main/
 | ai_runs              | AI operation audit trail                   |
 | interview_sessions   | Interview prep sessions                    |
 | interview_questions  | Generated interview questions              |
-| job_applications     | Application tracker                        |
+| job_applications     | Application tracker (draft → applied → interview → offer/rejected) |
 | template_preferences | Per-resume template choices                |
 | targeting_sessions   | Resume-to-job targeting records            |
 | suggestion_records   | Keyword suggestion accept/reject state     |
+| agent_conversations  | AI agent conversation metadata             |
+| agent_messages       | Agent conversation messages (JSON proposals) |
+| score_snapshots      | ATS score history for trend tracking       |
 | schema_metadata      | Migration version tracking                 |
 
 ### Database Requirements
@@ -572,18 +664,39 @@ resume-optimizer-main/
 
 ## 10. NAVIGATION
 
-| Index | Page             | Class                | Responsibility                                              |
-| ----: | ---------------- | -------------------- | ----------------------------------------------------------- |
-|     0 | Dashboard        | `DashboardPage`      | One-click pipeline, score cards, recent analyses            |
-|     1 | Resume Upload    | `ResumeUploadPage`   | Import PDF/DOCX, parse, save                                |
-|     2 | Job Description  | `JobDescriptionPage` | Paste, upload, or fetch job description from URL            |
-|     3 | ATS Analysis     | `ATSAnalysisPage`    | Keyword heatmap, score cards, suggestions                   |
-|     4 | Optimization     | `OptimizationPage`   | Before/after ATS comparison, AI diff, Accept/Reject         |
-|     5 | Cover Letter     | `CoverLetterPage`    | Generate tailored cover letter via AI                       |
-|     6 | Skill Gap        | `SkillGapPage`       | Match skills vs market demand, learning recommendations     |
-|     7 | Salary Estimate  | `SalaryEstimatePage` | Salary range estimation via AI                              |
-|     8 | Settings         | `SettingsPage`       | Ollama URL, model, temperature, theme                       |
-|     9 | Resume Studio    | `ResumeStudioPage`   | 3-panel MVVM editor with live insights                      |
+| Index | Page              | Class                    | Responsibility                                              |
+| ----: | ----------------- | ------------------------ | ----------------------------------------------------------- |
+|     0 | Dashboard         | `DashboardPage`          | One-click pipeline, score cards, recent analyses            |
+|     1 | Resume Upload     | `ResumeUploadPage`       | Import PDF/DOCX, parse, save                                |
+|     2 | Job Description   | `JobDescriptionPage`     | Paste, upload, or fetch job description from URL            |
+|     3 | ATS Analysis      | `ATSAnalysisPage`        | Keyword heatmap, score cards, suggestions                   |
+|     4 | Optimization      | `OptimizationPage`       | Before/after ATS comparison, AI diff, Accept/Reject         |
+|     5 | Agent             | `AgentPage`              | AI agent chat interface, multi-turn conversations, 7 tools  |
+|     6 | Cover Letter      | `CoverLetterPage`        | Generate tailored cover letter via AI                       |
+|     7 | Skill Gap         | `SkillGapPage`           | Match skills vs market demand, learning recommendations     |
+|     8 | Salary Estimate   | `SalaryEstimatePage`     | Salary range estimation via AI                              |
+|     9 | Applications      | `ApplicationsPage`       | Application tracker with analytics dashboard                |
+|    10 | Cover Letter Library | `CoverLetterLibraryPage` | Browse, search, copy, and delete saved cover letters       |
+|    11 | Interview Prep    | `InterviewPrepPage`      | Generate behavioral/technical/situational questions         |
+|    12 | LinkedIn Import   | `LinkedInImportPage`     | Import LinkedIn JSON/CSV profile data                       |
+|    13 | Compare Resumes   | `ComparisonPage`         | Side-by-side structured diff between two resumes            |
+|    14 | Settings          | `SettingsPage`           | Ollama URL, model, temperature, theme, backup/restore       |
+
+### Global Search
+
+A search bar in the sidebar nav (above the page list) provides cross-entity search across resumes, jobs, cover letters, and applications. Clicking a result navigates to the corresponding page.
+
+### Keyboard Shortcuts
+
+| Shortcut         | Action                          |
+| ---------------- | ------------------------------- |
+| Ctrl+S           | Force save current page         |
+| Ctrl+E           | Export current resume           |
+| Ctrl+N           | New resume                      |
+| Ctrl+Left        | Previous page                   |
+| Ctrl+Right       | Next page                       |
+| Ctrl+1 through 9 | Jump to page by index           |
+| Ctrl+0           | Jump to page 10 (Settings)      |
 
 ---
 
@@ -645,34 +758,42 @@ MAX_AI_PARSE_CHARACTERS = 40,000
 
 ## 13. TEST_STRATEGY
 
-### Test Count: 399+ tests across 25 test files
+### Test Count: 613 tests across 33 test files
 
-| Test File                      | Focus                                        |
-| ------------------------------ | -------------------------------------------- |
-| test_ats_engine.py             | ATS scoring, keyword extraction, skill matching |
-| test_browser_fetcher.py        | Browser SSRF, domain matching                |
-| test_bullet_writer.py          | 3-alternative bullet generation, undo stack  |
-| test_cover_letter.py           | Fact checking, tuple warnings, DI            |
-| test_exporter.py               | Markdown export structure                    |
-| test_fact_guard.py             | Normalization, entities, skills, changes     |
-| test_job_fetcher.py            | SSRF protection, HTML extraction, metadata   |
-| test_keyword_targeting.py      | Keyword requirement matching                 |
-| test_migrations.py             | Schema, backup, restore, cascade delete, FK  |
-| test_ollama_cancellation.py    | Cancellation, streaming cancel, no retry     |
-| test_ollama_client.py          | Ollama client, circuit breaker               |
-| test_optimizer.py              | Safe-only apply, accepted changes            |
-| test_parser.py                 | Resume parsing                               |
-| test_parser_fact_guard.py      | Parser hallucination detection               |
-| test_parser_fallback.py        | OllamaError fallback, edge cases             |
-| test_post_processor.py         | AI text post-processing                      |
-| test_salary_estimator.py       | Experience calculation, DI, future dates     |
-| test_settings.py               | Atomic write, backup, recovery, concurrency  |
-| test_skill_gap.py              | Skill gap analysis                           |
-| test_skill_gap_salary.py       | Skill gap + salary estimation                |
-| test_studio.py                 | Studio ViewModel, components                 |
-| test_templates.py              | Template manifests, auto-fit                 |
-| test_versioning.py             | Resume versions, targeting, suggestions      |
-| test_workers.py                | Worker timeout, cancellation, signals        |
+| Test File                      | Focus                                              |
+| ------------------------------ | -------------------------------------------------- |
+| test_agent.py                  | Agent domain, repository, service, UI (34 tests)   |
+| test_ats_engine.py             | ATS scoring, keyword extraction, skill matching    |
+| test_backup.py                 | Backup & restore, integrity check, listing (9)     |
+| test_bullet_writer.py          | 3-alternative bullet generation, undo stack        |
+| test_comparison.py             | Resume comparison service (9 tests)                |
+| test_cover_letter.py           | Fact checking, tuple warnings, DI                  |
+| test_diff_highlight.py         | Side-by-side diff rendering (19 tests)             |
+| test_document_reader.py        | PDF/DOCX/TXT extraction limits                     |
+| test_exporter.py               | Markdown export structure                          |
+| test_fact_guard.py             | Normalization, entities, skills, changes           |
+| test_global_search.py          | Cross-entity search (10 tests)                     |
+| test_job_fetcher.py            | SSRF protection, HTML extraction, metadata         |
+| test_keyword_targeting.py      | Keyword requirement matching                       |
+| test_migrations.py             | Schema, backup, restore, cascade delete, FK        |
+| test_onboarding.py             | Onboarding wizard navigation and settings (5)      |
+| test_ollama_cancellation.py    | Cancellation, streaming cancel, no retry           |
+| test_ollama_client.py          | Ollama client, circuit breaker                     |
+| test_optimizer.py              | Safe-only apply, accepted changes                  |
+| test_parser.py                 | Resume parsing                                     |
+| test_parser_fact_guard.py      | Parser hallucination detection                     |
+| test_parser_fallback.py        | OllamaError fallback, edge cases                   |
+| test_phase6.py                 | Application tracker, cover letter library, variants, LinkedIn import, interview prep (21) |
+| test_post_processor.py         | AI text post-processing                            |
+| test_salary_estimator.py       | Experience calculation, DI, future dates           |
+| test_scoring_engine.py         | Versioned rule engine scoring                      |
+| test_settings.py               | Atomic write, backup, recovery, concurrency        |
+| test_skill_gap.py              | Skill gap analysis                                 |
+| test_skill_gap_salary.py       | Skill gap + salary estimation                      |
+| test_studio.py                 | Studio ViewModel, components                       |
+| test_templates.py              | Template manifests, auto-fit                       |
+| test_versioning.py             | Resume versions, targeting, suggestions            |
+| test_workers.py                | Worker timeout, cancellation, signals              |
 
 ### Quality Gates
 
@@ -688,49 +809,62 @@ pip-audit                     # Dependency audit
 
 ## 14. IMPLEMENTATION_ROADMAP
 
-See `tasks/plan.md` for the full 33-task implementation plan across 6 phases.
+All 33 tasks across 6 phases are **complete**. See `tasks/plan.md` for the original plan.
 
-### Phase 1: Regression Tests + Tooling ✅ / 🚧
+### Phase 1: Regression Tests + Tooling ✅
 
 * [x] Task 1: Set up dev tooling (ruff, mypy, pytest-cov, bandit, pip-audit)
 * [x] Task 2: CI workflow (Windows, macOS, Linux)
-* [ ] Tasks 3-10: 21 missing regression tests (in progress)
+* [x] Tasks 3-10: Regression tests
 
-### Phase 2: Resume Studio Completion 🚧
+### Phase 2: Resume Studio Completion ✅
 
-* [ ] Auto-save
-* [ ] Resume duplication
-* [ ] Resume versions UI
-* [ ] Section reorder and rename
-* [ ] Click issue to navigate
+* [x] Auto-save (2s debounce)
+* [x] Resume duplication (deep copy with "(Copy)" suffix)
+* [x] Resume versions UI (save version button)
+* [x] Section reorder and rename
+* [x] Click issue to navigate to field
 
-### Phase 3: Targeting & Writing Tools 🚧
+### Phase 3: Targeting & Writing Tools ✅
 
-* [ ] Standalone summary generator
-* [ ] Standalone headline generator
-* [ ] Skill suggestions UI
-* [ ] One-click rollback
+* [x] Standalone summary generator
+* [x] Standalone headline generator
+* [x] Skill suggestions UI (accept/reject)
+* [x] Side-by-side diff (19 tests)
+* [x] One-click rollback to original
 
-### Phase 4: Templates & Export 🚧
+### Phase 4: Templates & Export ✅
 
-* [ ] Live template switching
-* [ ] Page target UI
-* [ ] Template-aware PDF/DOCX export
-* [ ] Export validation
+* [x] Live template switching (7 presets)
+* [x] Page target UI (auto-fit binary search)
+* [x] Template-aware PDF/DOCX export
+* [x] Export validation
 
-### Phase 5: AI Agent 🚧
+### Phase 5: AI Agent ✅
 
-* [ ] Agent tool definitions
-* [ ] Agent service — proposal pipeline
-* [ ] Agent UI — chat-style interface
+* [x] Agent tool definitions (7 tools)
+* [x] Agent service — proposal pipeline with FactGuard
+* [x] Agent UI — chat-style interface with proposal cards
+* [x] Agent repository (conversation + message CRUD)
+* [x] Multi-turn agent conversations
 
-### Phase 6: Broader Career Features 🚧
+### Phase 6: Broader Career Features ✅
 
-* [ ] Application tracker
-* [ ] Cover-letter library
-* [ ] Job-specific resume variants
-* [ ] Interview question generator
-* [ ] LinkedIn data import
+* [x] Application tracker (workflow: draft → applied → interview → offer/rejected)
+* [x] Cover-letter library (search, browse, copy, delete)
+* [x] Job-specific resume variants (create_variant)
+* [x] Interview question generator (behavioral/technical/situational)
+* [x] LinkedIn data import (JSON + CSV)
+
+### Future Enhancements ✅
+
+* [x] Keyboard shortcuts (Ctrl+S, Ctrl+E, Ctrl+N, Ctrl+Left/Right, Ctrl+1-9)
+* [x] Score history tracking (ScoreSnapshot after each optimization)
+* [x] Application analytics dashboard (total, applied, interviews, offers, rejected)
+* [x] Backup & restore (export/import DB with integrity check)
+* [x] Resume comparison view (structured side-by-side diff)
+* [x] Global search (cross-entity search with result navigation)
+* [x] Onboarding wizard (3-step first-launch flow)
 
 ---
 

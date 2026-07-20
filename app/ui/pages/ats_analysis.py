@@ -3,8 +3,9 @@
 """ATS Analysis page with keyword heatmap visualization."""
 
 import re
+import threading
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QMetaObject
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -185,6 +186,44 @@ class ATSAnalysisPage(QWidget):
         heatmap_columns.addLayout(jd_col, 1)
 
         layout.addLayout(heatmap_columns, 1)
+
+        # ── Requirement Matrix section ─────────────────────────────
+        matrix_group = QFrame()
+        matrix_group.setObjectName("card")
+        matrix_layout = QVBoxLayout(matrix_group)
+
+        matrix_header = QHBoxLayout()
+        matrix_header.addWidget(QLabel("REQUIREMENT EVIDENCE MATRIX"))
+        matrix_header.addStretch()
+        self._matrix_build_btn = QPushButton("Build Matrix")
+        self._matrix_build_btn.clicked.connect(self._on_build_matrix)
+        matrix_header.addWidget(self._matrix_build_btn)
+        matrix_layout.addLayout(matrix_header)
+
+        self._matrix_score_label = QLabel("Coverage: —")
+        self._matrix_score_label.setStyleSheet("font-size: 13px; margin: 4px 0;")
+        matrix_layout.addWidget(self._matrix_score_label)
+
+        matrix_cols = QHBoxLayout()
+
+        gaps_col = QVBoxLayout()
+        gaps_col.addWidget(QLabel("Gaps:"))
+        self._matrix_gaps = QTextEdit()
+        self._matrix_gaps.setReadOnly(True)
+        self._matrix_gaps.setMaximumHeight(100)
+        gaps_col.addWidget(self._matrix_gaps)
+        matrix_cols.addLayout(gaps_col, 1)
+
+        strengths_col = QVBoxLayout()
+        strengths_col.addWidget(QLabel("Strengths:"))
+        self._matrix_strengths = QTextEdit()
+        self._matrix_strengths.setReadOnly(True)
+        self._matrix_strengths.setMaximumHeight(100)
+        strengths_col.addWidget(self._matrix_strengths)
+        matrix_cols.addLayout(strengths_col, 1)
+
+        matrix_layout.addLayout(matrix_cols)
+        layout.addWidget(matrix_group)
 
     def _update_select_all_checkbox(self):
         if self.keywords_list.count() == 0:
@@ -399,3 +438,67 @@ class ATSAnalysisPage(QWidget):
         self.jd_heatmap.setHtml(
             _highlight_keywords(state.job_text, matched, missing)
         )
+
+    # ── Requirement Matrix ──────────────────────────────────────────
+
+    def _on_build_matrix(self) -> None:
+        """Build the requirement matrix in background."""
+        state = self.window.state
+        if not state.job_text.strip():
+            QMessageBox.warning(self, "No Job", "Add a job description first.")
+            return
+
+        self._matrix_build_btn.setEnabled(False)
+        self._matrix_build_btn.setText("Building…")
+        thread = threading.Thread(target=self._build_matrix_worker, daemon=True)
+        thread.start()
+
+    def _build_matrix_worker(self) -> None:
+        try:
+            from app.domain.evidence import CareerFact
+            from app.domain.job_requirements import JobRequirements, Requirement
+            from app.services.evidence_vault import EvidenceVault
+            from app.services.requirement_matrix import build_matrix
+
+            state = self.window.state
+            words = [w.strip() for w in state.job_text.split() if len(w.strip()) >= 3][:30]
+            job_req = JobRequirements(
+                required_skills=[Requirement(name=w) for w in words],
+            )
+
+            vault = EvidenceVault()
+            facts = vault.list_facts()
+            career_facts = [
+                f if isinstance(f, CareerFact) else CareerFact(**f)
+                for f in facts
+            ]
+
+            matrix = build_matrix(job_req, career_facts)
+            self._update_matrix_ui(matrix)
+        except Exception:
+            self._finish_matrix_build("Matrix build failed")
+
+        self._finish_matrix_build("")
+
+    def _update_matrix_ui(self, matrix) -> None:
+        def _update():
+            self._matrix_score_label.setText(
+                f"Coverage: {matrix.overall_score:.0%} "
+                f"({matrix.covered_count}/{matrix.total_requirements} covered, "
+                f"{matrix.gap_count} gaps)"
+            )
+            self._matrix_gaps.setPlainText(
+                "\n".join(f"• {g}" for g in matrix.gaps) or "No gaps found"
+            )
+            self._matrix_strengths.setPlainText(
+                "\n".join(f"• {s}" for s in matrix.strengths) or "No strengths identified"
+            )
+        QMetaObject.invokeMethod(self, _update, Qt.QueuedConnection)
+
+    def _finish_matrix_build(self, error: str) -> None:
+        def _update():
+            self._matrix_build_btn.setEnabled(True)
+            self._matrix_build_btn.setText("Build Matrix")
+            if error:
+                QMessageBox.warning(self, "Matrix Build Failed", error)
+        QMetaObject.invokeMethod(self, _update, Qt.QueuedConnection)

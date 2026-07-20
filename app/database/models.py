@@ -262,3 +262,125 @@ class ScoreSnapshot(Base):
     skills_match = Column(Float, default=0.0)
     score_report_json = Column(Text, default="{}")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ── Career Evidence Vault ───────────────────────────────────────────────────
+
+
+class CareerFact(Base):
+    __tablename__ = "career_facts"
+
+    id = Column(Integer, primary_key=True)
+    statement = Column(Text, nullable=False)
+    fact_type = Column(String(50), default="other", nullable=False, index=True)
+    confidence = Column(String(50), default="user_estimate", nullable=False, index=True)
+    employer = Column(String(255), default="", index=True)
+    project = Column(String(255), default="")
+    date_from = Column(String(20), default="")
+    date_to = Column(String(20), default="")
+    sensitive = Column(Boolean, default=False)
+    metrics_json = Column(Text, default="{}")
+    tags_json = Column(Text, default="[]")
+    notes = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    sources = relationship(
+        "EvidenceSource",
+        secondary="career_fact_sources",
+        back_populates="facts",
+        passive_deletes=True,
+    )
+
+
+class EvidenceSource(Base):
+    __tablename__ = "evidence_sources"
+
+    id = Column(Integer, primary_key=True)
+    source_type = Column(String(50), default="document", nullable=False, index=True)
+    name = Column(String(500), nullable=False)
+    file_path = Column(Text, default="")
+    excerpt = Column(Text, default="")
+    page_reference = Column(String(100), default="")
+    notes = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    facts = relationship(
+        "CareerFact",
+        secondary="career_fact_sources",
+        back_populates="sources",
+        passive_deletes=True,
+    )
+
+
+class CareerFactSource(Base):
+    __tablename__ = "career_fact_sources"
+
+    id = Column(Integer, primary_key=True)
+    fact_id = Column(
+        Integer,
+        ForeignKey("career_facts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_id = Column(
+        Integer,
+        ForeignKey("evidence_sources.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("fact_id", "source_id", name="uq_fact_source"),
+    )
+
+
+class ContentFactLink(Base):
+    __tablename__ = "content_fact_links"
+
+    id = Column(Integer, primary_key=True)
+    content_type = Column(String(50), nullable=False, index=True)
+    content_id = Column(Integer, nullable=False, index=True)
+    fact_id = Column(
+        Integer,
+        ForeignKey("career_facts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    relevance = Column(String(50), default="direct")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("content_type", "content_id", "fact_id", name="uq_content_fact"),
+    )
+
+
+class FactVerificationEvent(Base):
+    __tablename__ = "fact_verification_events"
+
+    id = Column(Integer, primary_key=True)
+    fact_id = Column(
+        Integer,
+        ForeignKey("career_facts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    previous_confidence = Column(String(50), default="unsupported")
+    new_confidence = Column(String(50), default="unsupported")
+    reason = Column(Text, default="")
+    verified_by = Column(String(100), default="user")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ── Master Career Profile ────────────────────────────────────────────────────
+
+
+class MasterProfile(Base):
+    __tablename__ = "master_profiles"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False, default="Default Profile")
+    profile_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -112,6 +112,12 @@ class RunPipelineUseCase:
                 resume_id, job_id, model,
                 optimized.model_dump_json(),
             )
+            from app.services.score_history import save_score_snapshot
+            save_score_snapshot(
+                resume_id=resume_id,
+                ats_score=ats_after.ats_score,
+                job_id=job_id,
+            )
 
         duration = time.monotonic() - start
         _emit("Pipeline complete!", 100)

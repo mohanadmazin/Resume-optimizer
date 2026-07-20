@@ -78,3 +78,42 @@ class ResumeRepository(BaseRepository):
             return False
         row.data_json = data_json
         return True
+
+    def create_variant(
+        self,
+        source_id: int,
+        variant_label: str,
+    ) -> int | None:
+        """Create an independent variant copy of an existing resume.
+
+        The variant is a full copy with name = "{original_name} ({variant_label})".
+        Returns the new resume ID, or None if source not found.
+        """
+        source = self.get_by_id(source_id)
+        if source is None:
+            return None
+        variant_name = f"{source.name} ({variant_label})"
+        return self.save(
+            name=variant_name,
+            data_json=source.data_json,
+            raw_text=source.raw_text,
+            source_type="variant",
+            source_filename=str(source_id),
+        )
+
+    def list_variants(self, source_id: int) -> list[dict]:
+        """List resumes that are variants of the given resume (by source_filename)."""
+        rows = (
+            self.session.query(Resume)
+            .filter(Resume.source_type == "variant", Resume.source_filename == str(source_id))
+            .order_by(Resume.created_at.desc())
+            .all()
+        )
+        return [
+            {
+                "id": row.id,
+                "name": row.name,
+                "created_at": row.created_at.strftime("%Y-%m-%d %H:%M") if row.created_at else None,
+            }
+            for row in rows
+        ]

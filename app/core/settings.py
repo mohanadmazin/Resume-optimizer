@@ -60,6 +60,7 @@ class AppearanceSettings(BaseModel):
 class AppSettings(BaseModel):
     ai: AISettings = Field(default_factory=AISettings)
     appearance: AppearanceSettings = Field(default_factory=AppearanceSettings)
+    onboarding_completed: bool = False
 
 
 _DEFAULT = AppSettings()

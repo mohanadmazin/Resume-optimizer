@@ -107,7 +107,8 @@ class TestWorkerTimeout:
         errors = []
         w.error.connect(lambda e: errors.append(e))
         w.start()
-        w.wait(5)
+        while w.isRunning():
+            time.sleep(0.01)
         QCoreApplication.processEvents()
         assert len(errors) == 1
         assert "boom" in errors[0]

@@ -1,8 +1,11 @@
 """Settings page: Ollama URL, model selection and temperature."""
 
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -136,6 +139,21 @@ class SettingsPage(QWidget):
             save_btn
         )
 
+        backup_group = QHBoxLayout()
+        backup_label = QLabel("Data Backup")
+        backup_label.setStyleSheet("font-weight: bold; margin-top: 12px;")
+        backup_group.addWidget(backup_label)
+        backup_group.addStretch()
+        layout.addLayout(backup_group)
+
+        backup_row = QHBoxLayout()
+        self._backup_btn = QPushButton("Export Backup")
+        self._backup_btn.clicked.connect(self._on_backup)
+        self._restore_btn = QPushButton("Import Backup")
+        self._restore_btn.clicked.connect(self._on_restore)
+        backup_row.addWidget(self._backup_btn)
+        backup_row.addWidget(self._restore_btn)
+        layout.addLayout(backup_row)
 
         layout.addStretch()
 
@@ -281,3 +299,59 @@ class SettingsPage(QWidget):
         self.window.notify(
             "Settings saved."
         )
+
+    def _on_backup(self) -> None:
+        from app.services.backup import backup_database
+
+        ts_path = None
+        try:
+            ts_path = backup_database()
+            QMessageBox.information(
+                self,
+                "Backup Complete",
+                f"Database exported to:\n{ts_path}",
+            )
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Backup Failed",
+                str(exc),
+            )
+
+    def _on_restore(self) -> None:
+        path_str, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Backup File",
+            str(Path.home()),
+            "SQLite Database (*.db)",
+        )
+        if not path_str:
+            return
+
+        from app.services.backup import restore_database
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Restore",
+            "This will replace your current data with the backup.\n"
+            "A safety copy of the current database will be saved.\n\n"
+            "Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            restore_database(Path(path_str))
+            QMessageBox.information(
+                self,
+                "Restore Complete",
+                "Database restored successfully.\n"
+                "Please restart the application for changes to take effect.",
+            )
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Restore Failed",
+                str(exc),
+            )
