@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}ATS Analysis - Resume Optimizer{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>ATS Analysis</h1>
+    <p class="subtitle">Analyze your resume against the job description</p>
+</div>
+
+{% if request.query_params.get('error') == 'missing_input' %}
+<div class="alert alert-error">Please upload a resume and save a job description first.</div>
+{% endif %}
+
+{% if not has_resume or not has_job %}
+<div class="alert alert-warning">
+    {% if not has_resume %}No resume uploaded. <a href="/upload">Upload one</a>.{% endif %}
+    {% if not has_job %}No job description saved. <a href="/jobs">Add one</a>.{% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+    <form method="POST" action="/ats/run">
+        <button type="submit" class="btn btn-primary" {% if not has_resume or not has_job %}disabled{% endif %}>
+            Run ATS Analysis
+        </button>
+    </form>
+</div>
+
+{% if result %}
+<div class="panel" style="margin-top: 1.5rem;">
+    <h2>Results</h2>
+    <div class="card-grid">
+        <div class="stat-card">
+            <div class="stat-label">Overall Score</div>
+            <div class="stat-value score-value">{{ "%.0f"|format(result.score) }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Keywords Matched</div>
+            <div class="stat-value">{{ result.matched_keywords|length }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Missing Keywords</div>
+            <div class="stat-value">{{ result.missing_keywords|length }}</div>
+        </div>
+    </div>
+
+    {% if result.matched_keywords %}
+    <h3 style="margin-top: 1.5rem;">Matched Keywords</h3>
+    <div class="tag-list">
+        {% for kw in result.matched_keywords %}
+        <span class="tag tag-green">{{ kw }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if result.missing_keywords %}
+    <h3 style="margin-top: 1.5rem;">Missing Keywords</h3>
+    <div class="tag-list">
+        {% for kw in result.missing_keywords %}
+        <span class="tag tag-red">{{ kw }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if result.recommendations %}
+    <h3 style="margin-top: 1.5rem;">Recommendations</h3>
+    <ul class="recommendation-list">
+        {% for rec in result.recommendations %}
+        <li>{{ rec }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

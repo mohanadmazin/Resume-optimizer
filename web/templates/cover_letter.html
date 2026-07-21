@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Cover Letter - Resume Optimizer{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Cover Letter</h1>
+    <p class="subtitle">Generate a tailored cover letter via AI</p>
+</div>
+
+{% if request.query_params.get('error') == 'missing_input' %}
+<div class="alert alert-error">Please upload a resume and save a job description first.</div>
+{% endif %}
+
+{% if not has_resume or not has_job %}
+<div class="alert alert-warning">
+    {% if not has_resume %}No resume uploaded. <a href="/upload">Upload one</a>.{% endif %}
+    {% if not has_job %}No job description saved. <a href="/jobs">Add one</a>.{% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+    <form method="POST" action="/cover-letter/run">
+        <button type="submit" class="btn btn-primary" {% if not has_resume or not has_job %}disabled{% endif %}>
+            Generate Cover Letter
+        </button>
+    </form>
+</div>
+
+{% if letter %}
+<div class="panel" style="margin-top: 1.5rem;">
+    <h2>Generated Cover Letter</h2>
+    <div class="cover-letter-output">{{ letter }}</div>
+</div>
+{% endif %}
+
+{% if warnings %}
+<div class="panel" style="margin-top: 1.5rem;">
+    <h2>Warnings</h2>
+    <div class="alert alert-warning">
+        <ul>
+        {% for w in warnings %}
+        <li>{{ w }}</li>
+        {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

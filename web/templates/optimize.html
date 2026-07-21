@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Optimize - Resume Optimizer{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Resume Optimization</h1>
+    <p class="subtitle">AI-powered resume improvements with fact-checking</p>
+</div>
+
+{% if request.query_params.get('error') == 'missing_input' %}
+<div class="alert alert-error">Please complete resume upload, job description, and ATS analysis first.</div>
+{% endif %}
+
+{% if not has_resume or not has_job or not has_ats %}
+<div class="alert alert-warning">
+    {% if not has_resume %}No resume uploaded. <a href="/upload">Upload one</a>.{% endif %}
+    {% if not has_job %}No job description saved. <a href="/jobs">Add one</a>.{% endif %}
+    {% if not has_ats %}No ATS analysis. <a href="/ats">Run analysis</a>.{% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+    <form method="POST" action="/optimize/run">
+        <button type="submit" class="btn btn-primary" {% if not has_resume or not has_job or not has_ats %}disabled{% endif %}>
+            Run Optimization
+        </button>
+    </form>
+</div>
+
+{% if optimized %}
+<div class="panel" style="margin-top: 1.5rem;">
+    <h2>Optimized Resume</h2>
+    <div class="resume-preview">{{ optimized.to_markdown() if optimized.to_markdown is defined else optimized }}</div>
+</div>
+{% endif %}
+
+{% if changes %}
+<div class="panel" style="margin-top: 1.5rem;">
+    <h2>Proposed Changes ({{ changes|length }})</h2>
+    <div class="changes-list">
+        {% for c in changes %}
+        <div class="change-card">
+            <div class="change-type">{{ c.change_type if c.change_type else "Update" }}</div>
+            <div class="change-section">{{ c.section if c.section else "" }}</div>
+            {% if c.original %}
+            <div class="change-original"><strong>Original:</strong> {{ c.original }}</div>
+            {% endif %}
+            {% if c.proposed %}
+            <div class="change-proposed"><strong>Proposed:</strong> {{ c.proposed }}</div>
+            {% endif %}
+            {% if c.reason %}
+            <div class="change-reason">{{ c.reason }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

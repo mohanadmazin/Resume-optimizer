@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Resume Optimizer{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <p class="subtitle">Resume optimization at a glance</p>
+</div>
+
+<div class="card-grid">
+    <a href="/upload" class="stat-card">
+        <div class="stat-icon">&#128196;</div>
+        <div class="stat-label">Resumes</div>
+        <div class="stat-value">{{ resumes|length }}</div>
+    </a>
+    <a href="/jobs" class="stat-card">
+        <div class="stat-icon">&#128188;</div>
+        <div class="stat-label">Job Descriptions</div>
+    </a>
+    <a href="/ats" class="stat-card">
+        <div class="stat-icon">&#9989;</div>
+        <div class="stat-label">ATS Analysis</div>
+    </a>
+    <a href="/optimize" class="stat-card">
+        <div class="stat-icon">&#9889;</div>
+        <div class="stat-label">Optimize</div>
+    </a>
+</div>
+
+{% if resumes %}
+<div class="panel" style="margin-top: 2rem;">
+    <h2>Your Resumes</h2>
+    <table class="data-table">
+        <thead><tr><th>Name</th><th>ID</th></tr></thead>
+        <tbody>
+        {% for r in resumes %}
+        <tr><td>{{ r.name or "Untitled" }}</td><td>#{{ r.id }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

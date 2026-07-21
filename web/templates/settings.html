@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Settings - Resume Optimizer{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Settings</h1>
+    <p class="subtitle">Configure Ollama connection and AI model</p>
+</div>
+
+{% if request.query_params.get('saved') %}
+<div class="alert alert-success">Settings saved!</div>
+{% endif %}
+
+<div class="panel">
+    <form method="POST" action="/settings">
+        <div class="form-group">
+            <label for="ollama_url">Ollama URL</label>
+            <input type="url" id="ollama_url" name="ollama_url" value="{{ ollama_url }}" placeholder="http://localhost:11434">
+        </div>
+        <div class="form-group">
+            <label for="model">Model</label>
+            <select id="model" name="model">
+                {% for m in available_models %}
+                <option value="{{ m }}" {% if m == model %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="temperature">Temperature ({{ temperature }})</label>
+            <input type="range" id="temperature" name="temperature" min="0" max="1" step="0.05" value="{{ temperature }}"
+                   oninput="this.previousElementSibling.textContent='Temperature ('+this.value+')'">
+        </div>
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+    </form>
+</div>
+
+<div class="panel" style="margin-top: 1.5rem;">
+    <h2>Ollama Status</h2>
+    <div id="ollama-info" class="ollama-info">Checking connection...</div>
+</div>
+
+<script>
+fetch('/api/ollama/status').then(r=>r.json()).then(d => {
+    const el = document.getElementById('ollama-info');
+    if (d.connected) {
+        el.innerHTML = '<span class="dot dot-green"></span> Connected<br>Models: ' + d.models.join(', ');
+    } else {
+        el.innerHTML = '<span class="dot dot-red"></span> Not connected';
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Upload Resume - Resume Optimizer{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Upload Resume</h1>
+    <p class="subtitle">Import a PDF, DOCX, or TXT resume file</p>
+</div>
+
+{% if request.query_params.get('imported') %}
+<div class="alert alert-success">Resume imported successfully!</div>
+{% endif %}
+
+<div class="panel">
+    <form method="POST" action="/upload" enctype="multipart/form-data" class="upload-form">
+        <div class="upload-zone" id="drop-zone">
+            <div class="upload-icon">&#128206;</div>
+            <p>Drag & drop your resume here or click to browse</p>
+            <p class="upload-hint">Supports PDF, DOCX, TXT (max 15 MB)</p>
+            <input type="file" name="file" id="file-input" accept=".pdf,.docx,.doc,.txt" required hidden>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('file-input').click()">Choose File</button>
+        </div>
+        <div id="file-name" class="file-name"></div>
+        <button type="submit" class="btn btn-primary" id="upload-btn" disabled>Import Resume</button>
+    </form>
+</div>
+
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileName = document.getElementById('file-name');
+const uploadBtn = document.getElementById('upload-btn');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    fileInput.files = e.dataTransfer.files;
+    updateFileName();
+});
+fileInput.addEventListener('change', updateFileName);
+
+function updateFileName() {
+    if (fileInput.files.length > 0) {
+        fileName.textContent = fileInput.files[0].name;
+        uploadBtn.disabled = false;
+    }
+}
+</script>
+{% endblock %}
