@@ -39,25 +39,23 @@ _sessions: dict[str, dict] = {}
 
 def _get_session(request: Request) -> dict:
     sid = request.cookies.get("sid", "")
-    if sid not in _sessions:
+    if not sid or sid not in _sessions:
         sid = uuid.uuid4().hex
         _sessions[sid] = {}
-    return _sessions.setdefault(sid, {"_sid": sid})
+    return _sessions[sid]
 
 
 # ── Page routes ──────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    from app.database import db
-    with db._session_factory() as session:
-        from app.database.repositories.resume_repository import ResumeRepository
-        from app.database.repositories.analysis_repository import AnalysisRepository
+    from app.database.session import get_session
+    from app.database.repositories.resume_repository import ResumeRepository
+    with get_session() as session:
         resumes = ResumeRepository(session).get_all()
-        analyses = AnalysisRepository(session).get_recent(10) if hasattr(AnalysisRepository(session), 'get_recent') else []
     return templates.TemplateResponse("dashboard.html", {
         "request": request, "page": "dashboard",
-        "resumes": resumes, "analyses": analyses,
+        "resumes": resumes, "analyses": [],
     })
 
 
@@ -69,9 +67,7 @@ async def upload_page(request: Request):
 @app.post("/upload")
 async def upload_resume(request: Request, file: UploadFile = File(...)):
     from app.services.document_reader import extract_text
-    from app.services.resume_parser import parse_resume_text
-    from app.schemas import ResumeData
-    from app.database import db
+    from app.services.resume_parser import parse_resume
 
     content = await file.read()
     suffix = Path(file.filename or "resume.txt").suffix.lower()
@@ -81,14 +77,14 @@ async def upload_resume(request: Request, file: UploadFile = File(...)):
 
     try:
         raw_text = extract_text(tmp_path)
-        resume = parse_resume_text(raw_text)
+        resume = parse_resume(raw_text)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
     # Save to DB
-    import json as _json
-    with db._session_factory() as session:
-        from app.database.repositories.resume_repository import ResumeRepository
+    from app.database.session import get_session
+    from app.database.repositories.resume_repository import ResumeRepository
+    with get_session() as session:
         repo = ResumeRepository(session)
         row = repo.create(name=file.filename or "Untitled", data_json=resume.model_dump_json())
         resume_id = row["id"]
@@ -126,8 +122,9 @@ async def save_job(
     session["job_company"] = job_company
     session["job_location"] = job_location
 
-    with db._session_factory() as db_sess:
-        from app.database.repositories.job_repository import JobRepository
+    from app.database.session import get_session
+    from app.database.repositories.job_repository import JobRepository
+    with get_session() as db_sess:
         repo = JobRepository(db_sess)
         row = repo.create(title=job_title, company=job_company, location=job_location, content=job_text)
         session["job_id"] = row["id"]
@@ -262,17 +259,17 @@ async def save_settings(
 
 @app.get("/api/resumes")
 async def api_resumes():
-    from app.database import db
-    with db._session_factory() as session:
-        from app.database.repositories.resume_repository import ResumeRepository
+    from app.database.session import get_session
+    from app.database.repositories.resume_repository import ResumeRepository
+    with get_session() as session:
         return ResumeRepository(session).get_all()
 
 
 @app.get("/api/jobs")
 async def api_jobs():
-    from app.database import db
-    with db._session_factory() as session:
-        from app.database.repositories.job_repository import JobRepository
+    from app.database.session import get_session
+    from app.database.repositories.job_repository import JobRepository
+    with get_session() as session:
         return JobRepository(session).get_all()
 
 
