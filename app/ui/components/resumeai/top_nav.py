@@ -30,12 +30,12 @@ class ResumeAiTopNav(QWidget):
         self.setStyleSheet("background: transparent; border: none;")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(75, 10, 75, 0)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 10, 12, 0)
+        layout.setSpacing(6)
 
         # ── Resume dropdown button ──
         self._resume_btn = QPushButton("MOHANAD RESUME 2026  ▾")
-        self._resume_btn.setFixedSize(250, 44)
+        self._resume_btn.setFixedSize(210, 44)
         self._resume_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._resume_btn.setStyleSheet(
             f"QPushButton {{"

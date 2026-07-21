@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from app.ai.ollama_client import OllamaClient, OllamaError
 from app.ai.prompts import PARSE_PROMPT, PARSE_SYSTEM
 from app.domain.fact_guard import HallucinatedField
+from app.domain.certification import format_certification
 from app.services.parser_fact_guard import verify_parse
 from app.schemas import ContactInfo, EducationItem, ExperienceItem, ParseWarning, ProjectItem, ResumeData
 
@@ -44,6 +45,7 @@ SECTION_ALIASES = {
         "key skills",
         "technologies",
         "core skills",
+        "core technical skills",
     },
     "experience": {
         "experience",
@@ -75,6 +77,8 @@ SECTION_ALIASES = {
         "projects",
         "project experience",
         "key projects",
+        "selected project delivery",
+        "selected projects",
     },
     "languages": {
         "languages",
@@ -289,6 +293,35 @@ def _find_phone(text: str) -> str:
     return ""
 
 
+def _normalise_location(value: str) -> str:
+    """Clean spacing in a location without changing its wording."""
+    return re.sub(r"\s*,\s*", ", ", re.sub(r"\s+", " ", value)).strip(" |")
+
+
+def _location_from_contact_line(line: str) -> str:
+    """Extract the non-contact segment from a combined header line.
+
+    Many resumes put ``City, Country | phone | email | LinkedIn`` in one
+    paragraph.  The old parser discarded the whole line as soon as it saw an
+    email or phone, which also discarded the location.
+    """
+    if not (EMAIL_RE.search(line) or _find_phone(line) or "linkedin" in line.lower()):
+        return ""
+    for segment in re.split(r"\s*\|\s*", line):
+        candidate = _normalise_location(segment)
+        if not candidate:
+            continue
+        if EMAIL_RE.search(candidate) or _find_phone(candidate):
+            continue
+        if "linkedin" in candidate.lower() or re.search(r"https?://|www\.", candidate, re.I):
+            continue
+        if any(ch.isdigit() for ch in candidate):
+            continue
+        if 1 <= len(candidate.split()) <= 10 and len(candidate) < 100:
+            return candidate
+    return ""
+
+
 def _parse_contact(header_lines: list[str], full_text: str) -> ContactInfo:
     contact = ContactInfo()
 
@@ -299,6 +332,13 @@ def _parse_contact(header_lines: list[str], full_text: str) -> ContactInfo:
 
     linkedin = LINKEDIN_RE.search(full_text)
     contact.linkedin = linkedin.group(0) if linkedin else ""
+
+    # Extract location before filtering contact-bearing lines.
+    for raw in header_lines:
+        location = _location_from_contact_line(raw.strip())
+        if location:
+            contact.location = location
+            break
 
     cleaned = []
     for raw in header_lines:
@@ -317,10 +357,11 @@ def _parse_contact(header_lines: list[str], full_text: str) -> ContactInfo:
             contact.name = line
             break
 
-    for line in cleaned[:6]:
-        if "," in line and len(line) < 80:
-            contact.location = line
-            break
+    if not contact.location:
+        for line in cleaned[:6]:
+            if "," in line and len(line) < 80:
+                contact.location = _normalise_location(line)
+                break
 
     return contact
 
@@ -361,6 +402,16 @@ def _normalize_skills(skills: list[str]) -> list[str]:
     return result
 
 
+def _split_role_header(value: str) -> list[str]:
+    """Split title/company/location while preserving commas inside locations."""
+    if re.search(r"[|\u00b7]", value):
+        return [part.strip() for part in re.split(r"\s*[|\u00b7]\s*", value) if part.strip()]
+    if re.search(r"\s+(?:at|@)\s+", value, re.I):
+        return [part.strip() for part in re.split(r"\s+(?:at|@)\s+", value, maxsplit=1, flags=re.I) if part.strip()]
+    # Legacy fallback for simple ``Title, Company`` headers.
+    return [part.strip() for part in value.split(",", 1) if part.strip()]
+
+
 def _parse_experience(lines: list[str]) -> tuple[list[ExperienceItem], list[ParseWarning]]:
     items: list[ExperienceItem] = []
     warnings: list[ParseWarning] = []
@@ -377,6 +428,14 @@ def _parse_experience(lines: list[str]) -> tuple[list[ExperienceItem], list[Pars
             current.bullets.append(BULLET_RE.sub("", raw).strip())
             continue
         dates = DATE_RANGE_RE.search(line)
+        if (
+            current is not None
+            and current.title
+            and not current.bullets
+            and re.match(r"^(?:initially|assigned|seconded|contracted|promoted|concurrent)", line, re.I)
+        ):
+            current.bullets.append(line)
+            continue
         # Check if line looks like a new job title (contains · or multiple parts)
         is_title_line = bool(re.search(r"\u00b7| at | @ ", line)) or (len(line.split()) > 3 and dates)
         if current is not None and current.title and not current.bullets and not current.company and not is_title_line:
@@ -402,15 +461,13 @@ def _parse_experience(lines: list[str]) -> tuple[list[ExperienceItem], list[Pars
                 # This is likely a new job title — don't merge into previous bullet
                 items.append(current)
                 current = ExperienceItem()
-                parts = [
-                    p.strip(" ,|\u2013\u2014-")
-                    for p in re.split(r"\s*(?:\||,|\u2013|\u2014| at | @ )\s*", line)
-                    if p.strip(" ,|\u2013\u2014-")
-                ]
+                parts = _split_role_header(line)
                 if parts:
                     current.title = parts[0]
                 if len(parts) > 1:
                     current.company = parts[1]
+                if len(parts) > 2:
+                    current.location = " | ".join(parts[2:])
                 continue
             warnings.append(ParseWarning(
                 section="experience",
@@ -428,15 +485,13 @@ def _parse_experience(lines: list[str]) -> tuple[list[ExperienceItem], list[Pars
             current.start_date = dates.group(1).strip()
             current.end_date = dates.group(2).strip()
             line = DATE_RANGE_RE.sub("", line).strip(" ,|\u2013\u2014-")
-        parts = [
-            p.strip(" ,|\u2013\u2014-")
-            for p in re.split(r"\s*(?:\||,|\u2013|\u2014| at | @ )\s*", line)
-            if p.strip(" ,|\u2013\u2014-")
-        ]
+        parts = _split_role_header(line)
         if parts:
             current.title = parts[0]
         if len(parts) > 1:
             current.company = parts[1]
+        if len(parts) > 2:
+            current.location = " | ".join(parts[2:])
     if current is not None:
         items.append(current)
     return [item for item in items if item.title or item.bullets], warnings
@@ -465,6 +520,7 @@ def _split_blocks(lines: list[str]) -> list[list[str]]:
 
 
 def _parse_education(lines: list[str]) -> list[EducationItem]:
+    """Parse degree, institution, location, CGPA/GPA, and year range."""
     cleaned = [BULLET_RE.sub("", raw).strip() for raw in lines if raw.strip()]
     items: list[EducationItem] = []
     current: EducationItem | None = None
@@ -474,26 +530,54 @@ def _parse_education(lines: list[str]) -> list[EducationItem]:
         if is_degree:
             if current is not None:
                 items.append(current)
-            parts = [part.strip() for part in re.split(r"\s*[·|]\s*", line) if part.strip()]
-            if len(parts) == 1:
-                comma_parts = [part.strip() for part in line.split(",") if part.strip()]
-                parts = comma_parts if len(comma_parts) > 1 else parts
-            parts = [
-                part for part in parts
-                if not re.fullmatch(r"(?:19|20)\d{2}(?:\s*[–-]\s*(?:19|20)\d{2})?", part)
-            ]
-            current = EducationItem(
-                degree=parts[0],
-                institution=" · ".join(parts[1:]),
+
+            years = re.findall(r"\b(?:19|20)\d{2}\b", line)
+            year = " – ".join(years[-2:]) if years else ""
+            cgpa_match = re.search(
+                r"\b(?:CGPA|GPA)\s*:?\s*([0-9]+(?:\.[0-9]+)?(?:\s*/\s*[0-9]+(?:\.[0-9]+)?)?)",
+                line,
+                re.I,
             )
-            inline_years = re.findall(r"\b(?:19|20)\d{2}\b", line)
-            if inline_years:
-                current.year = " – ".join(inline_years[-2:])
+            cgpa = cgpa_match.group(1).replace(" ", "") if cgpa_match else ""
+
+            body = DATE_RANGE_RE.sub("", line)
+            body = re.sub(r"\|?\s*\b(?:CGPA|GPA)\s*:?\s*[0-9]+(?:\.[0-9]+)?(?:\s*/\s*[0-9]+(?:\.[0-9]+)?)?", "", body, flags=re.I)
+            body = body.strip(" \t|·,–—-")
+
+            degree = body
+            institution = ""
+            location = ""
+            if ":" in body:
+                left, right = body.split(":", 1)
+                if any(term in left.casefold() for term in _DEGREE_TERMS):
+                    degree, remainder = left.strip(), right.strip(" ,·|")
+                    if "," in remainder:
+                        institution, location = [part.strip() for part in remainder.rsplit(",", 1)]
+                    else:
+                        institution = remainder
+            if not institution:
+                parts = [part.strip() for part in re.split(r"\s*[·|]\s*", body) if part.strip()]
+                degree = parts[0] if parts else body
+                if len(parts) > 1:
+                    institution = parts[1]
+                if len(parts) > 2:
+                    location = " | ".join(parts[2:])
+
+            current = EducationItem(
+                degree=degree,
+                institution=institution,
+                location=location,
+                cgpa=cgpa,
+                year=year,
+            )
             continue
 
         years = re.findall(r"\b(?:19|20)\d{2}\b", line)
+        cgpa_match = re.search(r"\b(?:CGPA|GPA)\s*:?\s*([0-9.]+(?:\s*/\s*[0-9.]+)?)", line, re.I)
         if current is not None and years:
             current.year = " – ".join(years[-2:])
+        if current is not None and cgpa_match:
+            current.cgpa = cgpa_match.group(1).replace(" ", "")
         elif current is not None and not current.institution:
             current.institution = line
         elif current is None:
@@ -505,29 +589,40 @@ def _parse_education(lines: list[str]) -> list[EducationItem]:
 
 
 def _parse_certifications(lines: list[str]) -> list[str]:
-    values: list[str] = []
+    """Normalize certification rows to ``title | issuer | year`` strings."""
+    certs: list[str] = []
+    pending: list[str] = []
+
     for raw in lines:
         line = BULLET_RE.sub("", raw).strip()
         if not line:
             continue
-        for part in re.split(r"[;\u2022\u00b7|]", line):
-            cert = part.strip(" .")
-            if cert:
-                values.append(cert)
+        parts = [
+            part.strip(" .")
+            for part in re.split(r"\s*(?:\||\t+|;|\u2022|\u00b7)\s*", line)
+            if part.strip(" .")
+        ]
+        if not parts:
+            continue
 
-    # Table-based resumes commonly flatten each certification into three
-    # consecutive lines: name, issuer, year. Reassemble those records.
-    if any(re.fullmatch(r"(?:19|20)\d{2}", value) for value in values):
-        certs: list[str] = []
-        pending: list[str] = []
-        for value in values:
+        # A single extracted line may already contain all three columns.
+        if len(parts) >= 2 and re.fullmatch(r"(?:19|20)\d{2}", parts[-1]):
+            title = " | ".join(parts[:-2]) if len(parts) > 2 else parts[0]
+            issuer = parts[-2] if len(parts) > 2 else ""
+            certs.append(format_certification(title, issuer, parts[-1]))
+            continue
+
+        # Table extraction can also yield one value per line; collect until year.
+        for value in parts:
             pending.append(value)
             if re.fullmatch(r"(?:19|20)\d{2}", value):
-                certs.append(" | ".join(pending))
+                title = " | ".join(pending[:-2]) if len(pending) > 2 else pending[0]
+                issuer = pending[-2] if len(pending) > 2 else ""
+                certs.append(format_certification(title, issuer, value))
                 pending = []
-        certs.extend(pending)
-        return list(dict.fromkeys(certs))
-    return list(dict.fromkeys(values))
+
+    certs.extend(value for value in pending if value)
+    return list(dict.fromkeys(certs))
 
 
 def _parse_projects(lines: list[str]) -> list[ProjectItem]:
@@ -539,14 +634,15 @@ def _parse_projects(lines: list[str]) -> list[ProjectItem]:
 
     def project_from_header(value: str) -> ProjectItem:
         dates = DATE_RANGE_RE.search(value)
-        if not dates:
-            return ProjectItem(title=value)
-        title = DATE_RANGE_RE.sub("", value).strip(" ,|·–—-")
-        start = dates.group(1).strip()
-        end = dates.group(2).strip()
+        start = dates.group(1).strip() if dates else ""
+        end = dates.group(2).strip() if dates else ""
+        header = DATE_RANGE_RE.sub("", value).strip(" ,|·–—-\t") if dates else value.strip()
+        parts = [part.strip() for part in re.split(r"\s*[|·]\s*", header) if part.strip()]
+        title = parts[0] if parts else header
+        context = " | ".join(parts[1:]) if len(parts) > 1 else ""
         return ProjectItem(
             title=title,
-            meta=f"{start} – {end}",
+            meta=context,
             start_date=start,
             end_date=end,
         )

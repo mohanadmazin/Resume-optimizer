@@ -106,7 +106,14 @@ def resume_diff_html(original: ResumeData, optimized: ResumeData) -> str:
     if optimized.education:
         lines.append("<h2>Education</h2>")
         for edu in optimized.education:
-            line = ", ".join(filter(None, [edu.degree, edu.institution]))
+            line = ", ".join(filter(None, [
+                edu.degree,
+                edu.institution,
+                getattr(edu, "location", ""),
+            ]))
+            cgpa = getattr(edu, "cgpa", "")
+            if cgpa:
+                line += f" | CGPA {cgpa}"
             if edu.year:
                 line += f" ({edu.year})"
             lines.append(f"<p>{escape(line)}</p>")

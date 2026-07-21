@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 
 from app.ai.ollama_client import OllamaClient
 from app.database import db
-from app.exports.exporter import export_text_docx
+from app.exports.exporter import export_text_docx, export_text_pdf
 from app.schemas import ResumeData
 from app.services.cover_letter import CoverLetterResult, generate_cover_letter
 from app.ui.components.loading_overlay import LoadingOverlayManager
@@ -100,6 +100,7 @@ class CoverLetterPage(QWidget):
     def _on_done(self, result: CoverLetterResult) -> None:
         self._overlay.hide(self)
         self.output.setPlainText(result.text)
+        self.window.state.cover_letter_text = result.text
         if result.warnings:
             self.warnings_label.setText(
                 "Warnings:\n" + "\n".join(f"- {w}" for w in result.warnings)
@@ -118,16 +119,34 @@ class CoverLetterPage(QWidget):
         text = self.output.toPlainText().strip()
         if not text:
             return
-        path, _ = QFileDialog.getSaveFileName(
+        path, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Save Cover Letter",
-            "cover_letter.txt",
-            "Text (*.txt);;Markdown (*.md);;Word Document (*.docx)",
+            "cover_letter.pdf",
+            "PDF Document (*.pdf);;Word Document (*.docx);;Text (*.txt);;Markdown (*.md)",
         )
         if not path:
             return
+
+        suffix_by_filter = {
+            "PDF Document (*.pdf)": ".pdf",
+            "Word Document (*.docx)": ".docx",
+            "Text (*.txt)": ".txt",
+            "Markdown (*.md)": ".md",
+        }
+        selected_suffix = suffix_by_filter.get(selected_filter, ".pdf")
+        current_suffix = Path(path).suffix.lower()
+        if current_suffix != selected_suffix:
+            if current_suffix in {".pdf", ".docx", ".txt", ".md"}:
+                path = str(Path(path).with_suffix(selected_suffix))
+            else:
+                path += selected_suffix
+
         try:
-            if path.lower().endswith(".docx"):
+            suffix = Path(path).suffix.lower()
+            if suffix == ".pdf":
+                export_text_pdf(text, path)
+            elif suffix == ".docx":
                 export_text_docx(text, path)
             else:
                 Path(path).write_text(text, encoding="utf-8")

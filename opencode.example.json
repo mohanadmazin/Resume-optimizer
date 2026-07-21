@@ -1,0 +1,33 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "ollama": {
+      "name": "Ollama",
+      "api": "openai",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      }
+    },
+    "openai": {
+      "name": "OpenAI",
+      "options": {
+        "apiKey": "${OPENAI_API_KEY}"
+      }
+    },
+    "anthropic": {
+      "name": "Anthropic",
+      "options": {
+        "apiKey": "${ANTHROPIC_API_KEY}"
+      }
+    },
+    "google": {
+      "name": "Google Gemini",
+      "api": "openai",
+      "options": {
+        "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "apiKey": "${GEMINI_API_KEY}"
+      }
+    }
+  },
+  "model": "ollama/your-model-name"
+}

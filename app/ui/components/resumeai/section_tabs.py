@@ -1,20 +1,16 @@
-# app/ui/components/resumeai/section_tabs.py
-"""Horizontal scrollable section tab bar with overflow menu."""
-
+"""Horizontal resume-section tab bar used by the main window."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (
-    QHBoxLayout,
-    QPushButton,
-    QWidget,
-)
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from app.ui.theme import RESUMEAI_COLORS
 
+RESUMEAI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
+
 
 class SectionTab(QPushButton):
-    """A single section tab button."""
+    """A single resume section tab button."""
 
     def __init__(self, name: str, parent: QWidget | None = None) -> None:
         super().__init__(name, parent)
@@ -38,96 +34,74 @@ class SectionTab(QPushButton):
         if self._is_selected:
             self.setStyleSheet(
                 f"QPushButton {{"
-                f"  background-color: {RESUMEAI_COLORS['primary_dark']};"
-                f"  color: {RESUMEAI_COLORS['dark_text']};"
-                f"  border: none;"
-                f"  border-radius: 8px;"
-                f"  padding: 4px 14px;"
-                f"  font-family: {RESUMEAI_FONT_FAMILY};"
-                f"  font-size: 12px;"
-                f"  font-weight: 800;"
-                f"}}"
+                f"background-color: {RESUMEAI_COLORS['primary_dark']};"
+                f"color: {RESUMEAI_COLORS['dark_text']};"
+                "border: none; border-radius: 8px; padding: 4px 12px;"
+                f"font-family: {RESUMEAI_FONT_FAMILY}; font-size: 11px;"
+                "font-weight: 800;"
+                "}"
             )
         else:
             self.setStyleSheet(
-                f"QPushButton {{"
-                f"  background: transparent;"
-                f"  color: {RESUMEAI_COLORS['text_primary']};"
-                f"  border: none;"
-                f"  border-radius: 8px;"
-                f"  padding: 4px 14px;"
-                f"  font-family: {RESUMEAI_FONT_FAMILY};"
-                f"  font-size: 12px;"
-                f"  font-weight: 700;"
-                f"}}"
-                f"QPushButton:hover {{"
-                f"  background-color: rgba(123, 139, 255, 0.15);"
-                f"}}"
+                "QPushButton { background: transparent; border: none;"
+                "border-radius: 8px; padding: 4px 12px;"
+                f"color: {RESUMEAI_COLORS['text_primary']};"
+                f"font-family: {RESUMEAI_FONT_FAMILY}; font-size: 11px;"
+                "font-weight: 700; }"
+                "QPushButton:hover { background-color: rgba(123, 139, 255, 0.15); }"
             )
 
 
-RESUMEAI_FONT_FAMILY = "Inter, Arial, Segoe UI, sans-serif"
-
-
 class SectionTabBar(QWidget):
-    """Scrollable horizontal tab bar for resume sections."""
+    """Horizontal tabs that select editable destinations in Resume Studio."""
 
     tab_selected = Signal(str)
 
     DEFAULT_SECTIONS = [
         "CONTACT",
-        "EXPERIENCE",
-        "PROJECT",
-        "EDUCATION",
-        "CERTIFICATIONS",
-        "COURSEWORK",
-        "INVOLVEMENT",
-        "SKILLS",
         "SUMMARY",
+        "EXPERIENCE",
+        "PROJECTS",
+        "EDUCATION",
+        "SKILLS",
+        "CERTIFICATIONS",
+        "LANGUAGES",
+        "REVIEW",
     ]
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._sections = list(self.DEFAULT_SECTIONS)
         self._tabs: dict[str, SectionTab] = {}
-        self._selected: str = "CONTACT"
+        self._selected = self._sections[0]
 
         self.setStyleSheet(
             f"background-color: {RESUMEAI_COLORS['window_bg']};"
             f"border: 1px solid {RESUMEAI_COLORS['border']};"
-            f"border-radius: 10px;"
+            "border-radius: 10px;"
         )
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(2)
+        layout.setSpacing(1)
 
         for name in self._sections:
             tab = SectionTab(name)
-            tab.clicked.connect(lambda checked=False, n=name: self.select_tab(n))
+            tab.clicked.connect(lambda _checked=False, n=name: self.select_tab(n))
             layout.addWidget(tab)
             self._tabs[name] = tab
 
-        # Three-dot overflow button
         self._overflow_btn = QPushButton("···")
         self._overflow_btn.setFixedSize(34, 34)
         self._overflow_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._overflow_btn.setStyleSheet(
-            f"QPushButton {{"
-            f"  background: transparent;"
-            f"  color: {RESUMEAI_COLORS['text_secondary']};"
-            f"  border: none;"
-            f"  border-radius: 8px;"
-            f"  font-size: 16px;"
-            f"  font-weight: bold;"
-            f"}}"
-            f"QPushButton:hover {{"
-            f"  background-color: rgba(123, 139, 255, 0.15);"
-            f"}}"
+            "QPushButton { background: transparent; border: none;"
+            "border-radius: 8px; font-size: 16px; font-weight: bold;"
+            f"color: {RESUMEAI_COLORS['text_secondary']}; }}"
+            "QPushButton:hover { background-color: rgba(123, 139, 255, 0.15); }"
         )
         layout.addWidget(self._overflow_btn)
-
-        self._tabs["CONTACT"].set_selected(True)
+        self._tabs[self._selected].set_selected(True)
 
     @property
     def overflow_button(self) -> QPushButton:
@@ -137,19 +111,23 @@ class SectionTabBar(QWidget):
     def selected_section(self) -> str:
         return self._selected
 
-    def select_tab(self, name: str) -> None:
-        if name in self._tabs:
+    def select_tab(self, name: str, *, emit_signal: bool = True) -> None:
+        if name not in self._tabs:
+            return
+
+        if self._selected in self._tabs:
             self._tabs[self._selected].set_selected(False)
-            self._selected = name
-            self._tabs[name].set_selected(True)
+        self._selected = name
+        self._tabs[name].set_selected(True)
+
+        if emit_signal:
             self.tab_selected.emit(name)
 
     def add_section(self, name: str) -> None:
         if name in self._tabs:
             return
         tab = SectionTab(name)
-        tab.clicked.connect(lambda checked=False, n=name: self.select_tab(n))
-        # Insert before the overflow button
+        tab.clicked.connect(lambda _checked=False, n=name: self.select_tab(n))
         self.layout().insertWidget(self.layout().count() - 1, tab)
         self._tabs[name] = tab
         self._sections.append(name)
@@ -165,17 +143,17 @@ class SectionTabBar(QWidget):
             self.select_tab(self._sections[0])
 
     def set_section_visible(self, name: str, visible: bool) -> None:
-        if name not in self._tabs:
+        tab = self._tabs.get(name)
+        if tab is None or name in {"CONTACT", "REVIEW"}:
             return
-        if visible:
-            self._tabs[name].setVisible(True)
-        else:
-            self._tabs[name].setVisible(False)
-            if self._selected == name:
-                for s in self._sections:
-                    if self._tabs[s].isVisible():
-                        self.select_tab(s)
-                        break
+
+        tab.setVisible(visible)
+        if not visible and self._selected == name:
+            for section in self._sections:
+                candidate = self._tabs[section]
+                if candidate.isVisible():
+                    self.select_tab(section)
+                    break
 
     def visible_sections(self) -> list[str]:
-        return [s for s in self._sections if self._tabs[s].isVisible()]
+        return [name for name in self._sections if self._tabs[name].isVisible()]

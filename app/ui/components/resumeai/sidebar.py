@@ -259,9 +259,13 @@ class ResumeAiSidebar(QWidget):
         layout.addWidget(mcp_item, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addSpacing(4)
 
+    def set_selected(self, index: int) -> None:
+        """Update the highlighted sidebar item without emitting navigation."""
+        for i, button in enumerate(self._buttons):
+            button.set_selected(i == index)
+
     def _on_click(self, index: int) -> None:
-        for i, btn in enumerate(self._buttons):
-            btn.set_selected(i == index)
+        self.set_selected(index)
         self.page_selected.emit(index)
 
 

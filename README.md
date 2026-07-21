@@ -167,3 +167,11 @@ Open the **Settings** page to change:
 - **Ollama URL** (default `http://localhost:11434`)
 - **Model** (default `qwen3`; click *Refresh Models* to list everything installed in Ollama)
 - **Temperature** (default `0.3`)
+
+
+## Resume Studio review workflow
+
+Use the top section tabs to edit the active structured resume. Open **Review** (or
+select **Finish Up & Preview**) to approve the exact current revision. DOCX, PDF,
+and Markdown exports remain disabled until approval, and any later edit invalidates
+that approval.

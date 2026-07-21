@@ -47,45 +47,46 @@ class TestCancellationToken:
 # ---------------------------------------------------------------------------
 class TestWorkerTimeout:
     def test_timeout_never_calls_qthread_terminate(self):
-        """Timeout must cancel cooperatively, never call QThread.terminate()."""
+        """Timeout cancels cooperatively and never calls QThread.terminate()."""
         call_event = threading.Event()
 
         def slow_fn():
             call_event.set()
-            time.sleep(60)
+            # Finish naturally; cancellation is checked by Worker afterwards.
+            time.sleep(0.05)
 
         w = Worker(slow_fn, timeout_seconds=0)
         with patch.object(w, "terminate") as mock_terminate:
             w.start()
-            call_event.wait(timeout=2)
-            w.wait(3)
+            assert call_event.wait(timeout=2)
+            assert w.wait(2000)
             mock_terminate.assert_not_called()
 
     def test_worker_cancellation_is_not_global(self):
-        """Cancelling one Worker must not affect another."""
-        events = [threading.Event() for _ in range(2)]
+        """Cancelling one Worker must not affect another worker's token."""
+        started = [threading.Event() for _ in range(2)]
+        release = [threading.Event() for _ in range(2)]
 
         def work(idx):
-            events[idx].set()
-            time.sleep(60)
+            started[idx].set()
+            release[idx].wait(timeout=2)
 
-        workers = []
-        for i in range(2):
-            w = Worker(work, i, timeout_seconds=60)
-            workers.append(w)
-
-        workers[0].start()
-        workers[1].start()
-        for e in events:
-            e.wait(timeout=2)
+        workers = [Worker(work, i, timeout_seconds=60) for i in range(2)]
+        for worker in workers:
+            worker.start()
+        assert all(event.wait(timeout=2) for event in started)
 
         workers[0].cancel()
-        workers[0].wait(2)
+        release[0].set()
+        assert workers[0].wait(2000)
 
-        # Worker 1 should still be running
+        assert workers[0].cancellation_token.event.is_set()
+        assert not workers[1].cancellation_token.event.is_set()
         assert workers[1].isRunning()
+
         workers[1].cancel()
-        workers[1].wait(2)
+        release[1].set()
+        assert workers[1].wait(2000)
 
     def test_worker_result_emitted_on_success(self):
         def add(a, b):
@@ -95,7 +96,7 @@ class TestWorkerTimeout:
         received = []
         w.result.connect(lambda v: received.append(v))
         w.start()
-        w.wait(5)
+        assert w.wait(5000)
         QCoreApplication.processEvents()
         assert received == [5]
 

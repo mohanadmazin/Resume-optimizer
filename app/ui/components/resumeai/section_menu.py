@@ -92,6 +92,12 @@ class _MenuItem(QWidget):
         layout.addWidget(lbl)
         layout.addStretch()
 
+    def setChecked(self, checked: bool) -> None:
+        self._checkbox.setChecked(checked)
+
+    def isChecked(self) -> bool:
+        return self._checkbox.isChecked()
+
     def enterEvent(self, event) -> None:
         self._hovered = True
         self.update()
@@ -176,7 +182,7 @@ class SectionMenu(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
-        self.setFixedSize(190, 245)
+        self.setFixedSize(210, 190)
         self.setStyleSheet(
             f"background-color: {RESUMEAI_COLORS['menu_bg']};"
             f"border: 1px solid {RESUMEAI_COLORS['menu_border']};"
@@ -188,7 +194,7 @@ class SectionMenu(QWidget):
         layout.setSpacing(0)
 
         # Checked items
-        self._checked_items = ["Project", "Certifications", "Coursework", "Involvement"]
+        self._checked_items = ["Summary", "Projects", "Certifications", "Languages"]
         self._menu_items: dict[str, _MenuItem] = {}
 
         for name in self._checked_items:
@@ -196,11 +202,6 @@ class SectionMenu(QWidget):
             item.toggled.connect(self.section_toggled.emit)
             layout.addWidget(item)
             self._menu_items[name] = item
-
-        # Submenu items
-        for name in ["Academic", "Other"]:
-            item = _SubmenuItem(name)
-            layout.addWidget(item)
 
         layout.addStretch()
 
