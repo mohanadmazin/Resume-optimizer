@@ -47,13 +47,22 @@ Legend:
 | Ollama connection status indicator  | ✅      |
 | Loading overlays for async ops      | ✅      |
 | Model pre-warming on startup        | ✅      |
-| Rezi-style Resume Studio (MVVM)     | ✅      |
+| ResumeAI Resume Studio (MVVM)       | ✅      |
+| ResumeAI dark-navy UI theme         | ✅      |
+| Section tabs + section menu         | ✅      |
+| Sidebar icon navigation             | ✅      |
+| Top nav with resume dropdown        | ✅      |
+| Toggle switch component             | ✅      |
+| Form field component                | ✅      |
+| Dropdown component                  | ✅      |
+| Card component                      | ✅      |
+| Toast notifications                 | ✅      |
 | Section-based editor                | ✅      |
 | Live resume preview                 | ✅      |
 | Undo and redo                       | ✅      |
 | Real-time issue panel               | ✅      |
 | Five-category explainable score     | ✅      |
-| Rezi-style keyword targeting        | ✅      |
+| ResumeAI keyword targeting          | ✅      |
 | Evidence paths for matched keywords | ✅      |
 | Three bullet alternatives           | ✅      |
 | Bullet writer with keyword highlight| ✅      |
@@ -97,6 +106,11 @@ Legend:
 | Resume comparison view              | ✅      |
 | Global search                       | ✅      |
 | Onboarding wizard                   | ✅      |
+| Evidence Vault (save evidence)      | ✅      |
+| Master Profile (career summary)     | ✅      |
+| Requirement Matrix (JD comparison)  | ✅      |
+| Discovery Interview (prep session)  | ✅      |
+| ResumeAI contact page               | ✅      |
 | Optional encrypted sensitive fields | 🔭      |
 | Optional job-board integrations     | 🔭      |
 
@@ -151,11 +165,12 @@ Legend:
                │
                ▼
 ┌────────────────────────────────────────────────────────────┐
-│                    PySide6 Desktop UI                      │
+│                 PySide6 Desktop UI (ResumeAI)               │
 │                                                            │
+│ Sidebar │ Top Nav │ Section Tabs │ Content Stack           │
 │ Dashboard │ Studio │ Resumes │ Jobs │ Analysis │ Optimize  │
 │ Agent │ Letters │ Skill Gap │ Salary │ Apps │ Library     │
-│ Interview │ LinkedIn │ Compare │ Settings                   │
+│ Interview │ LinkedIn │ Compare │ Vault │ Matrix │ Settings │
 └──────────────┬─────────────────────────────────────────────┘
                │ Commands / Queries
                ▼
@@ -215,6 +230,7 @@ Paste or Upload Job Description
     → Separate responsibilities and qualifications
     → User review
     → Save Job
+    → Trigger sequential analyses (ATS → Skill Gap → Salary)
 ```
 
 ### 5.3 ATS Analysis
@@ -264,6 +280,7 @@ Select Resume Version + Job
 ```text
 Open Studio
     → 3-panel layout: Section Navigator | Editor + Preview | Insights
+    → Section Tabs + Section Menu for section switching
     → Select section → dynamic form editor
     → Live ATS score recalculation on edit
     → Issue panel with category breakdown
@@ -290,6 +307,7 @@ Select Resume + Target Job or Role Profile
     → Rank gaps by importance
     → Build learning recommendations
     → Save SkillGapRun
+    → Emit analysis_finished signal (triggers next sequential analysis)
 ```
 
 ### 5.8 Salary Guidance
@@ -302,6 +320,7 @@ Role + Location + Experience
     → Generate salary range via Ollama
     → Show confidence and data-source disclaimer
     → Save SalaryEstimateRun
+    → Emit analysis_finished signal (triggers next sequential analysis)
 ```
 
 ### 5.9 AI Agent Workflow
@@ -349,13 +368,26 @@ Select Resume A (Original) + Resume B (Modified)
     → Side-by-side rendering with color-coded changes
 ```
 
+### 5.13 Sequential Analysis Pipeline
+
+```text
+User saves Job Description
+    → _trigger_analyses() pre-fills destination pages
+    → ATS analysis runs immediately
+    → Skill Gap and Salary run sequentially via analysis_finished signal chain
+    → Each page stores result in AppState
+    → Destination pages display cached results in on_show()
+```
+
 ---
 
 ## 6. ARCHITECTURE
 
 ```text
 Pattern:      Modular monolith with layered boundaries
-UI:           PySide6 QMainWindow + sidebar nav + QStackedWidget (16 pages)
+UI:           PySide6 QMainWindow + ResumeAI sidebar nav + QStackedWidget (20 pages)
+Components:   ResumeAI design system (sidebar, top_nav, section_tabs, toggle_switch,
+              form_field, dropdown, card, toast, section_menu)
 ViewModel:    ResumeStudioViewModel (MVVM for Studio page)
 State:        Session-scoped AppState containing IDs, not full domain objects
 Domain:       Pure scoring, matching, validation, and transformation logic
@@ -409,7 +441,21 @@ Rules:
 | `app/services/`   | ATS engine, scoring engine (versioned rules), optimizer, cover letter, parser, fact guard, security, HTML extraction, metadata, job fetcher, browser fetcher, document reader, salary estimator, skill gap, diff highlight, auto-fit, bullet writer, keyword targeting, job context, agent, interview prep, linkedin import, backup, global search, resume comparison, score history, summary/headline generators |
 | `app/exports/`    | Deterministic DOCX/PDF/Markdown export (PyMuPDF + python-docx) |
 | `app/config/`     | Legacy compatibility shim (delegates to `app/core/`)           |
-| `app/ui/`         | Main window (16-page nav), state, workers, theme, undo stack, components (9), pages (16), view models, dialogs (onboarding) |
+| `app/ui/`         | Main window (20-page nav), state, workers, theme, undo stack, components (resumeai design system + legacy), pages (20), view models, dialogs (onboarding) |
+
+### ResumeAI Design System (`app/ui/components/resumeai/`)
+
+| Component       | Class(es)                          | Purpose                                        |
+| --------------- | ---------------------------------- | ---------------------------------------------- |
+| `sidebar.py`    | `ResumeAiSidebar`                  | Icon sidebar with tooltip labels and page map  |
+| `top_nav.py`    | `ResumeAiTopNav`                   | Top bar with section tabs, resume dropdown     |
+| `section_tabs.py` | `SectionTabs`, `PillCheckBox`   | Horizontal tab bar with pill-shaped checkboxes |
+| `section_menu.py`| `SectionMenu`                     | Floating section visibility menu               |
+| `toggle_switch.py`| `ToggleSwitch`                   | iOS-style toggle switch                        |
+| `form_field.py` | `FormField`                        | Labeled input field with error state           |
+| `dropdown.py`   | `Dropdown`                         | Styled QComboBox                               |
+| `card.py`       | `Card`                             | Rounded-corner container with title/subtitle   |
+| `toast.py`      | `Toast`                            | Slide-in notification banner                   |
 
 ---
 
@@ -543,22 +589,34 @@ resume-optimizer-main/
 │   │
 │   └── ui/
 │       ├── __init__.py
-│       ├── main_window.py              # QMainWindow with sidebar nav + search bar + QStackedWidget (16 pages)
-│       ├── state.py                    # AppState (resume, job, ats, pipeline, keywords, cancel)
-│       ├── workers.py                  # Worker + PipelineWorker (QThread) + cooperative cancellation
-│       ├── theme.py                    # DARK_STYLESHEET + LIGHT_STYLESHEET
+│       ├── main_window.py              # QMainWindow with sidebar nav + search bar + QStackedWidget (20 pages)
+│       ├── state.py                    # AppState (resume, job, ats, pipeline, skill_gap, salary_estimate, keywords, cancel)
+│       ├── workers.py                  # Worker + PipelineWorker (QThread) + cooperative cancellation + _MISSING sentinel
+│       ├── theme.py                    # ResumeAI_COLORS + DARK_STYLESHEET + LIGHT_STYLESHEET
 │       ├── undo_stack.py               # UndoStack for resume edits
 │       │
 │       ├── components/
 │       │   ├── __init__.py
-│       │   ├── ollama_status.py        # OllamaCheckerThread + OllamaStatusLabel
-│       │   ├── loading_overlay.py      # LoadingOverlay + LoadingOverlayManager
-│       │   ├── section_editor.py       # Dynamic form for resume sections
+│       │   ├── ollama_status.py        # OllamaCheckerThread + OllamaStatusLabel (stale guard, single-shot cleanup)
+│       │   ├── loading_overlay.py      # LoadingOverlay + LoadingOverlayManager (resize-aware)
+│       │   ├── section_editor.py       # Dynamic form for resume sections (None-safe)
 │       │   ├── section_navigator.py    # Left panel section list
 │       │   ├── resume_preview.py       # Read-only text preview
 │       │   ├── resume_insights_panel.py # Score cards, keywords, issues
 │       │   ├── bullet_writer_widget.py # 3-alternative bullet generation widget
-│       │   └── agent_proposal_card.py  # Agent proposal card (original vs proposed, Accept/Reject)
+│       │   ├── agent_proposal_card.py  # Agent proposal card (original vs proposed, Accept/Reject)
+│       │   │
+│       │   └── resumeai/               # ResumeAI design system components
+│       │       ├── __init__.py         # Exports: RESUMEAI_COLORS, RESUMEAI_FONT_FAMILY, resumeai_font()
+│       │       ├── sidebar.py          # ResumeAiSidebar: icon nav with tooltips
+│       │       ├── top_nav.py          # ResumeAiTopNav: top bar with section tabs + resume dropdown
+│       │       ├── section_tabs.py     # SectionTabs + PillCheckBox: horizontal tab bar
+│       │       ├── section_menu.py     # SectionMenu: floating section visibility menu
+│       │       ├── toggle_switch.py    # ToggleSwitch: iOS-style toggle
+│       │       ├── form_field.py       # FormField: labeled input with error state
+│       │       ├── dropdown.py         # Dropdown: styled QComboBox
+│       │       ├── card.py             # Card: rounded-corner container
+│       │       └── toast.py            # Toast: slide-in notification
 │       │
 │       ├── dialogs/
 │       │   └── onboarding.py           # First-launch onboarding wizard (3-step)
@@ -569,24 +627,30 @@ resume-optimizer-main/
 │       │
 │       └── pages/
 │           ├── __init__.py
-│           ├── dashboard.py            # One-click pipeline, score cards, recent table
+│           ├── dashboard.py            # One-click pipeline, score cards, recent table (cancellation-safe)
 │           ├── resume_upload.py        # PDF/DOCX import + parse + save
-│           ├── job_description.py      # Paste/upload/URL fetch + save
-│           ├── ats_analysis.py         # Score cards, keyword heatmap, suggestions
-│           ├── optimization.py         # Before/after ATS comparison, Accept/Reject
-│           ├── cover_letter.py         # AI cover letter + fact-check warnings
-│           ├── skill_gap.py            # Skill gap analysis with disclaimer
-│           ├── salary_estimate.py      # Salary estimation with disclaimer
+│           ├── job_description.py      # Paste/upload/URL fetch + save + sequential analysis trigger
+│           ├── ats_analysis.py         # Score cards, keyword heatmap, suggestions (multi-word highlighting)
+│           ├── optimization.py         # Before/after ATS comparison, Accept/Reject (tri-state pending)
+│           ├── cover_letter.py         # AI cover letter + fact-check warnings (pipeline result display)
+│           ├── skill_gap.py            # Skill gap analysis (analysis_finished signal, pipeline result display)
+│           ├── salary_estimate.py      # Salary estimation (analysis_finished signal, pipeline result display)
 │           ├── settings.py             # Ollama URL, model, temperature, backup/restore
 │           ├── studio.py               # Resume Studio: 3-panel MVVM editor
 │           ├── agent.py                # AI agent chat interface (multi-turn, 7 tools)
 │           ├── applications.py         # Application tracker with analytics dashboard
 │           ├── cover_letter_library.py # Cover letter library (search, browse, copy, delete)
 │           ├── interview_prep.py       # Interview question generator (behavioral/technical/situational)
-│           ├── import_linkedin.py       # LinkedIn JSON/CSV import
-│           └── comparison.py           # Resume comparison view (side-by-side diff)
+│           ├── import_linkedin.py      # LinkedIn JSON/CSV import
+│           ├── comparison.py           # Resume comparison view (side-by-side diff)
+│           ├── evidence_vault.py       # Evidence Vault: save and organize supporting evidence
+│           ├── master_profile.py       # Master Profile: consolidated career summary
+│           ├── requirement_matrix.py   # Requirement Matrix: JD requirement comparison
+│           ├── discovery.py            # Discovery Interview: structured prep session
+│           ├── resumeai_contact.py     # ResumeAI contact page
+│           └── resumeai_placeholder.py # Placeholder pages for ResumeAI sections
 │
-└── tests/                              # 613 tests across 33 test files
+└── tests/                              # 855 tests across 33 test files
     ├── __init__.py
     ├── test_agent.py                   # Agent domain, repository, service, UI (34 tests)
     ├── test_ats_engine.py              # ATS scoring, keyword extraction, skill matching
@@ -664,23 +728,56 @@ resume-optimizer-main/
 
 ## 10. NAVIGATION
 
-| Index | Page              | Class                    | Responsibility                                              |
-| ----: | ----------------- | ------------------------ | ----------------------------------------------------------- |
-|     0 | Dashboard         | `DashboardPage`          | One-click pipeline, score cards, recent analyses            |
-|     1 | Resume Upload     | `ResumeUploadPage`       | Import PDF/DOCX, parse, save                                |
-|     2 | Job Description   | `JobDescriptionPage`     | Paste, upload, or fetch job description from URL            |
-|     3 | ATS Analysis      | `ATSAnalysisPage`        | Keyword heatmap, score cards, suggestions                   |
-|     4 | Optimization      | `OptimizationPage`       | Before/after ATS comparison, AI diff, Accept/Reject         |
-|     5 | Agent             | `AgentPage`              | AI agent chat interface, multi-turn conversations, 7 tools  |
-|     6 | Cover Letter      | `CoverLetterPage`        | Generate tailored cover letter via AI                       |
-|     7 | Skill Gap         | `SkillGapPage`           | Match skills vs market demand, learning recommendations     |
-|     8 | Salary Estimate   | `SalaryEstimatePage`     | Salary range estimation via AI                              |
-|     9 | Applications      | `ApplicationsPage`       | Application tracker with analytics dashboard                |
-|    10 | Cover Letter Library | `CoverLetterLibraryPage` | Browse, search, copy, and delete saved cover letters       |
-|    11 | Interview Prep    | `InterviewPrepPage`      | Generate behavioral/technical/situational questions         |
-|    12 | LinkedIn Import   | `LinkedInImportPage`     | Import LinkedIn JSON/CSV profile data                       |
-|    13 | Compare Resumes   | `ComparisonPage`         | Side-by-side structured diff between two resumes            |
-|    14 | Settings          | `SettingsPage`           | Ollama URL, model, temperature, theme, backup/restore       |
+### Sidebar Navigation (icon index → page)
+
+| Icon Index | Page Name           | Class                    | Responsibility                                              |
+| ---------- | ------------------- | ------------------------ | ----------------------------------------------------------- |
+|          0 | Resume Upload       | `ResumeUploadPage`       | Import PDF/DOCX, parse, save                                |
+|          1 | Dashboard           | `DashboardPage`          | One-click pipeline, score cards, recent analyses            |
+|          2 | Optimization        | `OptimizationPage`       | Before/after ATS comparison, AI diff, Accept/Reject         |
+|          3 | Resume Studio       | `ResumeStudioPage`       | 3-panel MVVM editor with section tabs                       |
+|          4 | Cover Letter        | `CoverLetterPage`        | Generate tailored cover letter via AI                       |
+|          5 | Applications        | `ApplicationsPage`       | Application tracker with analytics dashboard                |
+|          6 | Settings            | `SettingsPage`           | Ollama URL, model, temperature, theme, backup/restore       |
+
+### Full Page Stack (20 pages)
+
+| Stack Index | Page Name             | Class                    | Responsibility                                              |
+| ----------- | --------------------- | ------------------------ | ----------------------------------------------------------- |
+|           0 | Dashboard             | `DashboardPage`          | One-click pipeline, score cards, recent analyses            |
+|           1 | Resume Upload         | `ResumeUploadPage`       | Import PDF/DOCX, parse, save                                |
+|           2 | Job Description       | `JobDescriptionPage`     | Paste, upload, or fetch job description from URL            |
+|           3 | ATS Analysis          | `ATSAnalysisPage`        | Keyword heatmap, score cards, suggestions                   |
+|           4 | Optimization          | `OptimizationPage`       | Before/after ATS comparison, AI diff, Accept/Reject         |
+|           5 | Resume Studio         | `ResumeStudioPage`       | 3-panel MVVM editor with section tabs                       |
+|           6 | Agent                 | `AgentPage`              | AI agent chat interface, multi-turn conversations, 7 tools  |
+|           7 | Cover Letter          | `CoverLetterPage`        | Generate tailored cover letter via AI                       |
+|           8 | Skill Gap             | `SkillGapPage`           | Match skills vs market demand, learning recommendations     |
+|           9 | Salary Estimate       | `SalaryEstimatePage`     | Salary range estimation via AI                              |
+|          10 | Applications          | `ApplicationsPage`       | Application tracker with analytics dashboard                |
+|          11 | Cover Letter Library  | `CoverLetterLibraryPage` | Browse, search, copy, and delete saved cover letters        |
+|          12 | Interview Prep        | `InterviewPrepPage`      | Generate behavioral/technical/situational questions         |
+|          13 | LinkedIn Import       | `LinkedInImportPage`     | Import LinkedIn JSON/CSV profile data                       |
+|          14 | Compare Resumes       | `ComparisonPage`         | Side-by-side structured diff between two resumes            |
+|          15 | Evidence Vault        | `EvidenceVaultPage`      | Save and organize supporting evidence                       |
+|          16 | Master Profile        | `MasterProfilePage`      | Consolidated career summary                                 |
+|          17 | Requirement Matrix    | `RequirementMatrixPage`  | JD requirement comparison                                   |
+|          18 | Discovery Interview   | `DiscoveryPage`          | Structured interview prep session                           |
+|          19 | Settings              | `SettingsPage`           | Ollama URL, model, temperature, theme, backup/restore       |
+
+### Section Tabs (Resume Studio sections)
+
+| Tab Name         | Studio Destination | Page Key                |
+| ---------------- | ------------------ | ----------------------- |
+| CONTACT          | Contact            | `resumeai_contact`      |
+| EXPERIENCE       | Experience         | `resumeai_experience`   |
+| PROJECT          | Project            | `resumeai_project`      |
+| EDUCATION        | Education          | `resumeai_education`    |
+| CERTIFICATIONS   | Certifications     | `resumeai_certifications`|
+| COURSEWORK       | Coursework         | `resumeai_coursework`   |
+| INVOLVEMENT      | Involvement        | `resumeai_involvement`  |
+| SKILLS           | Skills             | `resumeai_skills`       |
+| SUMMARY          | Summary            | `resumeai_summary`      |
 
 ### Global Search
 
@@ -693,10 +790,7 @@ A search bar in the sidebar nav (above the page list) provides cross-entity sear
 | Ctrl+S           | Force save current page         |
 | Ctrl+E           | Export current resume           |
 | Ctrl+N           | New resume                      |
-| Ctrl+Left        | Previous page                   |
-| Ctrl+Right       | Next page                       |
-| Ctrl+1 through 9 | Jump to page by index           |
-| Ctrl+0           | Jump to page 10 (Settings)      |
+| Escape           | Dismiss overlay / close popup   |
 
 ---
 
@@ -708,7 +802,16 @@ A search bar in the sidebar nav (above the page list) provides cross-entity sear
 Worker(QThread)           — generic background task with timeout
 PipelineWorker(QThread)   — full optimization pipeline with progress
 CancellationToken         — threading.Event wrapper for cooperative cancel
-OllamaCheckerThread       — periodic Ollama health check
+OllamaCheckerThread       — periodic Ollama health check (stale-response guard)
+```
+
+### Worker._emit_once Pattern
+
+```text
+Worker._emit_once(signal, value)
+    → If value is _MISSING sentinel: signal.emit() (no args)
+    → Otherwise: signal.emit(value)
+    → Prevents NoneType crash when service returns None
 ```
 
 ### Cancellation Model
@@ -728,6 +831,17 @@ Key guarantees:
 * Each Worker has its own CancellationToken (not global)
 * Cancel event is passed through to OllamaClient via `set_cancel_event()`
 * Cancelled requests are not retried
+
+### Sequential Analysis Chain
+
+```text
+JobDescriptionPage._trigger_analyses()
+    → Pre-fills SkillGap and Salary Estimate input fields
+    → Runs ATS analysis immediately
+    → Connects SkillGap.analysis_finished → SalaryEstimate.run_analysis (SingleShotConnection)
+    → Each run_analysis() returns bool (False = skipped, triggers next immediately)
+    → analysis_finished emitted in both _on_done and _on_error (try/finally)
+```
 
 ---
 
@@ -758,7 +872,7 @@ MAX_AI_PARSE_CHARACTERS = 40,000
 
 ## 13. TEST_STRATEGY
 
-### Test Count: 613 tests across 33 test files
+### Test Count: 855 tests across 33 test files
 
 | Test File                      | Focus                                              |
 | ------------------------------ | -------------------------------------------------- |
@@ -858,13 +972,35 @@ All 33 tasks across 6 phases are **complete**. See `tasks/plan.md` for the origi
 
 ### Future Enhancements ✅
 
-* [x] Keyboard shortcuts (Ctrl+S, Ctrl+E, Ctrl+N, Ctrl+Left/Right, Ctrl+1-9)
+* [x] Keyboard shortcuts (Ctrl+S, Ctrl+E, Ctrl+N, Escape)
 * [x] Score history tracking (ScoreSnapshot after each optimization)
 * [x] Application analytics dashboard (total, applied, interviews, offers, rejected)
 * [x] Backup & restore (export/import DB with integrity check)
 * [x] Resume comparison view (structured side-by-side diff)
 * [x] Global search (cross-entity search with result navigation)
 * [x] Onboarding wizard (3-step first-launch flow)
+
+### ResumeAI UI Overhaul ✅
+
+* [x] Dark navy theme (RESUMEAI_COLORS palette)
+* [x] ResumeAI design system (sidebar, top_nav, section_tabs, toggle_switch, form_field, dropdown, card, toast, section_menu)
+* [x] Section tabs with pill checkboxes
+* [x] Floating section visibility menu
+* [x] Sequential analysis chain (analysis_finished signal pattern)
+* [x] Pipeline result display on destination pages
+* [x] Ollama checker lifecycle fix (stale guard, single-shot cleanup)
+* [x] Worker._emit_once None-safety fix (_MISSING sentinel)
+* [x] ATS multi-word keyword highlighting
+* [x] Cover Letter, Skill Gap, Salary Estimate pipeline result caching
+
+### New Pages ✅
+
+* [x] Evidence Vault (save and organize supporting evidence)
+* [x] Master Profile (consolidated career summary)
+* [x] Requirement Matrix (JD requirement comparison)
+* [x] Discovery Interview (structured prep session)
+* [x] ResumeAI contact page
+* [x] ResumeAI placeholder pages for section tabs
 
 ---
 
