@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Resignation Letter - Resume Optimizer{% endblock %}
+{% block content %}
+<div class="page-header page-header-split">
+    <div>
+        <span class="eyebrow">Professional Writing</span>
+        <h1>Generate Resignation Letter</h1>
+        <p class="subtitle">Create a clear, professional resignation letter locally, review every detail, and export the final version.</p>
+    </div>
+    {% if letter %}
+    <form method="post" action="/resignation-letter/clear" data-confirm="Clear the letter and all resignation form details?">
+        <button class="btn btn-danger" type="submit">Start New Letter</button>
+    </form>
+    {% endif %}
+</div>
+
+{% if request.query_params.get('generated') %}<div class="alert alert-success">Resignation letter generated. Review the dates and employment details before submitting it.</div>{% endif %}
+{% if request.query_params.get('saved') %}<div class="alert alert-success">Your edited resignation letter has been saved in this browser session.</div>{% endif %}
+{% if request.query_params.get('cleared') %}<div class="alert alert-success">The resignation letter form has been reset.</div>{% endif %}
+{% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
+
+<div class="resignation-layout">
+    <section class="panel resignation-form-panel">
+        <div class="panel-heading">
+            <div><h2>Letter Details</h2><p>Fields marked with * are required. No AI connection is needed.</p></div>
+        </div>
+        <form method="post" action="/resignation-letter/generate" class="processing-form" id="resignationForm">
+            <h3 class="form-section-title">Your details</h3>
+            <div class="form-row form-row-two">
+                <div class="form-group">
+                    <label for="employee_name">Full name *</label>
+                    <input type="text" id="employee_name" name="employee_name" maxlength="160" value="{{ form_data.employee_name }}" autocomplete="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="letter_date">Letter date *</label>
+                    <input type="date" id="letter_date" name="letter_date" value="{{ form_data.letter_date }}" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="employee_address">Your address</label>
+                <textarea id="employee_address" name="employee_address" rows="2" maxlength="800" placeholder="Street, city, postcode">{{ form_data.employee_address }}</textarea>
+            </div>
+            <div class="form-row form-row-two">
+                <div class="form-group">
+                    <label for="employee_email">Email</label>
+                    <input type="email" id="employee_email" name="employee_email" maxlength="200" value="{{ form_data.employee_email }}" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="employee_phone">Phone</label>
+                    <input type="tel" id="employee_phone" name="employee_phone" maxlength="80" value="{{ form_data.employee_phone }}" autocomplete="tel">
+                </div>
+            </div>
+
+            <h3 class="form-section-title">Employer details</h3>
+            <div class="form-row form-row-two">
+                <div class="form-group">
+                    <label for="manager_name">Manager or recipient</label>
+                    <input type="text" id="manager_name" name="manager_name" maxlength="160" value="{{ form_data.manager_name }}" placeholder="e.g. Ms Aisha Rahman">
+                </div>
+                <div class="form-group">
+                    <label for="manager_title">Recipient title</label>
+                    <input type="text" id="manager_title" name="manager_title" maxlength="160" value="{{ form_data.manager_title }}" placeholder="e.g. Human Resources Manager">
+                </div>
+            </div>
+            <div class="form-row form-row-two">
+                <div class="form-group">
+                    <label for="company_name">Company name *</label>
+                    <input type="text" id="company_name" name="company_name" maxlength="200" value="{{ form_data.company_name }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="position">Your position *</label>
+                    <input type="text" id="position" name="position" maxlength="200" value="{{ form_data.position }}" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="company_address">Company address</label>
+                <textarea id="company_address" name="company_address" rows="2" maxlength="800" placeholder="Company street, city, postcode">{{ form_data.company_address }}</textarea>
+            </div>
+
+            <h3 class="form-section-title">Resignation details</h3>
+            <div class="form-row form-row-two">
+                <div class="form-group">
+                    <label for="last_working_day">Last working day *</label>
+                    <input type="date" id="last_working_day" name="last_working_day" value="{{ form_data.last_working_day }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="notice_period">Notice period</label>
+                    <input type="text" id="notice_period" name="notice_period" maxlength="100" value="{{ form_data.notice_period }}" placeholder="e.g. two months'">
+                    <small>Enter wording that fits before “notice”.</small>
+                </div>
+            </div>
+            <div class="form-row form-row-two">
+                <div class="form-group">
+                    <label for="tone">Tone</label>
+                    <select id="tone" name="tone">
+                        <option value="formal" {% if form_data.tone == 'formal' %}selected{% endif %}>Formal</option>
+                        <option value="warm" {% if form_data.tone == 'warm' %}selected{% endif %}>Warm and appreciative</option>
+                        <option value="concise" {% if form_data.tone == 'concise' %}selected{% endif %}>Concise</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="reason">Reason to include</label>
+                    <select id="reason" name="reason">
+                        <option value="none" {% if form_data.reason == 'none' %}selected{% endif %}>Do not state a reason</option>
+                        <option value="career" {% if form_data.reason == 'career' %}selected{% endif %}>New career opportunity</option>
+                        <option value="further_studies" {% if form_data.reason == 'further_studies' %}selected{% endif %}>Further studies</option>
+                        <option value="personal" {% if form_data.reason == 'personal' %}selected{% endif %}>Personal reasons</option>
+                        <option value="relocation" {% if form_data.reason == 'relocation' %}selected{% endif %}>Relocation</option>
+                        <option value="family_health" {% if form_data.reason == 'family_health' %}selected{% endif %}>Family or health considerations</option>
+                        <option value="retirement" {% if form_data.reason == 'retirement' %}selected{% endif %}>Retirement</option>
+                        <option value="other" {% if form_data.reason == 'other' %}selected{% endif %}>Other wording</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group" id="reasonDetailsGroup" {% if form_data.reason != 'other' %}hidden{% endif %}>
+                <label for="reason_details">Custom reason wording</label>
+                <textarea id="reason_details" name="reason_details" rows="2" maxlength="500" placeholder="Write one neutral sentence only">{{ form_data.reason_details }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="appreciation_note">Custom appreciation note</label>
+                <textarea id="appreciation_note" name="appreciation_note" rows="3" maxlength="700" placeholder="Optional. Leave blank to use the standard professional wording.">{{ form_data.appreciation_note }}</textarea>
+            </div>
+            <label class="checkbox-card" for="transition_support">
+                <input type="checkbox" id="transition_support" name="transition_support" {% if form_data.transition_support %}checked{% endif %}>
+                <span><strong>Offer transition support</strong><small>Include a commitment to complete outstanding work and assist with handover.</small></span>
+            </label>
+            <button type="submit" class="btn btn-primary btn-large btn-block">{% if letter %}Regenerate Letter{% else %}Generate Resignation Letter{% endif %}</button>
+        </form>
+    </section>
+
+    <section class="panel resignation-preview-panel">
+        <div class="panel-heading">
+            <div><h2>Editable Preview</h2><p>{% if letter %}Edit the generated wording before saving or downloading.{% else %}Your generated letter will appear here.{% endif %}</p></div>
+        </div>
+        {% if letter %}
+        <form method="post" id="resignationLetterOutputForm">
+            <textarea class="cover-letter-editor resignation-editor" id="resignationLetterText" name="letter_text" rows="31" maxlength="20000" aria-label="Generated resignation letter">{{ letter }}</textarea>
+            <div class="resignation-output-actions">
+                <button type="button" class="btn btn-secondary" id="copyResignationButton">Copy</button>
+                <button type="submit" class="btn btn-secondary" formaction="/resignation-letter/save">Save Changes</button>
+                <button type="submit" class="btn btn-secondary" formaction="/resignation-letter/download/txt">Download TXT</button>
+                <button type="submit" class="btn btn-secondary" formaction="/resignation-letter/download/docx">Download DOCX</button>
+                <button type="submit" class="btn btn-primary" formaction="/resignation-letter/download/pdf">Download PDF</button>
+            </div>
+        </form>
+        {% else %}
+        <div class="letter-placeholder">
+            <span>📝</span>
+            <h3>Complete the form to begin</h3>
+            <p>The draft will use only the information entered on this page. You can edit it before export.</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const reasonSelect = document.getElementById('reason');
+  const reasonGroup = document.getElementById('reasonDetailsGroup');
+  const reasonDetails = document.getElementById('reason_details');
+  const syncReasonField = () => {
+    const show = reasonSelect && reasonSelect.value === 'other';
+    if (reasonGroup) reasonGroup.hidden = !show;
+    if (reasonDetails) reasonDetails.required = Boolean(show);
+  };
+  if (reasonSelect) {
+    reasonSelect.addEventListener('change', syncReasonField);
+    syncReasonField();
+  }
+
+  const letterField = document.getElementById('resignationLetterText');
+  const copyButton = document.getElementById('copyResignationButton');
+  if (letterField && copyButton) {
+    copyButton.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(letterField.value);
+        window.showGlobalToast('Resignation letter copied.');
+      } catch {
+        letterField.select();
+        document.execCommand('copy');
+        window.showGlobalToast('Resignation letter copied.');
+      }
+    });
+  }
+
+  const letterDate = document.getElementById('letter_date');
+  const lastDay = document.getElementById('last_working_day');
+  const syncMinimumDate = () => {
+    if (!letterDate || !lastDay) return;
+    lastDay.min = letterDate.value || '';
+    if (lastDay.value && letterDate.value && lastDay.value < letterDate.value) {
+      lastDay.setCustomValidity('Last working day cannot be earlier than the letter date.');
+    } else {
+      lastDay.setCustomValidity('');
+    }
+  };
+  if (letterDate && lastDay) {
+    letterDate.addEventListener('change', syncMinimumDate);
+    lastDay.addEventListener('change', syncMinimumDate);
+    syncMinimumDate();
+  }
+})();
+</script>
+{% endblock %}

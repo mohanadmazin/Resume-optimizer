@@ -3,31 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
     <title>{% block title %}Resume Optimizer{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/style.css">
     {% block head %}{% endblock %}
 </head>
 <body>
-    <nav class="sidebar">
-        <div class="sidebar-brand">ResumeAI</div>
+    <button class="mobile-menu-button" id="sidebarToggle" type="button" aria-label="Open navigation" aria-expanded="false">☰</button>
+    <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+
+    <nav class="sidebar" id="sidebar" aria-label="Main navigation">
+        <a class="sidebar-brand" href="/" aria-label="ResumeAI dashboard">
+            <span class="brand-logo">R</span>
+            <span><strong>ResumeAI</strong><small>Local Optimizer</small></span>
+        </a>
+
+        <div class="workflow-mini" aria-label="Current workflow status">
+            <div class="workflow-mini-row">
+                <span class="status-dot {% if workflow_has_resume %}complete{% endif %}"></span>
+                <span title="{{ workflow_resume_name or 'No resume selected' }}">{{ workflow_resume_name or 'Select resume' }}</span>
+            </div>
+            <div class="workflow-mini-row">
+                <span class="status-dot {% if workflow_has_job %}complete{% endif %}"></span>
+                <span title="{{ workflow_job_title or 'No job selected' }}">{{ workflow_job_title or 'Add target job' }}</span>
+            </div>
+        </div>
+
         <ul class="sidebar-nav">
-            <li><a href="/" class="{% if page == 'dashboard' %}active{% endif %}">Dashboard</a></li>
-            <li><a href="/upload" class="{% if page == 'upload' %}active{% endif %}">Upload Resume</a></li>
-            <li><a href="/jobs" class="{% if page == 'jobs' %}active{% endif %}">Job Description</a></li>
-            <li><a href="/ats" class="{% if page == 'ats' %}active{% endif %}">ATS Analysis</a></li>
-            <li><a href="/optimize" class="{% if page == 'optimize' %}active{% endif %}">Optimize</a></li>
-            <li><a href="/cover-letter" class="{% if page == 'cover_letter' %}active{% endif %}">Cover Letter</a></li>
-            <li><a href="/settings" class="{% if page == 'settings' %}active{% endif %}">Settings</a></li>
+            <li><a href="/" class="{% if page == 'dashboard' %}active{% endif %}"><span>⌂</span>Dashboard</a></li>
+            <li><a href="/builder/" class="{% if page == 'builder' %}active{% endif %}"><span>✎</span>Resume Builder</a></li>
+            <li><a href="/upload" class="{% if page == 'upload' %}active{% endif %}"><span>⇧</span>Upload Resume</a></li>
+            <li><a href="/jobs" class="{% if page == 'jobs' %}active{% endif %}"><span>▣</span>Job Description</a></li>
+            <li><a href="/ats" class="{% if page == 'ats' %}active{% endif %}"><span>✓</span>ATS Analysis</a></li>
+            <li><a href="/optimize" class="{% if page == 'optimize' %}active{% endif %}"><span>⚡</span>Optimize</a></li>
+            <li><a href="/cover-letter" class="{% if page == 'cover_letter' %}active{% endif %}"><span>✉</span>Cover Letter</a></li>
+            <li><a href="/resignation-letter" class="{% if page == 'resignation_letter' %}active{% endif %}"><span>↪</span>Resignation Letter</a></li>
+            <li><a href="/settings" class="{% if page == 'settings' %}active{% endif %}"><span>⚙</span>Settings</a></li>
         </ul>
+
         <div class="sidebar-footer">
-            <div class="ollama-badge" id="ollama-status">
-                <span class="dot dot-red"></span> Checking Ollama...
+            <div class="ollama-badge" id="ollama-status" role="status" aria-live="polite">
+                <span class="dot dot-yellow"></span> Checking Ollama…
             </div>
         </div>
     </nav>
+
     <main class="content">
         {% block content %}{% endblock %}
     </main>
+
+    <div class="toast" id="globalToast" role="status" aria-live="polite"></div>
     <script src="/static/js/app.js"></script>
     {% block scripts %}{% endblock %}
 </body>

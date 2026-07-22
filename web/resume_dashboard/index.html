@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Responsive dark resume builder with contact, experience, projects, education, certifications, coursework, skills, summary, preview, and cover letter pages." />
+  <title>ResumeForge — Resume Builder</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="side-rail" aria-label="Application shortcuts">
+      <a class="brand-mark" href="#contact" aria-label="ResumeForge home">
+        <span></span><span></span><span></span><span></span>
+      </a>
+
+      <nav class="side-nav" aria-label="Builder shortcuts">
+        <button class="side-button" type="button" aria-label="Create a new resume" data-tooltip="New resume" id="newResumeButton">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 3h7l5 5v13H7z"/>
+            <path d="M14 3v6h6M12 12v6M9 15h6"/>
+          </svg>
+        </button>
+
+        <button class="side-button" type="button" aria-label="Upload resume file" data-tooltip="Upload file" id="uploadResumeButton" onclick="document.getElementById('uploadResumeInput').click()">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </button>
+        <input type="file" id="uploadResumeInput" accept=".pdf,.docx,.doc,.txt" style="display:none" />
+
+        <button class="side-button active" type="button" aria-label="Resume editor" data-tooltip="Resume editor" data-page="contact">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 2h8l4 4v16H6z"/>
+            <path d="M14 2v5h5"/>
+          </svg>
+        </button>
+
+        <button class="side-button" type="button" aria-label="AI cover letter" data-tooltip="AI cover letter" data-page="cover-letter">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2l1.6 5.2L19 9l-5.4 1.8L12 16l-1.6-5.2L5 9l5.4-1.8z"/>
+            <path d="M19 14l.9 2.9L23 18l-3.1 1.1L19 22l-.9-2.9L15 18l3.1-1.1z"/>
+          </svg>
+        </button>
+
+        <button class="side-button" type="button" aria-label="Preview resume" data-tooltip="Preview" data-page="preview">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 3h10l4 4v14H5z"/>
+            <path d="M15 3v5h5M8 12h8M8 16h8"/>
+          </svg>
+        </button>
+
+        <button class="side-button" type="button" aria-label="Save resume" data-tooltip="Save all" id="saveAllButton">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 3h12v18l-6-4-6 4z"/>
+            <path d="M9 8h6M9 11h6"/>
+          </svg>
+        </button>
+
+        <button class="side-button" type="button" aria-label="Download resume data" data-tooltip="Export data" id="exportDataButton">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 2h9l4 4v16H6z"/>
+            <path d="M15 2v5h5M12 9v8M9 14l3 3 3-3"/>
+          </svg>
+        </button>
+      </nav>
+
+      <a class="upgrade-button" href="/" aria-label="Return to main dashboard">
+        <span class="bolt">⌂</span>
+        <span>Dashboard</span>
+      </a>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="topbar-left">
+          <label class="year-select" aria-label="Resume year">
+            <select id="resumeYear">
+              <option>2026</option>
+              <option>2025</option>
+              <option>2024</option>
+            </select>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m8 10 4 4 4-4"/>
+            </svg>
+          </label>
+
+          <div class="section-tabs" role="tablist" aria-label="Resume form sections">
+            <button class="tab active" type="button" role="tab" aria-selected="true" data-page="contact">Contact</button>
+            <button class="tab" type="button" role="tab" aria-selected="false" data-page="experience">Experience</button>
+            <button class="tab" type="button" role="tab" aria-selected="false" data-page="project">Project</button>
+            <button class="tab" type="button" role="tab" aria-selected="false" data-page="education">Education</button>
+            <button class="tab" type="button" role="tab" aria-selected="false" data-page="certifications">Certifications</button>
+            <button class="tab" type="button" role="tab" aria-selected="false" data-page="coursework">Coursework</button>
+            <button class="tab" type="button" role="tab" aria-selected="false" data-page="skills">Skills</button>
+            <button class="tab" type="button" role="tab" aria-selected="false" data-page="summary">Summary</button>
+          </div>
+        </div>
+
+        <div class="top-actions">
+          <button class="action-button" type="button" data-page="preview">Finish Up &amp; Preview</button>
+          <button class="action-button" type="button" data-page="cover-letter">AI Cover Letter</button>
+          <a class="action-button action-link" href="/resignation-letter">Resignation Letter</a>
+        </div>
+      </header>
+
+      <section class="content-area">
+        <!-- CONTACT -->
+        <section class="page-panel active" id="page-contact" data-page-panel="contact">
+          <form class="resume-card" id="contactForm">
+            <div class="page-heading compact-heading">
+              <div>
+                <span class="eyebrow">Basic information</span>
+                <h1>Contact</h1>
+              </div>
+              <p>Add the contact details employers should use to reach you.</p>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="fullName">Full Name</label>
+                <input id="fullName" name="fullName" type="text" value="" autocomplete="name" required />
+              </div>
+
+              <div class="form-field">
+                <label for="email">Email Address</label>
+                <input id="email" name="email" type="email" value="" autocomplete="email" required />
+              </div>
+
+              <div class="form-field">
+                <label for="phone">Phone Number</label>
+                <input id="phone" name="phone" type="tel" value="" autocomplete="tel" />
+              </div>
+
+              <div class="form-field">
+                <label for="linkedin">LinkedIn URL</label>
+                <div class="input-with-icon">
+                  <input id="linkedin" name="linkedin" type="url" value="" />
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/>
+                    <path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/>
+                  </svg>
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label for="website">Personal Website or Relevant Link</label>
+                <input id="website" name="website" type="url" placeholder="https://www.yourportfolio.com" />
+              </div>
+
+              <div class="form-field">
+                <div class="field-heading">
+                  <label for="country">Country</label>
+                  <div class="visibility-control">
+                    <span>Show on resume</span>
+                    <button class="toggle active" type="button" aria-pressed="true" data-visibility="country" aria-label="Show country on resume"><span></span></button>
+                  </div>
+                </div>
+                <div class="select-wrap">
+                  <select id="country" name="country">
+                    <option selected>Malaysia</option>
+                    <option>Singapore</option>
+                    <option>Indonesia</option>
+                    <option>Thailand</option>
+                    <option>Brunei</option>
+                  </select>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+                </div>
+              </div>
+
+              <div class="form-field">
+                <div class="field-heading">
+                  <label for="state">State</label>
+                  <div class="visibility-control">
+                    <span>Show on resume</span>
+                    <button class="toggle active" type="button" aria-pressed="true" data-visibility="state" aria-label="Show state on resume"><span></span></button>
+                  </div>
+                </div>
+                <div class="select-wrap">
+                  <select id="state" name="state">
+                    <option selected>Selangor</option>
+                    <option>Kuala Lumpur</option>
+                    <option>Johor</option>
+                    <option>Penang</option>
+                    <option>Sabah</option>
+                    <option>Sarawak</option>
+                  </select>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+                </div>
+              </div>
+
+              <div class="form-field">
+                <div class="field-heading">
+                  <label for="city">City</label>
+                  <div class="visibility-control">
+                    <span>Show on resume</span>
+                    <button class="toggle active" type="button" aria-pressed="true" data-visibility="city" aria-label="Show city on resume"><span></span></button>
+                  </div>
+                </div>
+                <div class="select-wrap">
+                  <select id="city" name="city">
+                    <option selected>Petaling Jaya</option>
+                    <option>Shah Alam</option>
+                    <option>Subang Jaya</option>
+                    <option>Klang</option>
+                    <option>Cyberjaya</option>
+                  </select>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-footer">
+              <div class="save-status" aria-live="polite"></div>
+              <button class="primary-button" type="submit">Save Basic Info</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- EXPERIENCE -->
+        <section class="page-panel" id="page-experience" data-page-panel="experience">
+          <div class="resume-card">
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">Work history</span>
+                <h1>Experience</h1>
+                <p>Show what you accomplished, not only what you were responsible for.</p>
+              </div>
+              <button class="secondary-button add-entry" type="button" data-entry-type="experience">+ Add Experience</button>
+            </div>
+            <div class="entry-list" id="experienceList"></div>
+            <div class="form-footer">
+              <div class="save-status" aria-live="polite"></div>
+              <button class="primary-button save-section" type="button" data-section="experience">Save Experience</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- PROJECT -->
+        <section class="page-panel" id="page-project" data-page-panel="project">
+          <div class="resume-card">
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">Selected work</span>
+                <h1>Projects</h1>
+                <p>Add academic, professional, freelance, or personal projects that demonstrate impact.</p>
+              </div>
+              <button class="secondary-button add-entry" type="button" data-entry-type="project">+ Add Project</button>
+            </div>
+            <div class="entry-list" id="projectList"></div>
+            <div class="form-footer">
+              <div class="save-status" aria-live="polite"></div>
+              <button class="primary-button save-section" type="button" data-section="project">Save Projects</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- EDUCATION -->
+        <section class="page-panel" id="page-education" data-page-panel="education">
+          <div class="resume-card">
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">Academic background</span>
+                <h1>Education</h1>
+                <p>Include your programme, institution, dates, and relevant academic highlights.</p>
+              </div>
+              <button class="secondary-button add-entry" type="button" data-entry-type="education">+ Add Education</button>
+            </div>
+            <div class="entry-list" id="educationList"></div>
+            <div class="form-footer">
+              <div class="save-status" aria-live="polite"></div>
+              <button class="primary-button save-section" type="button" data-section="education">Save Education</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- CERTIFICATIONS -->
+        <section class="page-panel" id="page-certifications" data-page-panel="certifications">
+          <div class="resume-card">
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">Credentials</span>
+                <h1>Certifications</h1>
+                <p>List current certifications, licences, and recognised professional credentials.</p>
+              </div>
+              <button class="secondary-button add-entry" type="button" data-entry-type="certification">+ Add Certification</button>
+            </div>
+            <div class="entry-list" id="certificationList"></div>
+            <div class="form-footer">
+              <div class="save-status" aria-live="polite"></div>
+              <button class="primary-button save-section" type="button" data-section="certifications">Save Certifications</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- COURSEWORK -->
+        <section class="page-panel" id="page-coursework" data-page-panel="coursework">
+          <form class="resume-card" id="courseworkForm">
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">Relevant study</span>
+                <h1>Coursework</h1>
+                <p>Include modules that support the role you are targeting.</p>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="courseworkTitle">Section Title</label>
+                <input id="courseworkTitle" name="courseworkTitle" type="text" value="Relevant Coursework" />
+              </div>
+              <div class="form-field">
+                <label for="courseworkInstitution">Institution (optional)</label>
+                <input id="courseworkInstitution" name="courseworkInstitution" type="text" placeholder="University or training provider" />
+              </div>
+              <div class="form-field full-width">
+                <label for="courseworkItems">Courses</label>
+                <textarea id="courseworkItems" name="courseworkItems" rows="8" placeholder="One course per line">Data Analytics
+Project Management
+Financial Modelling
+Business Research Methods</textarea>
+                <span class="field-help">Enter one course per line. These will appear as a clean list in the preview.</span>
+              </div>
+            </div>
+            <div class="form-footer">
+              <div class="save-status" aria-live="polite"></div>
+              <button class="primary-button" type="submit">Save Coursework</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- SKILLS -->
+        <section class="page-panel" id="page-skills" data-page-panel="skills">
+          <div class="resume-card">
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">Core capabilities</span>
+                <h1>Skills</h1>
+                <p>Add technical, analytical, language, and professional skills relevant to your target role.</p>
+              </div>
+            </div>
+
+            <div class="skill-composer">
+              <div class="form-field">
+                <label for="skillName">Skill</label>
+                <input id="skillName" type="text" placeholder="e.g. Power BI" />
+              </div>
+              <div class="form-field">
+                <label for="skillLevel">Proficiency</label>
+                <div class="select-wrap">
+                  <select id="skillLevel">
+                    <option>Advanced</option>
+                    <option selected>Intermediate</option>
+                    <option>Beginner</option>
+                  </select>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+                </div>
+              </div>
+              <button class="secondary-button skill-add-button" type="button" id="addSkillButton">+ Add Skill</button>
+            </div>
+
+            <div class="skills-board" id="skillsBoard"></div>
+
+            <div class="form-footer">
+              <div class="save-status" aria-live="polite"></div>
+              <button class="primary-button save-section" type="button" data-section="skills">Save Skills</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- SUMMARY -->
+        <section class="page-panel" id="page-summary" data-page-panel="summary">
+          <form class="resume-card" id="summaryForm">
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">Professional profile</span>
+                <h1>Summary</h1>
+                <p>Write a focused introduction that connects your experience, strengths, and career direction.</p>
+              </div>
+              <button class="secondary-button" type="button" id="generateSummaryButton">✦ Generate Draft</button>
+            </div>
+
+            <div class="form-field">
+              <label for="professionalTitle">Target Professional Title</label>
+              <input id="professionalTitle" name="professionalTitle" type="text" value="Business & Data Analyst" />
+            </div>
+
+            <div class="form-field summary-field">
+              <div class="field-heading">
+                <label for="summaryText">Professional Summary</label>
+                <span class="character-count"><strong id="summaryCount">0</strong>/700</span>
+              </div>
+              <textarea id="summaryText" name="summaryText" rows="10" maxlength="700">Analytical and detail-oriented professional with experience supporting data-driven decisions, improving reporting workflows, and translating complex information into clear business insights. Skilled in Excel, Power BI, project coordination, and stakeholder communication, with a strong commitment to accuracy, continuous learning, and measurable results.</textarea>
+            </div>
+
+            <div class="tip-card">
+              <span class="tip-icon">✦</span>
+              <div>
+                <strong>Strong summary formula</strong>
+                <p>Professional identity + years or type of experience + strongest skills + measurable value + target direction.</p>
+              </div>
+            </div>
+
+            <div class="form-footer">
+              <div class="save-status" aria-live="polite"></div>
+              <button class="primary-button" type="submit">Save Summary</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- PREVIEW -->
+        <section class="page-panel" id="page-preview" data-page-panel="preview">
+          <div class="preview-layout">
+            <aside class="preview-controls">
+              <div class="control-card">
+                <span class="eyebrow">Final review</span>
+                <h1>Finish Up &amp; Preview</h1>
+                <p>Review the generated resume, return to any section to make changes, or print it as a PDF.</p>
+                <div class="completion-block">
+                  <div class="completion-copy">
+                    <span>Resume completion</span>
+                    <strong id="completionValue">0%</strong>
+                  </div>
+                  <div class="progress-track"><span id="completionBar"></span></div>
+                </div>
+                <button class="primary-button wide-button" type="button" id="printResumeButton">Print / Save as PDF</button>
+                <button class="secondary-button wide-button" type="button" id="downloadTextButton">Download Plain Text</button>
+              </div>
+
+              <div class="control-card compact-control">
+                <strong>Quick navigation</strong>
+                <div class="quick-links">
+                  <button type="button" data-page="contact">Contact</button>
+                  <button type="button" data-page="experience">Experience</button>
+                  <button type="button" data-page="project">Projects</button>
+                  <button type="button" data-page="education">Education</button>
+                  <button type="button" data-page="skills">Skills</button>
+                  <button type="button" data-page="summary">Summary</button>
+                </div>
+              </div>
+            </aside>
+
+            <div class="resume-paper-wrap">
+              <article class="resume-paper" id="resumePreview" aria-label="Resume preview"></article>
+            </div>
+          </div>
+        </section>
+
+        <!-- COVER LETTER -->
+        <section class="page-panel" id="page-cover-letter" data-page-panel="cover-letter">
+          <div class="cover-letter-layout">
+            <form class="resume-card cover-letter-form" id="coverLetterForm">
+              <div class="page-heading">
+                <div>
+                  <span class="eyebrow">Application support</span>
+                  <h1>AI Cover Letter</h1>
+                  <p>Provide the target role and job context. The builder will prepare an editable first draft using your resume data.</p>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="coverJobTitle">Job Title</label>
+                  <input id="coverJobTitle" name="coverJobTitle" type="text" placeholder="e.g. Data Analyst" required />
+                </div>
+                <div class="form-field">
+                  <label for="coverCompany">Company</label>
+                  <input id="coverCompany" name="coverCompany" type="text" placeholder="e.g. Acme Malaysia" required />
+                </div>
+                <div class="form-field">
+                  <label for="coverHiringManager">Hiring Manager (optional)</label>
+                  <input id="coverHiringManager" name="coverHiringManager" type="text" placeholder="e.g. Ms. Sarah Tan" />
+                </div>
+                <div class="form-field">
+                  <label for="coverTone">Tone</label>
+                  <div class="select-wrap">
+                    <select id="coverTone" name="coverTone">
+                      <option selected>Professional</option>
+                      <option>Confident</option>
+                      <option>Warm</option>
+                      <option>Concise</option>
+                    </select>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+                  </div>
+                </div>
+                <div class="form-field full-width">
+                  <label for="jobDescription">Job Description or Key Requirements</label>
+                  <textarea id="jobDescription" name="jobDescription" rows="8" placeholder="Paste the job description or list the main requirements here."></textarea>
+                </div>
+              </div>
+
+              <div class="form-footer">
+                <button class="primary-button" type="submit">Generate Cover Letter</button>
+              </div>
+            </form>
+
+            <section class="letter-output-card">
+              <div class="letter-output-toolbar">
+                <div>
+                  <span class="eyebrow">Editable output</span>
+                  <h2>Your Cover Letter</h2>
+                </div>
+                <div class="letter-actions">
+                  <button class="icon-text-button" type="button" id="copyLetterButton">Copy</button>
+                  <button class="icon-text-button" type="button" id="downloadLetterButton">Download</button>
+                </div>
+              </div>
+              <textarea id="coverLetterOutput" aria-label="Generated cover letter" placeholder="Your generated cover letter will appear here."></textarea>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <template id="experienceTemplate">
+    <article class="entry-card" data-entry="experience">
+      <div class="entry-card-header">
+        <div>
+          <span class="entry-number">Experience</span>
+          <h2 class="entry-title">New position</h2>
+        </div>
+        <button class="remove-entry" type="button" aria-label="Remove experience">Remove</button>
+      </div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Job Title</label>
+          <input data-field="title" type="text" placeholder="e.g. Data Analyst" />
+        </div>
+        <div class="form-field">
+          <label>Company</label>
+          <input data-field="company" type="text" placeholder="e.g. Company Sdn. Bhd." />
+        </div>
+        <div class="form-field">
+          <label>Location</label>
+          <input data-field="location" type="text" placeholder="e.g. Kuala Lumpur, Malaysia" />
+        </div>
+        <div class="form-field">
+          <label>Employment Type</label>
+          <div class="select-wrap">
+            <select data-field="type">
+              <option>Full-time</option>
+              <option>Part-time</option>
+              <option>Internship</option>
+              <option>Contract</option>
+              <option>Freelance</option>
+            </select>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+          </div>
+        </div>
+        <div class="form-field">
+          <label>Start Date</label>
+          <input data-field="start" type="month" />
+        </div>
+        <div class="form-field">
+          <label>End Date</label>
+          <input data-field="end" type="month" />
+        </div>
+        <div class="form-field full-width">
+          <label>Achievements and Responsibilities</label>
+          <textarea data-field="description" rows="7" placeholder="One accomplishment or responsibility per line"></textarea>
+          <span class="field-help">Use action verbs and include numbers where possible.</span>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <template id="projectTemplate">
+    <article class="entry-card" data-entry="project">
+      <div class="entry-card-header">
+        <div>
+          <span class="entry-number">Project</span>
+          <h2 class="entry-title">New project</h2>
+        </div>
+        <button class="remove-entry" type="button" aria-label="Remove project">Remove</button>
+      </div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Project Name</label>
+          <input data-field="name" type="text" placeholder="e.g. Sales Performance Dashboard" />
+        </div>
+        <div class="form-field">
+          <label>Role</label>
+          <input data-field="role" type="text" placeholder="e.g. Data Analyst" />
+        </div>
+        <div class="form-field">
+          <label>Project Link</label>
+          <input data-field="link" type="url" placeholder="https://..." />
+        </div>
+        <div class="form-field">
+          <label>Technologies / Tools</label>
+          <input data-field="tools" type="text" placeholder="e.g. Power BI, Excel, SQL" />
+        </div>
+        <div class="form-field">
+          <label>Start Date</label>
+          <input data-field="start" type="month" />
+        </div>
+        <div class="form-field">
+          <label>End Date</label>
+          <input data-field="end" type="month" />
+        </div>
+        <div class="form-field full-width">
+          <label>Project Highlights</label>
+          <textarea data-field="description" rows="7" placeholder="One project achievement per line"></textarea>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <template id="educationTemplate">
+    <article class="entry-card" data-entry="education">
+      <div class="entry-card-header">
+        <div>
+          <span class="entry-number">Education</span>
+          <h2 class="entry-title">New qualification</h2>
+        </div>
+        <button class="remove-entry" type="button" aria-label="Remove education">Remove</button>
+      </div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Qualification</label>
+          <input data-field="qualification" type="text" placeholder="e.g. Bachelor of Business Administration" />
+        </div>
+        <div class="form-field">
+          <label>Institution</label>
+          <input data-field="institution" type="text" placeholder="e.g. Universiti Teknologi MARA" />
+        </div>
+        <div class="form-field">
+          <label>Field of Study</label>
+          <input data-field="field" type="text" placeholder="e.g. Finance" />
+        </div>
+        <div class="form-field">
+          <label>Location</label>
+          <input data-field="location" type="text" placeholder="e.g. Selangor, Malaysia" />
+        </div>
+        <div class="form-field">
+          <label>Start Date</label>
+          <input data-field="start" type="month" />
+        </div>
+        <div class="form-field">
+          <label>End Date</label>
+          <input data-field="end" type="month" />
+        </div>
+        <div class="form-field">
+          <label>CGPA / Grade (optional)</label>
+          <input data-field="grade" type="text" placeholder="e.g. 3.65 / 4.00" />
+        </div>
+        <div class="form-field">
+          <label>Honours (optional)</label>
+          <input data-field="honours" type="text" placeholder="e.g. Dean's List" />
+        </div>
+        <div class="form-field full-width">
+          <label>Academic Highlights</label>
+          <textarea data-field="description" rows="6" placeholder="One academic highlight per line"></textarea>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <template id="certificationTemplate">
+    <article class="entry-card" data-entry="certification">
+      <div class="entry-card-header">
+        <div>
+          <span class="entry-number">Certification</span>
+          <h2 class="entry-title">New certification</h2>
+        </div>
+        <button class="remove-entry" type="button" aria-label="Remove certification">Remove</button>
+      </div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Certification Name</label>
+          <input data-field="name" type="text" placeholder="e.g. Microsoft Power BI Data Analyst" />
+        </div>
+        <div class="form-field">
+          <label>Issuing Organisation</label>
+          <input data-field="issuer" type="text" placeholder="e.g. Microsoft" />
+        </div>
+        <div class="form-field">
+          <label>Issue Date</label>
+          <input data-field="issue" type="month" />
+        </div>
+        <div class="form-field">
+          <label>Expiry Date (optional)</label>
+          <input data-field="expiry" type="month" />
+        </div>
+        <div class="form-field">
+          <label>Credential ID (optional)</label>
+          <input data-field="credentialId" type="text" placeholder="Credential ID" />
+        </div>
+        <div class="form-field">
+          <label>Credential URL (optional)</label>
+          <input data-field="url" type="url" placeholder="https://..." />
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <span class="toast-icon">✓</span>
+    <span id="toastMessage">Saved.</span>
+  </div>
+
+  <div class="modal-backdrop" id="resetModal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="resetTitle">
+      <h2 id="resetTitle">Start a new resume?</h2>
+      <p>This starts with a blank resume and clears the builder data saved in this browser. This action cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="secondary-button" type="button" id="cancelResetButton">Cancel</button>
+        <button class="danger-button" type="button" id="confirmResetButton">Clear Resume</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="uploadModal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="uploadTitle" style="max-width:520px;">
+      <h2 id="uploadTitle">Upload Resume</h2>
+      <p>Upload a PDF, DOCX, or TXT file. The parser will extract contact info, experience, education, skills, and more.</p>
+
+      <div class="upload-drop-zone" id="uploadDropZone">
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="width:40px;height:40px;stroke:var(--accent);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;margin:0 auto 12px;">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <div><strong>Drop your resume here</strong></div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px;">or click to browse</div>
+        <div id="uploadFileName" style="color:var(--accent-soft);font-size:12px;margin-top:10px;font-weight:700;"></div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:18px;">
+        <button class="secondary-button" type="button" id="cancelUploadButton">Cancel</button>
+        <button class="primary-button" type="button" id="confirmUploadButton" disabled>Import Resume</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

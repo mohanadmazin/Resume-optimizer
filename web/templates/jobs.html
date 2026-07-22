@@ -1,36 +1,58 @@
 {% extends "base.html" %}
 {% block title %}Job Description - Resume Optimizer{% endblock %}
 {% block content %}
-<div class="page-header">
-    <h1>Job Description</h1>
-    <p class="subtitle">Paste, type, or upload a job description</p>
-</div>
+<div class="page-header"><span class="eyebrow">Step 2</span><h1>Target Job Description</h1><p class="subtitle">Save the exact role requirements used for ATS scoring and optimization.</p></div>
 
-{% if request.query_params.get('saved') %}
-<div class="alert alert-success">Job description saved!</div>
-{% endif %}
+{% if request.query_params.get('saved') %}<div class="alert alert-success">Job description saved and selected.</div>{% endif %}
+{% if request.query_params.get('loaded') %}<div class="alert alert-success">Saved job description loaded.</div>{% endif %}
+{% if request.query_params.get('deleted') %}<div class="alert alert-success">Job description removed.</div>{% endif %}
+{% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
 
-<div class="panel">
-    <form method="POST" action="/jobs">
-        <div class="form-row">
-            <div class="form-group">
-                <label for="job_title">Job Title</label>
-                <input type="text" id="job_title" name="job_title" value="{{ job_title }}" placeholder="e.g. Senior Software Engineer">
+<div class="content-grid content-grid-main">
+    <section class="panel">
+        <form method="POST" action="/jobs" id="jobForm">
+            <div class="form-row">
+                <div class="form-group"><label for="job_title">Job Title</label><input type="text" id="job_title" name="job_title" value="{{ job_title }}" placeholder="e.g. Senior Data Analyst"></div>
+                <div class="form-group"><label for="job_company">Company</label><input type="text" id="job_company" name="job_company" value="{{ job_company }}" placeholder="e.g. Example Sdn. Bhd."></div>
+                <div class="form-group"><label for="job_location">Location</label><input type="text" id="job_location" name="job_location" value="{{ job_location }}" placeholder="e.g. Kuala Lumpur / Hybrid"></div>
             </div>
             <div class="form-group">
-                <label for="job_company">Company</label>
-                <input type="text" id="job_company" name="job_company" placeholder="e.g. Google">
+                <div class="label-row"><label for="job_text">Full Job Description</label><span id="jobCharacterCount">0 characters</span></div>
+                <textarea id="job_text" name="job_text" rows="18" required placeholder="Paste the full job description, responsibilities, qualifications, and required skills here…">{{ job_text }}</textarea>
             </div>
-            <div class="form-group">
-                <label for="job_location">Location</label>
-                <input type="text" id="job_location" name="job_location" placeholder="e.g. Remote">
-            </div>
+            <div class="button-row"><button type="submit" class="btn btn-primary" id="saveJobButton">Save Job Description</button>{% if workflow_has_resume and workflow_has_job %}<a class="btn btn-secondary" href="/ats">Continue to ATS Analysis</a>{% endif %}</div>
+        </form>
+    </section>
+
+    <aside class="panel records-panel">
+        <div class="panel-heading"><div><h2>Saved Jobs</h2><p>Reuse a previously saved description.</p></div><span class="badge">{{ jobs|length }}</span></div>
+        {% if jobs %}
+        <div class="record-list compact-record-list">
+            {% for job in jobs[:10] %}
+            <article class="record-row {% if job.id == active_job_id %}selected{% endif %}">
+                <div class="record-main"><strong>{{ job.title or 'Untitled role' }}</strong><span>{{ job.created_at or 'Saved locally' }}</span></div>
+                <div class="record-actions">
+                    {% if job.id == active_job_id %}<span class="badge badge-success">Active</span>{% endif %}
+                    <form method="post" action="/jobs/{{ job.id }}/use"><button class="btn btn-secondary btn-small" type="submit">Use</button></form>
+                    <form method="post" action="/jobs/{{ job.id }}/delete" data-confirm="Delete this saved job description?"><button class="btn btn-danger btn-small" type="submit">Delete</button></form>
+                </div>
+            </article>
+            {% endfor %}
         </div>
-        <div class="form-group">
-            <label for="job_text">Job Description</label>
-            <textarea id="job_text" name="job_text" rows="16" placeholder="Paste the full job description here...">{{ job_text }}</textarea>
-        </div>
-        <button type="submit" class="btn btn-primary">Save Job Description</button>
-    </form>
+        {% else %}<div class="empty-compact"><span>▣</span><p>No saved job descriptions yet.</p></div>{% endif %}
+    </aside>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const field = document.getElementById('job_text');
+  const counter = document.getElementById('jobCharacterCount');
+  const update = () => counter.textContent = `${field.value.length.toLocaleString()} characters`;
+  field.addEventListener('input', update); update();
+  document.getElementById('jobForm').addEventListener('submit', () => {
+    const button = document.getElementById('saveJobButton'); button.disabled = true; button.textContent = 'Saving…';
+  });
+})();
+</script>
 {% endblock %}

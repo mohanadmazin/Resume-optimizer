@@ -5,7 +5,18 @@ import threading
 from typing import TypeVar
 
 import requests
-from circuitbreaker import CircuitBreakerError, circuit
+try:
+    from circuitbreaker import CircuitBreakerError, circuit
+except ImportError:  # Keep non-AI parsing and the web UI usable in minimal installs.
+    class CircuitBreakerError(RuntimeError):
+        """Fallback error used when the optional circuit-breaker package is absent."""
+
+    def circuit(*_args, **_kwargs):
+        """No-op fallback decorator; requests still raise normal transport errors."""
+        def decorator(function):
+            return function
+        return decorator
+
 from pydantic import BaseModel, ValidationError
 
 from app.ai.post_processor import PostProcessor

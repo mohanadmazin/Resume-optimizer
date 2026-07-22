@@ -1,51 +1,49 @@
 {% extends "base.html" %}
 {% block title %}Settings - Resume Optimizer{% endblock %}
 {% block content %}
-<div class="page-header">
-    <h1>Settings</h1>
-    <p class="subtitle">Configure Ollama connection and AI model</p>
+<div class="page-header"><span class="eyebrow">Configuration</span><h1>AI &amp; Local Model Settings</h1><p class="subtitle">Connect the web interface to your local Ollama installation.</p></div>
+
+{% if request.query_params.get('saved') %}<div class="alert alert-success">Settings saved successfully.</div>{% endif %}
+{% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading"><div><h2>Ollama Configuration</h2><p>These settings are shared with the desktop application.</p></div></div>
+        <form method="POST" action="/settings" id="settingsForm">
+            <div class="form-group"><label for="ollama_url">Ollama URL</label><input type="url" id="ollama_url" name="ollama_url" value="{{ ollama_url }}" placeholder="http://localhost:11434" required><small>Default local endpoint: http://localhost:11434</small></div>
+            <div class="form-group"><label for="model">Model</label><input type="text" id="model" name="model" value="{{ model }}" list="modelOptions" placeholder="e.g. qwen3" required><datalist id="modelOptions">{% for item in available_models %}<option value="{{ item }}">{% endfor %}</datalist><small>Enter a model name manually when Ollama is offline.</small></div>
+            <div class="form-group"><div class="label-row"><label for="temperature">Temperature</label><span id="temperatureValue">{{ temperature }}</span></div><input type="range" id="temperature" name="temperature" min="0" max="1" step="0.05" value="{{ temperature }}"><small>Lower values produce more consistent, conservative writing.</small></div>
+            <div class="button-row"><button type="submit" class="btn btn-primary" id="saveSettingsButton">Save Settings</button><button type="button" class="btn btn-secondary" id="testConnectionButton">Test Connection</button></div>
+        </form>
+    </section>
+
+    <aside class="panel status-panel">
+        <div class="panel-heading"><div><h2>Connection Status</h2><p>Live status from the configured endpoint.</p></div></div>
+        <div class="connection-status {% if ollama_connected %}connected{% else %}offline{% endif %}" id="ollamaInfo"><span class="connection-icon">{% if ollama_connected %}✓{% else %}!{% endif %}</span><div><strong>{% if ollama_connected %}Ollama Connected{% else %}Ollama Offline{% endif %}</strong><small>{% if ollama_connected %}Local AI features are available.{% else %}Start Ollama and test the connection again.{% endif %}</small></div></div>
+        {% if available_models %}<div class="model-list"><h3>Detected Models</h3>{% for item in available_models %}<button type="button" class="model-chip" data-model="{{ item }}">{{ item }}</button>{% endfor %}</div>{% endif %}
+        <div class="privacy-note"><span>🔒</span><p>Resume and job data stay on this computer. AI requests are sent only to the configured Ollama endpoint.</p></div>
+    </aside>
 </div>
-
-{% if request.query_params.get('saved') %}
-<div class="alert alert-success">Settings saved!</div>
-{% endif %}
-
-<div class="panel">
-    <form method="POST" action="/settings">
-        <div class="form-group">
-            <label for="ollama_url">Ollama URL</label>
-            <input type="url" id="ollama_url" name="ollama_url" value="{{ ollama_url }}" placeholder="http://localhost:11434">
-        </div>
-        <div class="form-group">
-            <label for="model">Model</label>
-            <select id="model" name="model">
-                {% for m in available_models %}
-                <option value="{{ m }}" {% if m == model %}selected{% endif %}>{{ m }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="temperature">Temperature ({{ temperature }})</label>
-            <input type="range" id="temperature" name="temperature" min="0" max="1" step="0.05" value="{{ temperature }}"
-                   oninput="this.previousElementSibling.textContent='Temperature ('+this.value+')'">
-        </div>
-        <button type="submit" class="btn btn-primary">Save Settings</button>
-    </form>
-</div>
-
-<div class="panel" style="margin-top: 1.5rem;">
-    <h2>Ollama Status</h2>
-    <div id="ollama-info" class="ollama-info">Checking connection...</div>
-</div>
-
+{% endblock %}
+{% block scripts %}
 <script>
-fetch('/api/ollama/status').then(r=>r.json()).then(d => {
-    const el = document.getElementById('ollama-info');
-    if (d.connected) {
-        el.innerHTML = '<span class="dot dot-green"></span> Connected<br>Models: ' + d.models.join(', ');
-    } else {
-        el.innerHTML = '<span class="dot dot-red"></span> Not connected';
-    }
-});
+(() => {
+  const temp = document.getElementById('temperature');
+  const tempValue = document.getElementById('temperatureValue');
+  temp.addEventListener('input', () => tempValue.textContent = temp.value);
+  document.querySelectorAll('.model-chip').forEach(button => button.addEventListener('click', () => { document.getElementById('model').value = button.dataset.model; window.showGlobalToast(`Selected ${button.dataset.model}`); }));
+  document.getElementById('settingsForm').addEventListener('submit', () => { const button = document.getElementById('saveSettingsButton'); button.disabled = true; button.textContent = 'Saving…'; });
+  document.getElementById('testConnectionButton').addEventListener('click', async event => {
+    const button = event.currentTarget; const info = document.getElementById('ollamaInfo');
+    button.disabled = true; button.textContent = 'Testing…';
+    try {
+      const response = await fetch('/api/ollama/status', { cache: 'no-store' }); const data = await response.json();
+      info.className = `connection-status ${data.connected ? 'connected' : 'offline'}`;
+      info.innerHTML = `<span class="connection-icon">${data.connected ? '✓' : '!'}</span><div><strong>${data.connected ? 'Ollama Connected' : 'Ollama Offline'}</strong><small>${data.connected ? `${data.models.length} model(s) detected.` : 'Start Ollama and verify the configured URL.'}</small></div>`;
+      window.showGlobalToast(data.connected ? 'Ollama connection successful.' : 'Ollama is not reachable.', !data.connected);
+    } catch { window.showGlobalToast('Connection test failed.', true); }
+    finally { button.disabled = false; button.textContent = 'Test Connection'; }
+  });
+})();
 </script>
 {% endblock %}

@@ -1,58 +1,74 @@
 {% extends "base.html" %}
-{% block title %}Optimize - Resume Optimizer{% endblock %}
+{% block title %}Optimize Resume - Resume Optimizer{% endblock %}
 {% block content %}
-<div class="page-header">
-    <h1>Resume Optimization</h1>
-    <p class="subtitle">AI-powered resume improvements with fact-checking</p>
+<div class="page-header page-header-split">
+    <div><span class="eyebrow">Step 4</span><h1>Resume Optimization</h1><p class="subtitle">Generate factual rewrite suggestions, review every change, then export the accepted version.</p></div>
+    {% if optimized_markdown %}<a class="btn btn-secondary" href="/optimize/download">Download Markdown</a>{% endif %}
 </div>
 
-{% if request.query_params.get('error') == 'missing_input' %}
-<div class="alert alert-error">Please complete resume upload, job description, and ATS analysis first.</div>
-{% endif %}
+{% if request.query_params.get('error') == 'missing_input' %}<div class="alert alert-error">Complete resume upload, job description, and ATS analysis first.</div>{% endif %}
+{% if request.query_params.get('error') == 'no_changes' %}<div class="alert alert-error">Run optimization before applying changes.</div>{% endif %}
+{% if request.query_params.get('error') == 'no_optimized_resume' %}<div class="alert alert-error">No optimized resume is ready to download.</div>{% endif %}
+{% if request.query_params.get('done') %}<div class="alert alert-success">Optimization suggestions generated. Review and select the changes to apply.</div>{% endif %}
+{% if request.query_params.get('applied') %}<div class="alert alert-success">Your selected changes were applied to the export preview.</div>{% endif %}
+{% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
 
 {% if not has_resume or not has_job or not has_ats %}
-<div class="alert alert-warning">
-    {% if not has_resume %}No resume uploaded. <a href="/upload">Upload one</a>.{% endif %}
-    {% if not has_job %}No job description saved. <a href="/jobs">Add one</a>.{% endif %}
-    {% if not has_ats %}No ATS analysis. <a href="/ats">Run analysis</a>.{% endif %}
+<div class="prerequisite-grid prerequisite-grid-three">
+    <a href="/upload" class="prerequisite-card {% if has_resume %}complete{% endif %}"><span>{% if has_resume %}✓{% else %}1{% endif %}</span><div><strong>Resume</strong><small>{% if has_resume %}Ready{% else %}Required{% endif %}</small></div></a>
+    <a href="/jobs" class="prerequisite-card {% if has_job %}complete{% endif %}"><span>{% if has_job %}✓{% else %}2{% endif %}</span><div><strong>Target Job</strong><small>{% if has_job %}Ready{% else %}Required{% endif %}</small></div></a>
+    <a href="/ats" class="prerequisite-card {% if has_ats %}complete{% endif %}"><span>{% if has_ats %}✓{% else %}3{% endif %}</span><div><strong>ATS Analysis</strong><small>{% if has_ats %}Ready{% else %}Required{% endif %}</small></div></a>
 </div>
 {% endif %}
 
-<div class="panel">
-    <form method="POST" action="/optimize/run">
-        <button type="submit" class="btn btn-primary" {% if not has_resume or not has_job or not has_ats %}disabled{% endif %}>
-            Run Optimization
-        </button>
-    </form>
-</div>
+{% if not changes %}
+<section class="panel action-panel">
+    <div class="action-illustration">⚡</div><h2>Generate targeted improvements</h2><p>Ollama proposes summary, headline, and bullet changes. The fact guard flags unsupported numbers, entities, and skills for manual review.</p>
+    <form method="POST" action="/optimize/run" class="processing-form"><button type="submit" class="btn btn-primary btn-large" {% if not has_resume or not has_job or not has_ats %}disabled{% endif %}>Run Optimization</button></form>
+</section>
+{% else %}
+<div class="review-layout">
+    <section class="panel">
+        <div class="panel-heading"><div><h2>Proposed Changes</h2><p>Select only changes that are accurate and appropriate.</p></div><span class="badge">{{ changes|length }}</span></div>
+        <form method="POST" action="/optimize/apply" id="changesForm">
+            <div class="review-toolbar"><button type="button" class="text-button" id="selectSafeButton">Select supported</button><button type="button" class="text-button" id="clearSelectionButton">Clear selection</button></div>
+            <div class="changes-list">
+                {% for change in changes %}
+                <label class="change-card {% if change.flagged %}flagged{% endif %}">
+                    <input type="checkbox" name="accepted_indexes" value="{{ change.index }}" {% if change.accepted is sameas true %}checked{% elif not change.flagged and change.accepted is not sameas false %}checked{% endif %} data-safe="{{ 'false' if change.flagged else 'true' }}">
+                    <div class="change-body">
+                        <div class="change-meta"><span class="change-type">{{ change.change_type.value if change.change_type.value is defined else change.change_type }}</span><span class="badge {% if change.flagged %}badge-warning{% else %}badge-success{% endif %}">{% if change.flagged %}Review required{% else %}Supported{% endif %}</span></div>
+                        {% if change.section %}<div class="change-section">{{ change.section }}</div>{% endif %}
+                        {% if change.original %}<div class="change-text original"><span>Original</span><p>{{ change.original }}</p></div>{% endif %}
+                        {% if change.rewritten %}<div class="change-text proposed"><span>Proposed</span><p>{{ change.rewritten }}</p></div>{% endif %}
+                        {% if change.review_reason %}<div class="change-reason">{{ change.review_reason }}</div>{% endif %}
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+            <div class="sticky-action-bar"><span id="selectionCount">0 selected</span><button type="submit" class="btn btn-primary">Apply Selected Changes</button></div>
+        </form>
+    </section>
 
-{% if optimized %}
-<div class="panel" style="margin-top: 1.5rem;">
-    <h2>Optimized Resume</h2>
-    <div class="resume-preview">{{ optimized.to_markdown() if optimized.to_markdown is defined else optimized }}</div>
+    <aside class="panel preview-panel">
+        <div class="panel-heading"><div><h2>Export Preview</h2><p>Updates after you apply selected changes.</p></div></div>
+        <pre class="resume-preview" id="optimizedPreview">{{ optimized_markdown }}</pre>
+        <div class="stacked-actions"><a class="btn btn-primary" href="/optimize/download">Download Markdown</a><a class="btn btn-secondary" href="/cover-letter">Create Cover Letter</a><form method="post" action="/optimize/run" class="processing-form"><button class="btn btn-secondary btn-block" type="submit">Generate New Suggestions</button></form></div>
+    </aside>
 </div>
 {% endif %}
-
+{% endblock %}
+{% block scripts %}
 {% if changes %}
-<div class="panel" style="margin-top: 1.5rem;">
-    <h2>Proposed Changes ({{ changes|length }})</h2>
-    <div class="changes-list">
-        {% for c in changes %}
-        <div class="change-card">
-            <div class="change-type">{{ c.change_type if c.change_type else "Update" }}</div>
-            <div class="change-section">{{ c.section if c.section else "" }}</div>
-            {% if c.original %}
-            <div class="change-original"><strong>Original:</strong> {{ c.original }}</div>
-            {% endif %}
-            {% if c.proposed %}
-            <div class="change-proposed"><strong>Proposed:</strong> {{ c.proposed }}</div>
-            {% endif %}
-            {% if c.reason %}
-            <div class="change-reason">{{ c.reason }}</div>
-            {% endif %}
-        </div>
-        {% endfor %}
-    </div>
-</div>
+<script>
+(() => {
+  const boxes = [...document.querySelectorAll('input[name="accepted_indexes"]')];
+  const count = document.getElementById('selectionCount');
+  const update = () => count.textContent = `${boxes.filter(box => box.checked).length} selected`;
+  boxes.forEach(box => box.addEventListener('change', update)); update();
+  document.getElementById('selectSafeButton').addEventListener('click', () => { boxes.forEach(box => box.checked = box.dataset.safe === 'true'); update(); });
+  document.getElementById('clearSelectionButton').addEventListener('click', () => { boxes.forEach(box => box.checked = false); update(); });
+})();
+</script>
 {% endif %}
 {% endblock %}
