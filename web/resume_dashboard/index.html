@@ -4,8 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="ResumeAI local resume builder connected to ATS analysis and optimization." />
+  <base href="/" />
   <title>ResumeAI — Resume Builder</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/builder/styles.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -75,7 +76,7 @@
 
     <main class="workspace">
       <header class="topbar">
-        <div class="topbar-left">
+        <div class="topbar-row">
           <label class="year-select" aria-label="Resume year">
             <select id="resumeYear">
               <option>2026</option>
@@ -99,7 +100,7 @@
           </div>
         </div>
 
-        <div class="top-actions">
+        <div class="topbar-row topbar-actions-row">
           <span class="server-save-status" id="serverSaveStatus" role="status">Local draft</span>
           <button class="action-button" type="button" data-page="preview">Finish Up &amp; Preview</button>
           <button class="action-button" type="button" data-page="cover-letter">Quick Letter Draft</button>
@@ -117,8 +118,8 @@
                 <span class="eyebrow">Basic information</span>
                 <h1>Contact</h1>
               </div>
-              <p>Add the contact details employers should use to reach you.</p>
             </div>
+            <p class="page-subtitle">Add the contact details employers should use to reach you.</p>
 
             <div class="form-grid">
               <div class="form-field">
@@ -182,7 +183,8 @@
                 </div>
                 <div class="select-wrap">
                   <select id="state" name="state">
-                    <option selected>Selangor</option>
+                    <option value="" selected>Select state</option>
+                    <option>Selangor</option>
                     <option>Kuala Lumpur</option>
                     <option>Johor</option>
                     <option>Penang</option>
@@ -203,7 +205,8 @@
                 </div>
                 <div class="select-wrap">
                   <select id="city" name="city">
-                    <option selected>Petaling Jaya</option>
+                    <option value="" selected>Select city</option>
+                    <option>Petaling Jaya</option>
                     <option>Shah Alam</option>
                     <option>Subang Jaya</option>
                     <option>Klang</option>
@@ -738,6 +741,6 @@ Business Research Methods</textarea>
     </div>
   </div>
 
-  <script src="script.js"></script>
+  <script src="/builder/script.js"></script>
 </body>
 </html>

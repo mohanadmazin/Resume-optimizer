@@ -58,19 +58,19 @@ class ResumeAiContactPage(QWidget):
         right_col.setSpacing(18)
 
         # Row 1
-        self._name_field = ResumeAiFormField("Full Name", value="Mohanad Mazin A. Fathi")
+        self._name_field = ResumeAiFormField("Full Name", placeholder="Your full name")
         left_col.addWidget(self._name_field)
 
-        self._email_field = ResumeAiFormField("Email Address", value="mohanad.a.fathi@gmail.com")
+        self._email_field = ResumeAiFormField("Email Address", placeholder="name@example.com")
         right_col.addWidget(self._email_field)
 
         # Row 2
-        self._phone_field = ResumeAiFormField("Phone Number", value="(+60)1127670002")
+        self._phone_field = ResumeAiFormField("Phone Number", placeholder="+60 12-345 6789")
         left_col.addWidget(self._phone_field)
 
         self._linkedin_field = ResumeAiFormField(
             "LinkedIn URL",
-            value="https://linkedin.com/in/mohanad-a-fathi",
+            placeholder="https://linkedin.com/in/your-profile",
             show_icon=True,
             icon_tooltip="Open LinkedIn profile",
         )

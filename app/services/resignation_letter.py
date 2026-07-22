@@ -194,8 +194,7 @@ def _generate_ms(data: ResignationLetterInput) -> str:
     if reason:
         lines.extend(["", reason])
     appreciation = _clean(data.appreciation_note, limit=700) or f"Saya merakamkan setinggi-tinggi penghargaan atas peluang, pengalaman dan bimbingan yang telah diberikan sepanjang saya berkhidmat di {company}."
-    if appreciation[-1:] not in ".!?":
-        appreciation += "."
+    if appreciation[-1:] not in ".!?": appreciation += "."
     lines.extend(["", appreciation])
     if data.transition_support:
         lines.extend(["", "Sepanjang baki tempoh perkhidmatan, saya akan menyelesaikan tugasan yang masih tertunggak dan membantu proses serahan tugas supaya peralihan dapat berjalan dengan lancar."])

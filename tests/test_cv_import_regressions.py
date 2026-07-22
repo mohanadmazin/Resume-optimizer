@@ -9,9 +9,9 @@ from app.services.ats_engine import analyze
 from app.services.resume_parser import parse_resume
 
 
-CV_TEXT = """MOHANAD A. FATHI
+CV_TEXT = """NETWORK CANDIDATE
 Project Engineer - Enterprise Network & Security | SD-WAN | SASE | Palo Alto
-Kuala Lumpur,Malaysia | +601127670002 | mohanad@example.com | linkedin.com/in/example
+Kuala Lumpur,Malaysia | +60123456789 | candidate@example.com | linkedin.com/in/example
 
 PROFESSIONAL SUMMARY
 Network engineer delivering enterprise deployments.
@@ -128,3 +128,87 @@ def test_cover_letter_pdf_export(tmp_path: Path) -> None:
         assert document.page_count == 1
         text = "".join(page.get_text() for page in document)
     assert "Network Engineer role" in text
+
+
+def test_real_world_pipe_layout_keeps_roles_projects_and_certifications_separate() -> None:
+    text = """NETWORK CANDIDATE
+NETWORK SECURITY & INFRASTRUCTURE ENGINEER
+Petaling Jaya, Selangor, Malaysia | +60 12-345 6789 | candidate@example.com | linkedin.com/in/example
+
+SUMMARY
+Network Security & Infrastructure Engineer with enterprise delivery experience.
+
+CORE TECHNICAL SKILLS
+Network Security: Palo Alto Networks, Fortinet, IPS, VPN.
+Network Infrastructure: LAN/WAN, SD-WAN, BGP, OSPF, VLAN.
+Engineering & Automation: Python, Ansible.
+
+PROFESSIONAL EXPERIENCE
+Project Engineer | ViewQwest Sdn Bhd
+Kuala Lumpur, Malaysia | Sep 2024 - Present
+• Delivered enterprise network projects.
+
+Network Technical Support Engineer | AIRCOM Telecommunication Sdn Bhd
+Kuala Lumpur, Malaysia | Oct 2019 - Sep 2024
+• Supported 1,000+ network nodes.
+
+Network Technical Support Engineer | AswarNet
+Baghdad, Iraq | Sep 2013 - Sep 2014
+• Maintained network availability.
+
+SELECTED SECURITY & INFRASTRUCTURE PROJECTS
+Enterprise Network Segmentation & Security Hardening | ViewQwest Sdn Bhd
+Oct 2025 - Nov 2025
+• Implemented network segmentation.
+
+Zero-Downtime Data Center Migration & SD-WAN Transformation | ViewQwest Sdn Bhd
+Mar 2025 - May 2025
+• Supported a live migration.
+
+EDUCATION
+Master of Science in Computer Networks | Universiti Putra Malaysia (UPM), Selangor, Malaysia | 2019 | CGPA: 3.625
+Full-time postgraduate study, 2015-2019.
+Bachelor of Engineering in Computer Technologies | Dijlah University College, Baghdad, Iraq | 2013 | CGPA: 3.70
+
+CERTIFICATIONS & PROFESSIONAL DEVELOPMENT
+• Palo Alto Networks Certified Cybersecurity Apprentice | 2026
+• Certified in Cybersecurity (CC), ISC2 | 2025
+• Fortinet NSE 4 - FortiOS Administrator Training | Fortinet | Scheduled Aug 2026
+• Grandstream Certified Professional - Networking; Grandstream Certified Specialist - Unified Communications | 2023-2024
+
+LANGUAGES
+Arabic: Native | English: Fluent
+"""
+    resume = parse_resume(text)
+
+    assert [item.title for item in resume.experience] == [
+        "Project Engineer",
+        "Network Technical Support Engineer",
+        "Network Technical Support Engineer",
+    ]
+    assert [item.company for item in resume.experience] == [
+        "ViewQwest Sdn Bhd",
+        "AIRCOM Telecommunication Sdn Bhd",
+        "AswarNet",
+    ]
+    assert resume.experience[0].location == "Kuala Lumpur, Malaysia"
+    assert len(resume.projects) == 2
+    assert resume.projects[0].start_date == "Oct 2025"
+    assert resume.projects[1].end_date == "May 2025"
+    assert len(resume.education) == 2
+    assert resume.education[0].institution == "Universiti Putra Malaysia (UPM)"
+    assert resume.education[0].location == "Selangor, Malaysia"
+    assert resume.education[0].year == "2015 – 2019"
+    assert len(resume.certifications) == 4
+    assert "Scheduled Aug 2026" in resume.certifications[2]
+    assert resume.parse_warnings == []
+
+
+def test_keyword_evidence_handles_hyphen_and_space_variants() -> None:
+    resume = parse_resume(CV_TEXT)
+    jd = "Requirements:\nSD-WAN, Palo Alto Networks, BGP and OSPF"
+    result = analyze(resume, jd)
+    statuses = {target.canonical_name: target.status.value for target in result.keyword_targets}
+
+    assert statuses["sd-wan"] == "present"
+    assert statuses.get("palo alto", statuses.get("palo alto networks")) == "present"

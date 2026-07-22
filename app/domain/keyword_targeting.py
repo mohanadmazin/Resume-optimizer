@@ -35,18 +35,33 @@ class ResumeTextIndex(BaseModel):
     path_text: List[tuple[str, str]]
 
     def find_any(self, terms: set[str]) -> List["ResumeTextMatch"]:
-        return [ResumeTextMatch(path=path, text=text) for path, text in self.path_text if any(t in text for t in terms)]
+        normalized_terms = {normalize(term) for term in terms if normalize(term)}
+        matches: List[ResumeTextMatch] = []
+        for path, text in self.path_text:
+            normalized_text = normalize(text)
+            if any(term in normalized_text for term in normalized_terms):
+                matches.append(ResumeTextMatch(path=path, text=text))
+        return matches
 
     def find_semantic_overlap(self, term: str) -> bool:
-        # MVP: partial substring or token overlap
+        # Compare normalized values so punctuation variants such as SD-WAN,
+        # TCP/IP and Palo Alto are handled consistently.
         norm_term = normalize(term)
+        term_tokens = {normalize(token) for token in re.findall(r"[a-z0-9#+.]+", term.lower()) if len(normalize(token)) >= 3}
         for _, text in self.path_text:
-            if norm_term in text or any(t in text for t in norm_term.split()):
+            normalized_text = normalize(text)
+            if norm_term and norm_term in normalized_text:
                 return True
-            # Check if any word in the text is a substring of the term or vice versa
-            for word in text.split():
-                if len(word) >= 3 and (word in norm_term or norm_term in word):
-                    return True
+            text_tokens = {normalize(token) for token in re.findall(r"[a-z0-9#+.]+", text.lower()) if len(normalize(token)) >= 3}
+            if term_tokens and term_tokens & text_tokens:
+                return True
+            if any(
+                left.startswith(right) or right.startswith(left)
+                for left in term_tokens
+                for right in text_tokens
+                if min(len(left), len(right)) >= 3
+            ):
+                return True
         return False
 
 class ResumeTextMatch(BaseModel):

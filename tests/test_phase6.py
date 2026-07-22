@@ -87,8 +87,8 @@ class TestApplicationRepository:
             repo = ApplicationRepository(session)
             rid = _seed_resume(session)
             jid = _seed_job(session)
-            jid2 = _seed_job(session)
             repo.create(rid, jid)
+            jid2 = _seed_job(session)
             repo.create(rid, jid2)
             apps = repo.list_all()
             assert len(apps) == 2

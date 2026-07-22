@@ -11,8 +11,8 @@ const defaultData = {
     linkedin: "",
     website: "",
     country: "Malaysia",
-    state: "Selangor",
-    city: "Petaling Jaya",
+    state: "",
+    city: "",
     visibility: { country: true, state: true, city: true }
   },
   experience: [],

@@ -72,6 +72,8 @@ SECTION_ALIASES = {
         "licenses and certifications",
         "courses and certifications",
         "professional certifications and training",
+        "certifications professional development",
+        "certifications and professional development",
     },
     "projects": {
         "projects",
@@ -79,6 +81,8 @@ SECTION_ALIASES = {
         "key projects",
         "selected project delivery",
         "selected projects",
+        "selected security infrastructure projects",
+        "selected security and infrastructure projects",
     },
     "languages": {
         "languages",
@@ -277,7 +281,7 @@ def _strip_hallucinated_field(resume: ResumeData, h: HallucinatedField) -> None:
 def _match_section(line: str) -> str | None:
     clean = re.sub(r"[^a-z ]", "", line.lower()).strip()
     clean = re.sub(r"\s+", " ", clean)
-    if not clean or len(clean) > 40:
+    if not clean or len(clean) > 70:
         return None
     for key, aliases in SECTION_ALIASES.items():
         if clean in aliases:
@@ -428,6 +432,17 @@ def _parse_experience(lines: list[str]) -> tuple[list[ExperienceItem], list[Pars
             current.bullets.append(BULLET_RE.sub("", raw).strip())
             continue
         dates = DATE_RANGE_RE.search(line)
+        # A common DOCX layout uses one line for ``Title | Company`` and a
+        # second line for ``Location | Date range``.  Treat that second line
+        # as metadata for the current role instead of creating a fake role
+        # named after the city.
+        if current is not None and current.title and not current.bullets and dates:
+            current.start_date = dates.group(1).strip()
+            current.end_date = dates.group(2).strip()
+            remainder = DATE_RANGE_RE.sub("", line).strip(" ,|\u2013\u2014-")
+            if remainder:
+                current.location = _normalise_location(remainder.replace("|", ","))
+            continue
         if (
             current is not None
             and current.title
@@ -451,11 +466,15 @@ def _parse_experience(lines: list[str]) -> tuple[list[ExperienceItem], list[Pars
         if current is not None and current.bullets and not dates:
             # Check if this looks like a new experience entry (short, title-case, no digits)
             stripped = line.strip()
+            is_explicit_header = bool(re.search(r"[|\u00b7]|\s+(?:at|@)\s+", stripped, re.I))
             is_new_entry = (
-                len(stripped) < 60
-                and not stripped[0].islower()
-                and not any(ch.isdigit() for ch in stripped)
-                and not BULLET_RE.match(stripped)
+                is_explicit_header
+                or (
+                    len(stripped) < 80
+                    and not stripped[0].islower()
+                    and not any(ch.isdigit() for ch in stripped)
+                    and not BULLET_RE.match(stripped)
+                )
             )
             if is_new_entry:
                 # This is likely a new job title — don't merge into previous bullet
@@ -519,6 +538,21 @@ def _split_blocks(lines: list[str]) -> list[list[str]]:
     return blocks
 
 
+def _split_institution_location(value: str) -> tuple[str, str]:
+    """Split a combined institution/location field conservatively.
+
+    Resume lines commonly use ``University, State, Country``.  Preserve the
+    institution name and use the final one or two comma-separated segments as
+    the location.
+    """
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if len(parts) >= 3:
+        return ", ".join(parts[:-2]), ", ".join(parts[-2:])
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return value.strip(), ""
+
+
 def _parse_education(lines: list[str]) -> list[EducationItem]:
     """Parse degree, institution, location, CGPA/GPA, and year range."""
     cleaned = [BULLET_RE.sub("", raw).strip() for raw in lines if raw.strip()]
@@ -531,8 +565,15 @@ def _parse_education(lines: list[str]) -> list[EducationItem]:
             if current is not None:
                 items.append(current)
 
-            years = re.findall(r"\b(?:19|20)\d{2}\b", line)
-            year = " – ".join(years[-2:]) if years else ""
+            ranges = DATE_RANGE_RE.findall(line)
+            standalone_years = re.findall(r"\b(?:19|20)\d{2}\b", line)
+            if ranges:
+                year = " – ".join(ranges[-1])
+            elif standalone_years:
+                year = standalone_years[-1]
+            else:
+                year = ""
+
             cgpa_match = re.search(
                 r"\b(?:CGPA|GPA)\s*:?\s*([0-9]+(?:\.[0-9]+)?(?:\s*/\s*[0-9]+(?:\.[0-9]+)?)?)",
                 line,
@@ -541,27 +582,36 @@ def _parse_education(lines: list[str]) -> list[EducationItem]:
             cgpa = cgpa_match.group(1).replace(" ", "") if cgpa_match else ""
 
             body = DATE_RANGE_RE.sub("", line)
-            body = re.sub(r"\|?\s*\b(?:CGPA|GPA)\s*:?\s*[0-9]+(?:\.[0-9]+)?(?:\s*/\s*[0-9]+(?:\.[0-9]+)?)?", "", body, flags=re.I)
-            body = body.strip(" \t|·,–—-")
+            body = re.sub(r"\b(?:19|20)\d{2}\b", "", body)
+            body = re.sub(
+                r"\|?\s*\b(?:CGPA|GPA)\s*:?\s*[0-9]+(?:\.[0-9]+)?(?:\s*/\s*[0-9]+(?:\.[0-9]+)?)?",
+                "",
+                body,
+                flags=re.I,
+            )
+            body = re.sub(r"\s+", " ", body).strip(" \t|·,–—-")
 
             degree = body
             institution = ""
             location = ""
+
             if ":" in body:
                 left, right = body.split(":", 1)
                 if any(term in left.casefold() for term in _DEGREE_TERMS):
-                    degree, remainder = left.strip(), right.strip(" ,·|")
-                    if "," in remainder:
-                        institution, location = [part.strip() for part in remainder.rsplit(",", 1)]
-                    else:
-                        institution = remainder
-            if not institution:
+                    degree = left.strip()
+                    institution, location = _split_institution_location(right.strip(" ,·|"))
+            else:
                 parts = [part.strip() for part in re.split(r"\s*[·|]\s*", body) if part.strip()]
-                degree = parts[0] if parts else body
                 if len(parts) > 1:
+                    degree = parts[0]
                     institution = parts[1]
-                if len(parts) > 2:
-                    location = " | ".join(parts[2:])
+                    if len(parts) > 2:
+                        location = " | ".join(parts[2:])
+                    if not location:
+                        institution, location = _split_institution_location(institution)
+                elif "," in body:
+                    degree, remainder = [part.strip() for part in body.split(",", 1)]
+                    institution, location = _split_institution_location(remainder)
 
             current = EducationItem(
                 degree=degree,
@@ -578,8 +628,8 @@ def _parse_education(lines: list[str]) -> list[EducationItem]:
             current.year = " – ".join(years[-2:])
         if current is not None and cgpa_match:
             current.cgpa = cgpa_match.group(1).replace(" ", "")
-        elif current is not None and not current.institution:
-            current.institution = line
+        elif current is not None and not current.institution and not line.lower().startswith(("thesis:", "full-time")):
+            current.institution, current.location = _split_institution_location(line)
         elif current is None:
             current = EducationItem(degree=line)
 
@@ -587,35 +637,53 @@ def _parse_education(lines: list[str]) -> list[EducationItem]:
         items.append(current)
     return items
 
-
 def _parse_certifications(lines: list[str]) -> list[str]:
-    """Normalize certification rows to ``title | issuer | year`` strings."""
+    """Normalize certification rows while preserving real-world date labels.
+
+    Bullet-based resumes normally contain one certification per line.  Table
+    extraction may instead return title, issuer, and year on separate lines,
+    so both layouts are supported.
+    """
     certs: list[str] = []
     pending: list[str] = []
+    year_pattern = re.compile(
+        r"\b(?:19|20)\d{2}(?:\s*[-–]\s*(?:19|20)\d{2})?\b",
+        re.I,
+    )
 
     for raw in lines:
+        is_bullet = bool(BULLET_RE.match(raw))
         line = BULLET_RE.sub("", raw).strip()
         if not line:
             continue
         parts = [
             part.strip(" .")
-            for part in re.split(r"\s*(?:\||\t+|;|\u2022|\u00b7)\s*", line)
+            for part in re.split(r"\s*(?:\||\t+|\u2022|\u00b7)\s*", line)
             if part.strip(" .")
         ]
         if not parts:
             continue
 
-        # A single extracted line may already contain all three columns.
-        if len(parts) >= 2 and re.fullmatch(r"(?:19|20)\d{2}", parts[-1]):
-            title = " | ".join(parts[:-2]) if len(parts) > 2 else parts[0]
-            issuer = parts[-2] if len(parts) > 2 else ""
+        if is_bullet:
+            if len(parts) >= 2 and year_pattern.search(parts[-1]):
+                title = parts[0]
+                issuer = " | ".join(parts[1:-1])
+                certs.append(format_certification(title, issuer, parts[-1]))
+            else:
+                certs.append(" | ".join(parts))
+            continue
+
+        # A single non-bullet extracted line may already contain all columns.
+        if len(parts) >= 2 and year_pattern.search(parts[-1]):
+            title = parts[0]
+            issuer = " | ".join(parts[1:-1])
             certs.append(format_certification(title, issuer, parts[-1]))
             continue
 
-        # Table extraction can also yield one value per line; collect until year.
+        # Table extraction can yield one value per line; collect until a year.
         for value in parts:
             pending.append(value)
-            if re.fullmatch(r"(?:19|20)\d{2}", value):
+            if year_pattern.fullmatch(value):
                 title = " | ".join(pending[:-2]) if len(pending) > 2 else pending[0]
                 issuer = pending[-2] if len(pending) > 2 else ""
                 certs.append(format_certification(title, issuer, value))
@@ -623,7 +691,6 @@ def _parse_certifications(lines: list[str]) -> list[str]:
 
     certs.extend(value for value in pending if value)
     return list(dict.fromkeys(certs))
-
 
 def _parse_projects(lines: list[str]) -> list[ProjectItem]:
     """Same header/bullet grouping heuristic as _parse_experience, but
@@ -655,8 +722,16 @@ def _parse_projects(lines: list[str]) -> list[ProjectItem]:
                 current = ProjectItem()
             current.bullets.append(BULLET_RE.sub("", raw).strip())
             continue
+        dates = DATE_RANGE_RE.search(line)
+        if current is not None and current.title and not current.bullets and dates:
+            current.start_date = dates.group(1).strip()
+            current.end_date = dates.group(2).strip()
+            remainder = DATE_RANGE_RE.sub("", line).strip(" ,|·–—-\t")
+            if remainder:
+                current.meta = " | ".join(part for part in (current.meta, remainder) if part)
+            continue
         if current is not None and current.title and not current.bullets and not current.meta:
-            # Likely a context/date line belonging to the previous title line.
+            # Likely a context line belonging to the previous title line.
             current.meta = line
             continue
         # Continuation line: not a bullet, no meta yet, current has bullets
