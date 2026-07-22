@@ -1,89 +1,48 @@
 {% extends "base.html" %}
-{% block title %}Upload Resume - Resume Optimizer{% endblock %}
+{% block title %}Resume Library — ResumeAI{% endblock %}
 {% block content %}
 <div class="page-header page-header-split">
-    <div><span class="eyebrow">Step 1</span><h1>Upload Resume</h1><p class="subtitle">Import a PDF, DOCX, DOC, or TXT file for analysis.</p></div>
-    <a href="/builder/" class="btn btn-secondary">Create in Builder</a>
+    <div><span class="eyebrow">Resume workspace</span><h1>Resume Library</h1><p class="subtitle">Create, import, select, edit, and version the resumes used throughout ResumeAI.</p></div>
+    <a href="/builder/" class="btn btn-primary">Create New Resume</a>
 </div>
-
-{% if request.query_params.get('imported') %}<div class="alert alert-success">Resume imported and selected successfully.</div>{% endif %}
+{% if request.query_params.get('imported') %}<div class="alert alert-success">Resume imported and selected. Review its structured sections in the builder before analysis.</div>{% endif %}
+{% if request.query_params.get('resume_deleted') %}<div class="alert alert-success">Resume removed.</div>{% endif %}
+{% if request.query_params.get('restored') %}<div class="alert alert-success">Resume version restored and saved as a new version.</div>{% endif %}
 {% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
 
 <div class="content-grid content-grid-main">
     <section class="panel">
-        <form method="POST" action="/upload" enctype="multipart/form-data" class="upload-form" id="uploadForm">
+        <div class="panel-heading"><div><h2>Import Resume</h2><p>PDF, DOCX, DOC, or TXT · Maximum 15 MB.</p></div></div>
+        <form method="POST" action="/upload" enctype="multipart/form-data" class="upload-form processing-form" id="uploadForm" data-processing-title="Importing resume" data-processing-message="Reading the document and structuring its sections…">
             <div class="upload-zone" id="drop-zone" tabindex="0" role="button" aria-label="Choose resume file">
-                <div class="upload-icon">⇧</div>
-                <h2>Drop your resume here</h2>
-                <p>or click to browse your computer</p>
-                <p class="upload-hint">PDF, DOCX, DOC, or TXT · Maximum 15 MB</p>
+                <div class="upload-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 14v6h14v-6"/></svg></div>
+                <h2>Drop your resume here</h2><p>or click to browse your computer</p><p class="upload-hint">Text-based files produce the best parsing results.</p>
                 <input type="file" name="file" id="file-input" accept=".pdf,.docx,.doc,.txt" required hidden>
                 <button type="button" class="btn btn-secondary" id="chooseFileButton">Choose File</button>
             </div>
-            <div id="file-preview" class="file-preview" hidden>
-                <div><span class="file-badge">FILE</span><strong id="file-name"></strong><small id="file-size"></small></div>
-                <button type="button" class="icon-button" id="clearFileButton" aria-label="Clear selected file">×</button>
-            </div>
-            <button type="submit" class="btn btn-primary btn-block" id="upload-btn" disabled>Import Resume</button>
+            <div id="file-preview" class="file-preview" hidden><div><span class="file-badge">FILE</span><strong id="file-name"></strong><small id="file-size"></small></div><button type="button" class="icon-button" id="clearFileButton" aria-label="Clear selected file">×</button></div>
+            <button type="submit" class="btn btn-primary btn-block" id="upload-btn" disabled>Import and Review</button>
         </form>
     </section>
 
-    <aside class="panel info-panel">
-        <h2>Current Selection</h2>
-        {% if workflow_has_resume %}
-        <div class="selection-card"><span>✓</span><div><strong>{{ resume_name or workflow_resume_name }}</strong><small>Ready for job matching and ATS analysis.</small></div></div>
-        <div class="stacked-actions"><a class="btn btn-primary" href="/jobs">Continue to Job Description</a><a class="btn btn-secondary" href="/ats">Open ATS Analysis</a></div>
-        {% else %}
-        <div class="empty-compact"><span>○</span><p>No resume is selected for the current workflow.</p></div>
-        {% endif %}
-        <hr>
-        <h3>Import checklist</h3>
-        <ul class="check-list"><li>Use a text-based PDF where possible.</li><li>Review the parsed content before optimization.</li><li>Keep employers, dates, and metrics factual.</li></ul>
+    <aside class="panel records-panel">
+        <div class="panel-heading"><div><h2>Saved Resumes</h2><p>Editing a selected resume updates the same record used by ATS.</p></div><span class="badge">{{ resumes|length }}</span></div>
+        {% if resumes %}<div class="record-list compact-record-list">{% for resume in resumes %}<article class="record-row {% if resume.id == active_resume_id %}selected{% endif %}"><div class="record-main"><strong>{{ resume.name }}</strong><span>{{ resume.source_type|title }} · {{ resume.created_at }}</span></div><div class="record-actions">{% if resume.id == active_resume_id %}<span class="badge badge-success">Active</span>{% endif %}<a class="btn btn-secondary btn-small" href="/resumes/{{ resume.id }}/edit">Edit</a><form method="post" action="/resumes/{{ resume.id }}/use"><button class="btn btn-secondary btn-small">Use</button></form><form method="post" action="/resumes/{{ resume.id }}/delete" data-confirm="Delete this resume and its related analyses?"><button class="btn btn-danger btn-small">Delete</button></form></div></article>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No saved resumes yet.</p></div>{% endif %}
     </aside>
 </div>
+
+{% if workflow_has_resume %}<section class="panel selection-banner"><div><span class="badge badge-success">Active resume</span><h2>{{ workflow_resume_name }}</h2><p>Review the structured content before scoring. Parser mistakes can reduce ATS accuracy.</p></div><div class="button-row"><a href="/resumes/{{ active_resume_id }}/edit" class="btn btn-primary">Review in Builder</a><a href="/jobs" class="btn btn-secondary">Continue to Target Job</a></div></section>{% endif %}
+{% if workflow_has_resume %}<section class="panel version-panel"><div class="panel-heading"><div><h2>Version History</h2><p>Restore a previous structured resume safely. The current state is preserved as history.</p></div><span class="badge">{{ versions|length }}</span></div>{% if versions %}<div class="version-list">{% for version in versions %}<div class="version-row"><div><strong>Version {{ version.version_number }}</strong><span>{{ version.change_summary }} · {{ version.created_at }}</span></div><form method="post" action="/resumes/{{ active_resume_id }}/versions/{{ version.id }}/restore" data-confirm="Restore version {{ version.version_number }}? Your current resume remains in version history."><button class="btn btn-secondary btn-small">Restore</button></form></div>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No saved versions yet. Save in the builder to create one.</p></div>{% endif %}</section>{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>
 (() => {
-  const zone = document.getElementById('drop-zone');
-  const input = document.getElementById('file-input');
-  const preview = document.getElementById('file-preview');
-  const name = document.getElementById('file-name');
-  const size = document.getElementById('file-size');
-  const submit = document.getElementById('upload-btn');
-  const choose = document.getElementById('chooseFileButton');
-  const clear = document.getElementById('clearFileButton');
-  const allowed = ['pdf', 'docx', 'doc', 'txt'];
-  const max = 15 * 1024 * 1024;
-
-  function setFile(file) {
-    if (!file) return clearFile();
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (!allowed.includes(ext)) return window.showGlobalToast('Choose a PDF, DOCX, DOC, or TXT file.', true);
-    if (file.size > max) return window.showGlobalToast('The file exceeds the 15 MB limit.', true);
-    name.textContent = file.name;
-    size.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
-    preview.hidden = false;
-    submit.disabled = false;
-  }
-  function clearFile() {
-    input.value = '';
-    preview.hidden = true;
-    submit.disabled = true;
-  }
-  choose.addEventListener('click', e => { e.stopPropagation(); input.click(); });
-  zone.addEventListener('click', () => input.click());
-  zone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
-  input.addEventListener('change', () => setFile(input.files[0]));
-  clear.addEventListener('click', clearFile);
-  ['dragenter', 'dragover'].forEach(type => zone.addEventListener(type, e => { e.preventDefault(); zone.classList.add('drag-over'); }));
-  ['dragleave', 'drop'].forEach(type => zone.addEventListener(type, e => { e.preventDefault(); zone.classList.remove('drag-over'); }));
-  zone.addEventListener('drop', e => {
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    const transfer = new DataTransfer(); transfer.items.add(file); input.files = transfer.files; setFile(file);
-  });
-  document.getElementById('uploadForm').addEventListener('submit', () => { submit.disabled = true; submit.textContent = 'Importing…'; });
+  const zone=document.getElementById('drop-zone'), input=document.getElementById('file-input'), preview=document.getElementById('file-preview'), name=document.getElementById('file-name'), size=document.getElementById('file-size'), submit=document.getElementById('upload-btn');
+  const allowed=['pdf','docx','doc','txt'], max=15*1024*1024;
+  const clearFile=()=>{input.value='';preview.hidden=true;submit.disabled=true;};
+  const setFile=file=>{if(!file)return clearFile();const ext=file.name.split('.').pop().toLowerCase();if(!allowed.includes(ext))return window.showGlobalToast('Choose a PDF, DOCX, DOC, or TXT file.',true);if(file.size>max)return window.showGlobalToast('The file exceeds the 15 MB limit.',true);name.textContent=file.name;size.textContent=`${(file.size/1024/1024).toFixed(2)} MB`;preview.hidden=false;submit.disabled=false;};
+  document.getElementById('chooseFileButton').addEventListener('click',e=>{e.stopPropagation();input.click();}); zone.addEventListener('click',()=>input.click()); zone.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();input.click();}}); input.addEventListener('change',()=>setFile(input.files[0])); document.getElementById('clearFileButton').addEventListener('click',clearFile);
+  ['dragenter','dragover'].forEach(t=>zone.addEventListener(t,e=>{e.preventDefault();zone.classList.add('drag-over');})); ['dragleave','drop'].forEach(t=>zone.addEventListener(t,e=>{e.preventDefault();zone.classList.remove('drag-over');})); zone.addEventListener('drop',e=>{const file=e.dataTransfer.files[0];if(!file)return;const transfer=new DataTransfer();transfer.items.add(file);input.files=transfer.files;setFile(file);});
 })();
 </script>
 {% endblock %}

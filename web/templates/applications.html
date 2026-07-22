@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Application Tracker — ResumeAI{% endblock %}
+{% block content %}
+<div class="page-header page-header-split">
+  <div><span class="eyebrow">Application pipeline</span><h1>Application Tracker</h1><p class="subtitle">Track each selected resume and target job from wishlist through offer, while keeping notes and source links together.</p></div>
+  <a href="/jobs" class="btn btn-secondary">Manage Target Jobs</a>
+</div>
+{% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
+{% if request.query_params.get('created') %}<div class="alert alert-success">Application added to the tracker.</div>{% endif %}
+{% if request.query_params.get('updated') %}<div class="alert alert-success">Application updated.</div>{% endif %}
+{% if request.query_params.get('deleted') %}<div class="alert alert-success">Application removed.</div>{% endif %}
+
+<section class="panel application-create-panel">
+  <div>
+    <span class="eyebrow">Current selection</span>
+    <h2>{{ workflow_job_title or 'No target job selected' }}</h2>
+    <p>{{ workflow_resume_name or 'No resume selected' }}{% if workflow_has_resume and workflow_has_job %} · Ready to track{% endif %}</p>
+  </div>
+  <form method="post" action="/applications/create" class="application-create-form">
+    <label>Status<select name="status">{% for status in statuses %}<option value="{{ status }}">{{ status|replace('_',' ')|title }}</option>{% endfor %}</select></label>
+    <label>Initial note<input name="notes" maxlength="4000" placeholder="Next step, recruiter, deadline, or reminder"></label>
+    <button class="btn btn-primary" {% if not workflow_has_resume or not workflow_has_job %}disabled{% endif %}>Add Current Selection</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-heading"><div><h2>Tracked Applications</h2><p>{{ applications|length }} application{% if applications|length != 1 %}s{% endif %} saved locally.</p></div></div>
+  {% if applications %}
+  <div class="application-board">
+    {% for item in applications %}
+    <article class="application-card status-{{ item.status }}">
+      <div class="application-card-head">
+        <div><span class="status-pill">{{ item.status|replace('_',' ')|title }}</span><h3>{{ item.job_title }}</h3><p>{{ item.company or 'Company not entered' }}{% if item.location %} · {{ item.location }}{% endif %}</p></div>
+        {% if item.source_url %}<a href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer" class="text-link">Open job source</a>{% endif %}
+      </div>
+      <div class="application-meta"><span>Resume: <strong>{{ item.resume_name }}</strong></span><span>Added: {{ item.created_at }}</span>{% if item.applied_at %}<span>Applied: {{ item.applied_at }}</span>{% endif %}</div>
+      <form method="post" action="/applications/{{ item.id }}/update" class="application-edit-form">
+        <label>Status<select name="status">{% for status in statuses %}<option value="{{ status }}" {% if status == item.status %}selected{% endif %}>{{ status|replace('_',' ')|title }}</option>{% endfor %}</select></label>
+        <label>Notes<textarea name="notes" rows="3" maxlength="4000" placeholder="Interview date, follow-up, contact person, result…">{{ item.notes }}</textarea></label>
+        <div class="button-row"><button class="btn btn-primary btn-small">Save Changes</button></div>
+      </form>
+      <form method="post" action="/applications/{{ item.id }}/delete" data-confirm="Remove this application from the tracker?"><button class="btn btn-danger btn-small">Remove</button></form>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}<div class="empty-state"><h2>No applications tracked yet</h2><p>Select a resume and target job, then add the current selection above.</p></div>{% endif %}
+</section>
+{% endblock %}

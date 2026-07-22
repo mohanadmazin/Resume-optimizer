@@ -69,6 +69,24 @@ class VersioningRepository(BaseRepository):
             .all()
         )
 
+    def list_version_summaries(self, resume_id: int, limit: int = 20) -> list[dict]:
+        rows = (
+            self.session.query(ResumeVersion)
+            .filter(ResumeVersion.resume_id == resume_id)
+            .order_by(ResumeVersion.version_number.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": row.id,
+                "version_number": row.version_number,
+                "change_summary": row.change_summary or "Saved version",
+                "created_at": row.created_at.strftime("%Y-%m-%d %H:%M") if row.created_at else "",
+            }
+            for row in rows
+        ]
+
     def create_targeting_session(
         self,
         resume_version_id: int,

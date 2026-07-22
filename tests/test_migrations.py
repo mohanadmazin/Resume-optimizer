@@ -297,7 +297,7 @@ def test_fresh_install_creates_all_tables(tmp_path, monkeypatch):
     assert "source_hash" in columns
     assert "is_original" in columns
 
-    assert _get_version(db) == "0006"
+    assert _get_version(db) == "0007"
 
 
 # ── Scenario 2: Pre-Alembic database (create_all schema) ───────────────────
@@ -315,7 +315,7 @@ def test_pre_alembic_full_schema_stamps_head(tmp_path, monkeypatch):
     run_migrations()
 
     # Should be stamped at head without running any migrations
-    assert _get_version(db) == "0006"
+    assert _get_version(db) == "0007"
     # Columns should still be present
     columns = _get_columns(db, "resumes")
     assert "source_type" in columns
@@ -337,7 +337,7 @@ def test_database_at_0001_gets_0002_applied(tmp_path, monkeypatch):
 
     run_migrations()
 
-    assert _get_version(db) == "0006"
+    assert _get_version(db) == "0007"
     columns = _get_columns(db, "resumes")
     assert "source_type" in columns
     assert "source_filename" in columns
@@ -362,7 +362,7 @@ def test_idempotent_0002_on_create_all_schema(tmp_path, monkeypatch):
     # Should NOT fail — 0002 checks for column existence
     run_migrations()
 
-    assert _get_version(db) == "0006"
+    assert _get_version(db) == "0007"
     columns = _get_columns(db, "resumes")
     assert "source_type" in columns
 
@@ -414,13 +414,13 @@ def test_already_at_head_no_op(tmp_path, monkeypatch):
 
     config = _alembic_config(db)
     command.stamp(config, "head")
-    assert _get_version(db) == "0006"
+    assert _get_version(db) == "0007"
 
     monkeypatch.setattr("app.database.migrate.DB_PATH", db)
 
     # Should succeed without error — upgrade("head") on an up-to-date DB is a no-op
     run_migrations()
-    assert _get_version(db) == "0006"
+    assert _get_version(db) == "0007"
 
 
 # ── User data preserved through migration ───────────────────────────────────

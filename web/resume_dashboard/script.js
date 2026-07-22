@@ -1,6 +1,8 @@
+// Retain the legacy key so existing browser drafts survive the ResumeAI rebrand.
 const STORAGE_KEY = "resumeForgeFullDataV1";
 
 const defaultData = {
+  resumeId: null,
   year: String(new Date().getFullYear()),
   contact: {
     fullName: "",
@@ -39,6 +41,8 @@ const defaultData = {
 
 let state = loadState();
 let toastTimer;
+let serverSaveTimer;
+let serverSaveInFlight = false;
 
 const pagePanels = document.querySelectorAll("[data-page-panel]");
 const pageButtons = document.querySelectorAll("[data-page]");
@@ -85,10 +89,63 @@ function loadState() {
   }
 }
 
+function hasMeaningfulResumeData() {
+  return Boolean(
+    state.contact?.fullName?.trim() ||
+    state.summary?.summaryText?.trim() ||
+    state.experience?.length ||
+    state.education?.length ||
+    state.project?.length
+  );
+}
+
+function setServerStatus(message, kind = "") {
+  const status = document.querySelector("#serverSaveStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.className = `server-save-status ${kind}`.trim();
+}
+
+async function saveStateToServer({ createVersion = false, notify = false } = {}) {
+  if (!hasMeaningfulResumeData() || serverSaveInFlight) return null;
+  serverSaveInFlight = true;
+  setServerStatus("Saving…", "saving");
+  try {
+    const payload = clone(state);
+    payload._createVersion = createVersion;
+    const response = await fetch("/api/builder/state", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || `Save failed (${response.status})`);
+    state.resumeId = data.id;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    setServerStatus("Saved to ResumeAI", "saved");
+    if (notify) showToast("Resume saved to the shared library.");
+    return data;
+  } catch (error) {
+    console.error("Could not save builder data to ResumeAI:", error);
+    setServerStatus("Local only", "error");
+    if (notify) showToast(error.message || "Could not save to ResumeAI.");
+    return null;
+  } finally {
+    serverSaveInFlight = false;
+  }
+}
+
+function queueServerSave() {
+  window.clearTimeout(serverSaveTimer);
+  serverSaveTimer = window.setTimeout(() => saveStateToServer(), 900);
+}
+
 function persistState(message = "Changes saved.") {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     if (message) showToast(message);
+    queueServerSave();
   } catch (error) {
     console.error("Could not save builder data:", error);
     showToast("Could not save in this browser.");
@@ -657,9 +714,16 @@ function syncAllFormsToState() {
   };
 }
 
-document.querySelector("#saveAllButton").addEventListener("click", () => {
+document.querySelector("#saveAllButton").addEventListener("click", async () => {
   syncAllFormsToState();
-  persistState("All resume sections saved.");
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  await saveStateToServer({ createVersion: true, notify: true });
+});
+
+document.querySelector("#continueToTargetingButton").addEventListener("click", async () => {
+  syncAllFormsToState();
+  const saved = await saveStateToServer({ createVersion: true, notify: false });
+  if (saved) window.location.href = "/jobs";
 });
 
 document.querySelector("#exportDataButton").addEventListener("click", () => {
@@ -709,6 +773,7 @@ document.querySelector("#confirmResetButton").addEventListener("click", () => {
     console.warn("Could not clear saved builder data:", error);
   }
   state = clone(defaultData);
+  fetch("/api/builder/new", { method: "POST", credentials: "same-origin" }).catch(() => {});
   populateForm(contactForm, state.contact);
   document.querySelector("#resumeYear").value = state.year;
   renderEntryList("experience");
@@ -880,6 +945,72 @@ function importParsedResume(data) {
   showToast("Resume imported. Review each section and save.");
 }
 
+function refreshBuilderUI() {
+  populateForm(contactForm, state.contact);
+  document.querySelector("#resumeYear").value = state.year || String(new Date().getFullYear());
+  document.querySelectorAll("[data-visibility]").forEach((toggle) => {
+    const key = toggle.dataset.visibility;
+    const enabled = state.contact.visibility?.[key] !== false;
+    toggle.classList.toggle("active", enabled);
+    toggle.setAttribute("aria-pressed", String(enabled));
+  });
+  renderEntryList("experience");
+  renderEntryList("project");
+  renderEntryList("education");
+  renderEntryList("certification");
+  populateForm(courseworkForm, state.coursework);
+  renderSkills();
+  populateForm(summaryForm, state.summary);
+  updateSummaryCount();
+  populateCoverLetterForm();
+  renderPreview();
+}
+
+function mergeBuilderState(saved) {
+  const base = clone(defaultData);
+  return {
+    ...base,
+    ...(saved || {}),
+    contact: {
+      ...base.contact,
+      ...(saved?.contact || {}),
+      visibility: { ...base.contact.visibility, ...(saved?.contact?.visibility || {}) }
+    },
+    experience: Array.isArray(saved?.experience) ? saved.experience : [],
+    project: Array.isArray(saved?.project) ? saved.project : [],
+    education: Array.isArray(saved?.education) ? saved.education : [],
+    certifications: Array.isArray(saved?.certifications) ? saved.certifications : [],
+    coursework: { ...base.coursework, ...(saved?.coursework || {}) },
+    skills: Array.isArray(saved?.skills) ? saved.skills : [],
+    summary: { ...base.summary, ...(saved?.summary || {}) },
+    coverLetter: { ...base.coverLetter, ...(saved?.coverLetter || {}) }
+  };
+}
+
+async function loadServerBuilderState() {
+  const requestedId = new URLSearchParams(window.location.search).get("resume_id");
+  const endpoint = requestedId ? `/api/builder/state?resume_id=${encodeURIComponent(requestedId)}` : "/api/builder/state";
+  try {
+    const response = await fetch(endpoint, { credentials: "same-origin", cache: "no-store" });
+    if (response.status === 404) throw new Error("The selected resume no longer exists.");
+    if (!response.ok) return;
+    const data = await response.json();
+    if (!data.resumeId) {
+      setServerStatus("New local draft");
+      return;
+    }
+    state = mergeBuilderState(data);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    refreshBuilderUI();
+    setServerStatus("Loaded from ResumeAI", "saved");
+    showToast("Shared resume loaded.");
+  } catch (error) {
+    console.error("Could not load shared resume:", error);
+    setServerStatus("Local draft", "error");
+    showToast(error.message || "Could not load the selected resume.");
+  }
+}
+
 let autosaveTimer;
 document.addEventListener("input", (event) => {
   if (!event.target.closest("form")) return;
@@ -900,6 +1031,8 @@ document.addEventListener("keydown", (event) => {
 const initialPage = window.location.hash.replace("#", "");
 navigate(document.querySelector(`[data-page-panel="${initialPage}"]`) ? initialPage : "contact", false);
 
+loadServerBuilderState();
+
 window.addEventListener("hashchange", () => {
   const page = window.location.hash.replace("#", "");
   if (document.querySelector(`[data-page-panel="${page}"]`)) navigate(page, false);
@@ -907,5 +1040,5 @@ window.addEventListener("hashchange", () => {
 
 window.addEventListener("beforeunload", () => {
   syncAllFormsToState();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (error) { console.warn(error); }
 });

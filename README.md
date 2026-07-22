@@ -1,6 +1,6 @@
-# Resume Optimizer
+# ResumeAI — Local Career Workspace
 
-A local, offline, AI-powered desktop application for ATS resume optimization and tailoring - a lightweight alternative to Rezi.ai. All processing happens on your machine: parsing, scoring, and AI rewriting via [Ollama](https://ollama.com). No cloud, no accounts, no data leaves your computer.
+A local-first desktop and web workspace for resume building, ATS analysis, evidence-checked optimization, application tracking, and career documents. Parsing, scoring, storage, and optional AI rewriting through Ollama run on your machine.
 
 ## Features
 
@@ -15,8 +15,8 @@ A local, offline, AI-powered desktop application for ATS resume optimization and
 - **One-click pipeline**: runs ATS analysis → optimization → cover letter in sequence with progress tracking
 - **Export**: DOCX, PDF and Markdown
 - **Model support**: `qwen3` and `llama3.1` (or any Ollama model), selectable in Settings
-- **Local SQLite database**: resumes, job descriptions, ATS scores and optimization history
-- **Modern UI** with Dashboard, Resume Upload, Job Description, ATS Analysis, Optimization, Cover Letter, Skill Gap, Salary, and Settings pages
+- **Local SQLite database**: shared resumes, versions, job metadata, ATS results, optimization reviews, documents, applications, and web sessions
+- **Two coordinated interfaces**: PySide desktop and a responsive FastAPI web workspace with a shared Resume Builder, Application Tracker, Cover Letters, and Resignation Letters
 
 ## Requirements
 
@@ -51,11 +51,20 @@ python -m playwright install chromium
 pytest
 ```
 
-## Run
+## Run the desktop application
 
 ```bash
 python main.py
 ```
+
+## Run the web application
+
+```bash
+python -m pip install -e ".[web]"
+python web_main.py
+```
+
+Open `http://127.0.0.1:8000`. The web server binds to localhost by default.
 
 Typical workflow:
 
@@ -63,7 +72,9 @@ Typical workflow:
 2. **Job Description** - paste or upload the target posting and save it
 3. **ATS Analysis** - run the analysis to get your score, missing keywords and suggestions
 4. **Optimization** - let the AI rewrite your summary and bullets, then export to DOCX/PDF/Markdown
-5. **Cover Letter** - generate and save a tailored cover letter
+5. **Cover Letter** - generate, edit, save, and export a tailored cover letter
+6. **Application Tracker** - track wishlist, applied, interview, offer, and outcome stages
+7. **Career Documents** - create English/Bahasa Melayu resignation letters with editable history
 
 ## Tests
 
@@ -131,7 +142,12 @@ app/
       skill_gap.py       # skill gap analysis with disclaimer
       salary_estimate.py # salary estimation with disclaimer
       settings.py        # Ollama URL, model, temperature, theme
-tests/                   # 156 tests across 11 test files
+web/
+  templates/             # FastAPI/Jinja pages
+  static/                # shared CSS and browser interactions
+  resume_dashboard/      # shared structured Resume Builder
+web_main.py               # localhost FastAPI entry point
+tests/                   # unit, migration, regression, desktop, and web integration tests
   test_ats_engine.py     # 15 tests
   test_cover_letter.py   # 11 tests
   test_exporter.py       #  2 tests

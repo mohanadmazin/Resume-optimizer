@@ -1,44 +1,37 @@
-# ResumeForge — Full Resume Builder
+# ResumeAI — Shared Resume Builder
 
-A responsive, dependency-free resume builder inspired by the supplied dark dashboard design.
+A responsive, dependency-free editor mounted inside the ResumeAI FastAPI application at `/builder/`.
 
-## Included pages
+## Sections
 
 1. Contact
 2. Experience
-3. Project
+3. Projects
 4. Education
 5. Certifications
 6. Coursework
 7. Skills
 8. Summary
 9. Finish Up & Preview
-10. AI Cover Letter
+10. Quick Cover Letter Draft
 
-## Main features
+## Key behavior
 
-- Single-page navigation with URL hashes
-- Responsive desktop, tablet, and mobile layouts
-- Add/remove multiple experience, project, education, and certification entries
-- Skills manager with proficiency levels
-- Professional summary draft generator
-- Live resume preview
-- Print / Save as PDF through the browser print dialog
-- Plain-text resume download
-- Cover letter draft generator, copy, and download
-- Browser localStorage persistence
-- JSON data export
-- Reset/new resume confirmation
-- No external libraries, fonts, or build tools
+- Loads the selected SQLite resume through `/api/builder/state`.
+- Debounced autosave updates the same record used by ATS and optimization.
+- Explicit Save creates a resume version.
+- Save & Continue opens Target Jobs.
+- Falls back to browser `localStorage` if the backend cannot be reached.
+- Supports add/remove sections, live preview, browser print/PDF, plain-text download, JSON backup, copy/download of a quick deterministic cover-letter draft, and reset confirmation.
+- The tailored AI cover-letter action opens the main ResumeAI cover-letter workflow.
 
 ## Run
 
-Open `index.html` directly in a browser.
-
-For a local development server:
+From the project root:
 
 ```bash
-python -m http.server 8000
+python -m pip install -e ".[web]"
+python web_main.py
 ```
 
-Then open `http://localhost:8000/resume_dashboard_full/` if the parent directory is served, or run the command inside the project folder and open `http://localhost:8000`.
+Open `http://127.0.0.1:8000/builder/`.

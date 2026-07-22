@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Responsive dark resume builder with contact, experience, projects, education, certifications, coursework, skills, summary, preview, and cover letter pages." />
-  <title>ResumeForge — Resume Builder</title>
+  <meta name="description" content="ResumeAI local resume builder connected to ATS analysis and optimization." />
+  <title>ResumeAI — Resume Builder</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="app-shell">
     <aside class="side-rail" aria-label="Application shortcuts">
-      <a class="brand-mark" href="#contact" aria-label="ResumeForge home">
+      <a class="brand-mark" href="#contact" aria-label="ResumeAI resume builder">
         <span></span><span></span><span></span><span></span>
       </a>
 
@@ -38,7 +38,7 @@
           </svg>
         </button>
 
-        <button class="side-button" type="button" aria-label="AI cover letter" data-tooltip="AI cover letter" data-page="cover-letter">
+        <button class="side-button" type="button" aria-label="Quick cover letter draft" data-tooltip="Quick cover letter draft" data-page="cover-letter">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 2l1.6 5.2L19 9l-5.4 1.8L12 16l-1.6-5.2L5 9l5.4-1.8z"/>
             <path d="M19 14l.9 2.9L23 18l-3.1 1.1L19 22l-.9-2.9L15 18l3.1-1.1z"/>
@@ -100,8 +100,10 @@
         </div>
 
         <div class="top-actions">
+          <span class="server-save-status" id="serverSaveStatus" role="status">Local draft</span>
           <button class="action-button" type="button" data-page="preview">Finish Up &amp; Preview</button>
-          <button class="action-button" type="button" data-page="cover-letter">AI Cover Letter</button>
+          <button class="action-button" type="button" data-page="cover-letter">Quick Letter Draft</button>
+          <button class="action-button primary-action" type="button" id="continueToTargetingButton">Save &amp; Continue</button>
           <a class="action-button action-link" href="/resignation-letter">Resignation Letter</a>
         </div>
       </header>
@@ -454,8 +456,8 @@ Business Research Methods</textarea>
               <div class="page-heading">
                 <div>
                   <span class="eyebrow">Application support</span>
-                  <h1>AI Cover Letter</h1>
-                  <p>Provide the target role and job context. The builder will prepare an editable first draft using your resume data.</p>
+                  <h1>Quick Cover Letter Draft</h1>
+                  <p>Provide the target role and job context. This offline template prepares a basic editable draft. Use the main Cover Letter page for a job-tailored Ollama draft.</p>
                 </div>
               </div>
 
@@ -491,7 +493,8 @@ Business Research Methods</textarea>
               </div>
 
               <div class="form-footer">
-                <button class="primary-button" type="submit">Generate Cover Letter</button>
+                <button class="primary-button" type="submit">Create Quick Draft</button>
+                <a class="secondary-link-button" href="/cover-letter">Open Tailored AI Generator</a>
               </div>
             </form>
 

@@ -1487,3 +1487,12 @@ a.upgrade-button {
   text-decoration: none;
   cursor: pointer;
 }
+
+/* ResumeAI shared-workspace additions */
+.server-save-status { padding: .48rem .7rem; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: var(--panel); font-size: .68rem; white-space: nowrap; }
+.server-save-status.saving { color: #f3c66d; }
+.server-save-status.saved { color: #6ee7ad; border-color: rgba(69, 209, 143, .35); }
+.server-save-status.error { color: #ff9aa3; border-color: rgba(255,107,117,.35); }
+.primary-action { background: var(--primary, #6f7cff) !important; color: white !important; border-color: transparent !important; }
+.secondary-link-button { min-height: 42px; padding: .75rem 1rem; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: .65rem; color: var(--text); background: transparent; text-decoration: none; font-size: .82rem; font-weight: 700; }
+@media (max-width: 760px) { .server-save-status { display: none; } }

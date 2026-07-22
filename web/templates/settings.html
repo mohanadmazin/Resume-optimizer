@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Settings - Resume Optimizer{% endblock %}
+{% block title %}Settings — ResumeAI{% endblock %}
 {% block content %}
 <div class="page-header"><span class="eyebrow">Configuration</span><h1>AI &amp; Local Model Settings</h1><p class="subtitle">Connect the web interface to your local Ollama installation.</p></div>
 
@@ -37,10 +37,10 @@
     const button = event.currentTarget; const info = document.getElementById('ollamaInfo');
     button.disabled = true; button.textContent = 'Testing…';
     try {
-      const response = await fetch('/api/ollama/status', { cache: 'no-store' }); const data = await response.json();
+      const response = await fetch('/api/ollama/test', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ollama_url: document.getElementById('ollama_url').value, model: document.getElementById('model').value}), cache: 'no-store' }); const data = await response.json();
       info.className = `connection-status ${data.connected ? 'connected' : 'offline'}`;
-      info.innerHTML = `<span class="connection-icon">${data.connected ? '✓' : '!'}</span><div><strong>${data.connected ? 'Ollama Connected' : 'Ollama Offline'}</strong><small>${data.connected ? `${data.models.length} model(s) detected.` : 'Start Ollama and verify the configured URL.'}</small></div>`;
-      window.showGlobalToast(data.connected ? 'Ollama connection successful.' : 'Ollama is not reachable.', !data.connected);
+      info.innerHTML = `<span class="connection-icon">${data.connected && data.model_available ? '✓' : '!'}</span><div><strong>${data.connected ? (data.model_available ? 'Ollama and model ready' : 'Ollama connected; model missing') : 'Ollama offline'}</strong><small>${data.error || `${data.models.length} model(s) detected at ${data.url}.`}</small></div>`;
+      window.showGlobalToast(data.connected && data.model_available ? 'Ollama connection and model verified.' : (data.error || 'Ollama test failed.'), !(data.connected && data.model_available));
     } catch { window.showGlobalToast('Connection test failed.', true); }
     finally { button.disabled = false; button.textContent = 'Test Connection'; }
   });

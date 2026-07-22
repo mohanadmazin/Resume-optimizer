@@ -58,6 +58,8 @@ class ResumeRepository(BaseRepository):
             {
                 "id": row.id,
                 "name": row.name,
+                "source_type": row.source_type or "import",
+                "source_filename": row.source_filename or "",
                 "created_at": row.created_at.strftime("%Y-%m-%d %H:%M") if row.created_at else None,
             }
             for row in rows
@@ -71,12 +73,27 @@ class ResumeRepository(BaseRepository):
         self.session.delete(row)
         return True
 
-    def update(self, resume_id: int, data_json: str) -> bool:
-        """Update the data_json of an existing resume. Returns True if updated."""
+    def update(
+        self,
+        resume_id: int,
+        data_json: str,
+        *,
+        name: str | None = None,
+        raw_text: str | None = None,
+        source_type: str | None = None,
+    ) -> bool:
+        """Update a saved resume while preserving its identity and history."""
         row = self.get_by_id(resume_id)
         if row is None:
             return False
         row.data_json = data_json
+        if name is not None:
+            row.name = name
+        if raw_text is not None:
+            row.raw_text = raw_text
+            row.source_hash = hashlib.sha256(raw_text.encode()).hexdigest() if raw_text else ""
+        if source_type is not None:
+            row.source_type = source_type
         return True
 
     def create_variant(

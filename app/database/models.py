@@ -32,7 +32,15 @@ class JobDescription(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
+    company = Column(String(255), default="")
+    location = Column(String(255), default="")
+    source_url = Column(Text, default="")
+    employment_type = Column(String(100), default="")
+    salary = Column(String(150), default="")
+    date_posted = Column(String(40), default="")
+    status = Column(String(50), default="saved")
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     analyses = relationship("Analysis", cascade="all, delete-orphan", passive_deletes=True)
     optimizations = relationship("Optimization", cascade="all, delete-orphan", passive_deletes=True)
 
@@ -48,6 +56,7 @@ class Analysis(Base):
     skills_match = Column(Float, default=0.0)
     missing_keywords = Column(Text, default="[]")
     suggestions = Column(Text, default="[]")
+    result_json = Column(Text, default="{}")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -59,6 +68,10 @@ class Optimization(Base):
     job_id = Column(Integer, ForeignKey("job_descriptions.id", ondelete="CASCADE"), nullable=False, index=True)
     model = Column(String(100), default="")
     optimized_json = Column(Text, nullable=False)
+    fact_guard_json = Column(Text, default="{}")
+    accepted_changes_json = Column(Text, default="[]")
+    original_score = Column(Integer, default=0)
+    optimized_score = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -158,6 +171,29 @@ class CoverLetter(Base):
     content = Column(Text, nullable=False)
     model = Column(String(100), default="")
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class WebSession(Base):
+    __tablename__ = "web_sessions"
+
+    sid = Column(String(64), primary_key=True)
+    data_json = Column(Text, nullable=False, default="{}")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+
+
+class GeneratedDocument(Base):
+    __tablename__ = "generated_documents"
+
+    id = Column(Integer, primary_key=True)
+    document_type = Column(String(50), nullable=False, index=True)
+    title = Column(String(255), nullable=False, default="Untitled document")
+    content = Column(Text, nullable=False)
+    resume_id = Column(Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True)
+    job_id = Column(Integer, ForeignKey("job_descriptions.id", ondelete="SET NULL"), nullable=True, index=True)
+    metadata_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # ── Agent conversations ────────────────────────────────────────────────────

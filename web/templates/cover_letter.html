@@ -1,50 +1,31 @@
 {% extends "base.html" %}
-{% block title %}Cover Letter - Resume Optimizer{% endblock %}
+{% block title %}Cover Letters — ResumeAI{% endblock %}
 {% block content %}
-<div class="page-header page-header-split">
-    <div><span class="eyebrow">Application Writing</span><h1>Tailored Cover Letter</h1><p class="subtitle">Generate a local AI draft grounded in the selected resume and job description.</p></div>
-    {% if letter %}<a class="btn btn-secondary" href="/cover-letter/download">Download TXT</a>{% endif %}
-</div>
-
-{% if request.query_params.get('error') == 'missing_input' %}<div class="alert alert-error">Select a resume and save a job description first.</div>{% endif %}
-{% if request.query_params.get('error') == 'no_letter' %}<div class="alert alert-error">Generate a cover letter before downloading.</div>{% endif %}
-{% if request.query_params.get('done') %}<div class="alert alert-success">Cover letter generated. Review every statement before sending it.</div>{% endif %}
+<div class="page-header"><span class="eyebrow">Career documents</span><h1>Tailored Cover Letter</h1><p class="subtitle">Generate a fact-grounded local AI draft, edit it, save it, reopen it later, and export the exact edited version.</p></div>
+{% if request.query_params.get('error') == 'missing_input' %}<div class="alert alert-error">Select a resume and target job first.</div>{% endif %}
+{% if request.query_params.get('error') == 'no_letter' %}<div class="alert alert-error">Generate or enter a cover letter before downloading.</div>{% endif %}
+{% if request.query_params.get('done') %}<div class="alert alert-success">Cover letter generated and added to local history. Verify every statement.</div>{% endif %}
+{% if request.query_params.get('saved') %}<div class="alert alert-success">Your edited cover letter was saved.</div>{% endif %}
+{% if request.query_params.get('loaded') %}<div class="alert alert-success">Saved draft reopened.</div>{% endif %}
 {% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
 
-{% if not has_resume or not has_job %}
-<div class="prerequisite-grid">
-    <a href="/upload" class="prerequisite-card {% if has_resume %}complete{% endif %}"><span>{% if has_resume %}✓{% else %}1{% endif %}</span><div><strong>Resume</strong><small>{% if has_resume %}Selected{% else %}Required{% endif %}</small></div></a>
-    <a href="/jobs" class="prerequisite-card {% if has_job %}complete{% endif %}"><span>{% if has_job %}✓{% else %}2{% endif %}</span><div><strong>Job Description</strong><small>{% if has_job %}Selected{% else %}Required{% endif %}</small></div></a>
-</div>
-{% endif %}
+{% if not has_resume or not has_job %}<div class="prerequisite-grid"><a href="/upload" class="prerequisite-card {% if has_resume %}complete{% endif %}"><span>{% if has_resume %}✓{% else %}1{% endif %}</span><div><strong>Resume</strong><small>{% if has_resume %}Selected{% else %}Required{% endif %}</small></div></a><a href="/jobs" class="prerequisite-card {% if has_job %}complete{% endif %}"><span>{% if has_job %}✓{% else %}2{% endif %}</span><div><strong>Target Job</strong><small>{% if has_job %}Selected{% else %}Required{% endif %}</small></div></a></div>{% endif %}
 
-{% if not letter %}
-<section class="panel action-panel">
-    <div class="action-illustration">✉</div><h2>Create a tailored first draft</h2><p>The generator uses your resume facts and target role. It will not intentionally invent employers, dates, or achievements.</p>
-    <form method="POST" action="/cover-letter/run" class="processing-form"><button type="submit" class="btn btn-primary btn-large" {% if not has_resume or not has_job %}disabled{% endif %}>Generate Cover Letter</button></form>
-</section>
+<div class="document-workspace">
+<section class="panel">
+{% if not letter %}<div class="action-panel"><div class="action-illustration"><svg viewBox="0 0 24 24"><path d="M3 6h18v12H3V6Zm0 1 9 6 9-6"/></svg></div><h2>Create a tailored first draft</h2><p>The local AI uses your selected resume and target job. It should not introduce unsupported employers, dates, or achievements.</p><form method="post" action="/cover-letter/run" class="processing-form"><button class="btn btn-primary btn-large" {% if not has_resume or not has_job %}disabled{% endif %}>Generate Cover Letter</button></form></div>
 {% else %}
-<div class="review-layout cover-layout">
-    <section class="panel">
-        <div class="panel-heading"><div><h2>Generated Draft</h2><p>Edit or copy the text after reviewing it.</p></div><div class="button-row"><button type="button" class="btn btn-secondary btn-small" id="copyLetterButton">Copy</button><a class="btn btn-secondary btn-small" href="/cover-letter/download">Download</a></div></div>
-        <textarea class="cover-letter-editor" id="coverLetterText" rows="28" aria-label="Generated cover letter">{{ letter }}</textarea>
-        <form method="POST" action="/cover-letter/run" class="processing-form" style="margin-top:1rem"><button type="submit" class="btn btn-secondary">Regenerate Draft</button></form>
-    </section>
-    <aside>
-        {% if warnings %}<section class="panel"><div class="panel-heading"><div><h2>Fact-check Warnings</h2><p>Confirm these items before use.</p></div><span class="badge badge-warning">{{ warnings|length }}</span></div><ul class="warning-list">{% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}</ul></section>{% endif %}
-        <section class="panel guidance-panel {% if warnings %}spaced-panel{% endif %}"><h2>Before sending</h2><ul class="check-list"><li>Confirm company and role names.</li><li>Remove unsupported claims or numbers.</li><li>Adjust tone for the employer.</li><li>Proofread contact details and grammar.</li></ul></section>
-    </aside>
+<form method="post" id="coverLetterForm">
+<div class="panel-heading"><div><h2>Editable Draft</h2><p>Save or download after making changes. Export actions use the current editor text.</p></div><button type="button" class="btn btn-secondary btn-small" id="copyLetterButton">Copy</button></div>
+<textarea class="cover-letter-editor" id="coverLetterText" name="letter_text" rows="30" maxlength="30000" aria-label="Cover letter draft">{{ letter }}</textarea>
+<div class="document-actions"><button class="btn btn-primary" formaction="/cover-letter/save">Save Changes</button><button class="btn btn-secondary" formaction="/cover-letter/download/txt">Download TXT</button><button class="btn btn-secondary" formaction="/cover-letter/download/docx">Download DOCX</button><button class="btn btn-secondary" formaction="/cover-letter/download/pdf">Download PDF</button></div>
+</form>
+{% if warnings %}<div class="warning-box"><strong>Review notes</strong><ul>{% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
+<div class="button-row"><form method="post" action="/cover-letter/run" class="processing-form"><button class="btn btn-secondary">Generate New Draft</button></form><form method="post" action="/cover-letter/clear"><button class="btn btn-danger">Clear Current Draft</button></form></div>
+{% endif %}
+</section>
+
+<aside class="panel document-history"><div class="panel-heading"><div><h2>Saved Drafts</h2><p>Persistent local history.</p></div><span class="badge">{{ history|length }}</span></div>{% if history %}<div class="document-list">{% for item in history %}<div class="document-row"><span>Cover</span><div><strong>{{ item.title }}</strong><small>{{ item.updated_at }}</small></div><form method="post" action="/cover-letter/load/{{ item.id }}"><button class="btn btn-secondary btn-small">Open</button></form></div>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No saved cover letters yet.</p></div>{% endif %}<div class="privacy-note"><span>Local</span><p>Resume and job content remains in your local database. AI text is sent only to the configured Ollama endpoint.</p></div></aside>
 </div>
-{% endif %}
 {% endblock %}
-{% block scripts %}
-{% if letter %}
-<script>
-document.getElementById('copyLetterButton').addEventListener('click', async () => {
-  const field = document.getElementById('coverLetterText');
-  try { await navigator.clipboard.writeText(field.value); window.showGlobalToast('Cover letter copied.'); }
-  catch { field.select(); document.execCommand('copy'); window.showGlobalToast('Cover letter copied.'); }
-});
-</script>
-{% endif %}
-{% endblock %}
+{% block scripts %}{% if letter %}<script>document.getElementById('copyLetterButton').addEventListener('click',async()=>{const text=document.getElementById('coverLetterText').value;try{await navigator.clipboard.writeText(text);window.showGlobalToast('Cover letter copied.');}catch{window.showGlobalToast('Copy failed. Select the text manually.',true);}});</script>{% endif %}{% endblock %}

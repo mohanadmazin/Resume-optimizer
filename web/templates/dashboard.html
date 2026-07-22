@@ -1,103 +1,73 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - Resume Optimizer{% endblock %}
+{% block title %}Dashboard — ResumeAI
+<section class="panel dashboard-applications">
+  <div class="panel-heading"><div><h2>Application Pipeline</h2><p>Recent tracked opportunities and their current status.</p></div><a href="/applications" class="text-link">Open tracker</a></div>
+  {% if recent_applications %}<div class="pipeline-list">{% for item in recent_applications %}<div class="pipeline-row"><span class="status-pill">{{ item.status|title }}</span><div><strong>{{ item.job_title }}</strong><small>{{ item.company or item.resume_name }}{% if item.applied_at %} · Applied {{ item.applied_at }}{% endif %}</small></div></div>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No applications tracked yet.</p><a href="/applications" class="text-link">Add the current resume and job</a></div>{% endif %}
+</section>
+{% endblock %}
 {% block content %}
 <div class="page-header page-header-split">
-    <div>
-        <span class="eyebrow">Workspace</span>
-        <h1>Resume Optimization Dashboard</h1>
-        <p class="subtitle">Build, analyze, optimize, and export a targeted application from one workflow.</p>
-    </div>
-    <a href="/builder/" class="btn btn-primary">Open Resume Builder</a>
+    <div><span class="eyebrow">Career workspace</span><h1>Build a stronger application</h1><p class="subtitle">Your resume, target role, ATS evidence, AI review, and career documents now share one local workspace.</p></div>
+    <div class="button-row"><a href="/builder/" class="btn btn-primary">Open Resume Builder</a><a href="/upload" class="btn btn-secondary">Resume Library</a></div>
 </div>
 
 {% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
-{% if request.query_params.get('resume_loaded') %}<div class="alert alert-success">Resume selected for this workflow.</div>{% endif %}
-{% if request.query_params.get('resume_deleted') %}<div class="alert alert-success">Resume removed.</div>{% endif %}
+{% if request.query_params.get('resume_loaded') %}<div class="alert alert-success">Resume selected. Builder, ATS and optimization now use this same record.</div>{% endif %}
 
-<section class="workflow-strip" aria-label="Workflow progress">
-    <a href="/upload" class="workflow-step {% if workflow_has_resume %}complete{% endif %}">
-        <span class="step-number">1</span><span><strong>Resume</strong><small>{{ workflow_resume_name or 'Upload or select' }}</small></span>
-    </a>
-    <a href="/jobs" class="workflow-step {% if workflow_has_job %}complete{% endif %}">
-        <span class="step-number">2</span><span><strong>Target Job</strong><small>{{ workflow_job_title or 'Paste description' }}</small></span>
-    </a>
-    <a href="/ats" class="workflow-step {% if workflow_has_ats %}complete{% endif %}">
-        <span class="step-number">3</span><span><strong>ATS Analysis</strong><small>{% if workflow_has_ats %}Analysis ready{% else %}Run score{% endif %}</small></span>
-    </a>
-    <a href="/optimize" class="workflow-step {% if workflow_has_optimized %}complete{% endif %}">
-        <span class="step-number">4</span><span><strong>Optimization</strong><small>{% if workflow_has_optimized %}Draft ready{% else %}Review changes{% endif %}</small></span>
-    </a>
+<section class="dashboard-hero panel">
+    <div>
+        <span class="eyebrow">Recommended next action</span>
+        <h2>{{ next_action.title }}</h2>
+        <p>{{ next_action.text }}</p>
+        <a class="btn btn-primary" href="{{ next_action.href }}">{{ next_action.label }}</a>
+    </div>
+    <div class="active-application-card">
+        <div><span>Active resume</span><strong>{{ workflow_resume_name or 'Not selected' }}</strong></div>
+        <div><span>Target role</span><strong>{{ workflow_job_title or 'Not selected' }}</strong></div>
+        <div class="active-score"><span>ATS score</span><strong>{{ active_score if active_score is not none else '—' }}{% if active_score is not none %}<small>/100</small>{% endif %}</strong></div>
+        {% if score_gain is not none %}<div class="score-gain {% if score_gain >= 0 %}positive{% endif %}"><span>Current improvement</span><strong>{% if score_gain >= 0 %}+{% endif %}{{ score_gain }} points</strong></div>{% endif %}
+    </div>
 </section>
 
-<div class="card-grid dashboard-stats">
-    <a href="/upload" class="stat-card">
-        <div class="stat-icon">📄</div>
-        <div class="stat-label">Saved Resumes</div>
-        <div class="stat-value">{{ resumes|length }}</div>
-        <div class="stat-link">Manage resumes →</div>
-    </a>
-    <a href="/jobs" class="stat-card">
-        <div class="stat-icon">💼</div>
-        <div class="stat-label">Saved Job Descriptions</div>
-        <div class="stat-value">{{ jobs|length }}</div>
-        <div class="stat-link">Manage jobs →</div>
-    </a>
-    <a href="/ats" class="stat-card">
-        <div class="stat-icon">✅</div>
-        <div class="stat-label">ATS Status</div>
-        <div class="stat-value stat-value-text">{% if workflow_has_ats %}Ready{% else %}Not run{% endif %}</div>
-        <div class="stat-link">Open analysis →</div>
-    </a>
-    <a href="/cover-letter" class="stat-card">
-        <div class="stat-icon">✉️</div>
-        <div class="stat-label">Cover Letter</div>
-        <div class="stat-value stat-value-text">Create</div>
-        <div class="stat-link">Generate letter →</div>
-    </a>
-    <a href="/resignation-letter" class="stat-card">
-        <div class="stat-icon">📝</div>
-        <div class="stat-label">Resignation Letter</div>
-        <div class="stat-value stat-value-text">{% if workflow_has_resignation %}Drafted{% else %}Create{% endif %}</div>
-        <div class="stat-link">Open generator →</div>
-    </a>
+<div class="stats-grid">
+    <a class="stat-card" href="/upload"><span>Saved resumes</span><strong>{{ resumes|length }}</strong><small>Build, import, edit, and version</small></a>
+    <a class="stat-card" href="/jobs"><span>Target jobs</span><strong>{{ jobs|length }}</strong><small>Metadata and exact requirements retained</small></a>
+    <a class="stat-card" href="/ats"><span>ATS analyses</span><strong>{{ recent_analyses|length }}</strong><small>Recent evidence-backed score checks</small></a>
+    <a class="stat-card" href="/applications"><span>Applications</span><strong>{{ recent_applications|length }}</strong><small>Track wishlist, applied, interview, and offer stages</small></a>
 </div>
 
 <div class="dashboard-columns">
     <section class="panel">
-        <div class="panel-heading">
-            <div><h2>Saved Resumes</h2><p>Select a resume to continue the ATS workflow.</p></div>
-            <a href="/upload" class="btn btn-secondary btn-small">Upload New</a>
+        <div class="panel-heading"><div><h2>Workflow</h2><p>Complete each stage using the same selected resume and job record.</p></div></div>
+        <div class="workflow-list">
+            <a href="/builder/" class="workflow-step {% if workflow_has_resume %}complete{% endif %}"><span>{% if workflow_has_resume %}✓{% else %}1{% endif %}</span><div><strong>Build or edit resume</strong><small>{{ workflow_resume_name or 'Create or select a resume' }}</small></div></a>
+            <a href="/jobs" class="workflow-step {% if workflow_has_job %}complete{% endif %}"><span>{% if workflow_has_job %}✓{% else %}2{% endif %}</span><div><strong>Select target job</strong><small>{{ workflow_job_title or 'Save the full job description' }}</small></div></a>
+            <a href="/ats" class="workflow-step {% if workflow_has_ats %}complete{% endif %}"><span>{% if workflow_has_ats %}✓{% else %}3{% endif %}</span><div><strong>Run explainable ATS analysis</strong><small>Review categories, keywords, evidence, and recommendations</small></div></a>
+            <a href="/optimize" class="workflow-step {% if workflow_has_optimized %}complete{% endif %}"><span>{% if workflow_has_optimized %}✓{% else %}4{% endif %}</span><div><strong>Review, apply, and export</strong><small>Accept only accurate AI-supported changes</small></div></a>
         </div>
-        {% if resumes %}
-        <div class="record-list">
-            {% for resume in resumes[:8] %}
-            <article class="record-row {% if resume.id == active_resume_id %}selected{% endif %}">
-                <div class="record-main">
-                    <strong>{{ resume.name or "Untitled" }}</strong>
-                    <span>{{ resume.created_at or "Saved locally" }}</span>
-                </div>
-                <div class="record-actions">
-                    {% if resume.id == active_resume_id %}<span class="badge badge-success">Active</span>{% endif %}
-                    <form method="post" action="/resumes/{{ resume.id }}/use"><button class="btn btn-secondary btn-small" type="submit">Use</button></form>
-                    <form method="post" action="/resumes/{{ resume.id }}/delete" data-confirm="Delete this saved resume?"><button class="btn btn-danger btn-small" type="submit">Delete</button></form>
-                </div>
-            </article>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state"><span>📄</span><h3>No saved resumes</h3><p>Upload a resume or create one in the builder to begin.</p><a class="btn btn-primary" href="/upload">Upload Resume</a></div>
-        {% endif %}
     </section>
 
-    <section class="panel quick-actions-panel">
-        <div class="panel-heading"><div><h2>Quick Actions</h2><p>Continue from the next available step.</p></div></div>
-        <div class="quick-action-list">
-            <a href="/builder/"><span>✎</span><div><strong>Build a resume</strong><small>Create and preview a resume locally.</small></div><b>→</b></a>
-            <a href="/jobs"><span>▣</span><div><strong>Add target job</strong><small>Save the role requirements and keywords.</small></div><b>→</b></a>
-            <a href="/ats"><span>✓</span><div><strong>Check ATS match</strong><small>Measure keyword and skills coverage.</small></div><b>→</b></a>
-            <a href="/resignation-letter"><span>↪</span><div><strong>Write resignation letter</strong><small>Create and export a professional notice letter.</small></div><b>→</b></a>
-            <a href="/settings"><span>⚙</span><div><strong>Configure Ollama</strong><small>Select the local AI model used for writing.</small></div><b>→</b></a>
-        </div>
+    <section class="panel">
+        <div class="panel-heading"><div><h2>Recent ATS activity</h2><p>Your latest saved analyses.</p></div></div>
+        {% if recent_analyses %}<div class="activity-list">
+        {% for item in recent_analyses %}<div class="activity-row"><div class="activity-score">{{ item.ats_score }}</div><div><strong>{{ item.job_title }}</strong><span>{{ item.job_company or item.resume_name }} · {{ item.created_at }}</span></div></div>{% endfor %}
+        </div>{% else %}<div class="empty-compact"><p>No ATS analyses yet.</p><a href="/ats" class="text-link">Run your first analysis</a></div>{% endif %}
     </section>
 </div>
+
+<div class="dashboard-columns">
+    <section class="panel">
+        <div class="panel-heading"><div><h2>Resume library</h2><p>The builder and ATS now use these same records.</p></div><a href="/upload" class="text-link">View all</a></div>
+        {% if resumes %}<div class="record-list compact-record-list">{% for resume in resumes[:5] %}<article class="record-row {% if resume.id == active_resume_id %}selected{% endif %}"><div class="record-main"><strong>{{ resume.name }}</strong><span>{{ resume.source_type|title }} · {{ resume.created_at }}</span></div><div class="record-actions">{% if resume.id == active_resume_id %}<span class="badge badge-success">Active</span>{% endif %}<a class="btn btn-secondary btn-small" href="/resumes/{{ resume.id }}/edit">Edit</a><form method="post" action="/resumes/{{ resume.id }}/use"><button class="btn btn-secondary btn-small">Use</button></form></div></article>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No resumes saved.</p></div>{% endif %}
+    </section>
+    <section class="panel">
+        <div class="panel-heading"><div><h2>Recent documents</h2><p>Persistent drafts you can reopen and edit.</p></div></div>
+        {% if recent_documents %}<div class="document-list">{% for doc in recent_documents %}<div class="document-row"><span>{{ 'Cover' if doc.document_type == 'cover_letter' else 'Resignation' }}</span><div><strong>{{ doc.title }}</strong><small>{{ doc.updated_at }}</small></div><form method="post" action="/{{ 'cover-letter' if doc.document_type == 'cover_letter' else 'resignation-letter' }}/load/{{ doc.id }}"><button class="btn btn-secondary btn-small">Open</button></form></div>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No saved career documents yet.</p></div>{% endif %}
+    </section>
+</div>
+
+<section class="panel dashboard-applications">
+  <div class="panel-heading"><div><h2>Application Pipeline</h2><p>Recent tracked opportunities and their current status.</p></div><a href="/applications" class="text-link">Open tracker</a></div>
+  {% if recent_applications %}<div class="pipeline-list">{% for item in recent_applications %}<div class="pipeline-row"><span class="status-pill">{{ item.status|title }}</span><div><strong>{{ item.job_title }}</strong><small>{{ item.company or item.resume_name }}{% if item.applied_at %} · Applied {{ item.applied_at }}{% endif %}</small></div></div>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No applications tracked yet.</p><a href="/applications" class="text-link">Add the current resume and job</a></div>{% endif %}
+</section>
 {% endblock %}

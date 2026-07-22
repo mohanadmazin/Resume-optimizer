@@ -1,74 +1,30 @@
 {% extends "base.html" %}
-{% block title %}Optimize Resume - Resume Optimizer{% endblock %}
+{% block title %}Optimization — ResumeAI{% endblock %}
 {% block content %}
-<div class="page-header page-header-split">
-    <div><span class="eyebrow">Step 4</span><h1>Resume Optimization</h1><p class="subtitle">Generate factual rewrite suggestions, review every change, then export the accepted version.</p></div>
-    {% if optimized_markdown %}<a class="btn btn-secondary" href="/optimize/download">Download Markdown</a>{% endif %}
-</div>
-
-{% if request.query_params.get('error') == 'missing_input' %}<div class="alert alert-error">Complete resume upload, job description, and ATS analysis first.</div>{% endif %}
+<div class="page-header page-header-split"><div><span class="eyebrow">Targeting · Step 4</span><h1>Review AI Optimization</h1><p class="subtitle">Compare every proposed change, accept only truthful wording, recalculate the score, and export professional files.</p></div>{% if changes %}<form method="post" action="/optimize/run" class="processing-form"><button class="btn btn-secondary">Generate New Suggestions</button></form>{% endif %}</div>
+{% if request.query_params.get('error') == 'missing_input' %}<div class="alert alert-error">Complete the resume, target job, and ATS analysis first.</div>{% endif %}
 {% if request.query_params.get('error') == 'no_changes' %}<div class="alert alert-error">Run optimization before applying changes.</div>{% endif %}
-{% if request.query_params.get('error') == 'no_optimized_resume' %}<div class="alert alert-error">No optimized resume is ready to download.</div>{% endif %}
-{% if request.query_params.get('done') %}<div class="alert alert-success">Optimization suggestions generated. Review and select the changes to apply.</div>{% endif %}
-{% if request.query_params.get('applied') %}<div class="alert alert-success">Your selected changes were applied to the export preview.</div>{% endif %}
+{% if request.query_params.get('error') == 'no_optimized_resume' %}<div class="alert alert-error">No optimized resume is ready to export.</div>{% endif %}
+{% if request.query_params.get('done') %}<div class="alert alert-success">Suggestions generated and stored. Review them before applying anything.</div>{% endif %}
+{% if request.query_params.get('applied') %}<div class="alert alert-success">Selected changes were applied, versioned, saved to the shared resume, and rescored.</div>{% endif %}
 {% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
 
-{% if not has_resume or not has_job or not has_ats %}
-<div class="prerequisite-grid prerequisite-grid-three">
-    <a href="/upload" class="prerequisite-card {% if has_resume %}complete{% endif %}"><span>{% if has_resume %}✓{% else %}1{% endif %}</span><div><strong>Resume</strong><small>{% if has_resume %}Ready{% else %}Required{% endif %}</small></div></a>
-    <a href="/jobs" class="prerequisite-card {% if has_job %}complete{% endif %}"><span>{% if has_job %}✓{% else %}2{% endif %}</span><div><strong>Target Job</strong><small>{% if has_job %}Ready{% else %}Required{% endif %}</small></div></a>
-    <a href="/ats" class="prerequisite-card {% if has_ats %}complete{% endif %}"><span>{% if has_ats %}✓{% else %}3{% endif %}</span><div><strong>ATS Analysis</strong><small>{% if has_ats %}Ready{% else %}Required{% endif %}</small></div></a>
-</div>
-{% endif %}
+{% if not has_resume or not has_job or not has_ats %}<div class="prerequisite-grid prerequisite-grid-three"><a href="/upload" class="prerequisite-card {% if has_resume %}complete{% endif %}"><span>{% if has_resume %}✓{% else %}1{% endif %}</span><div><strong>Resume</strong><small>{% if has_resume %}Ready{% else %}Required{% endif %}</small></div></a><a href="/jobs" class="prerequisite-card {% if has_job %}complete{% endif %}"><span>{% if has_job %}✓{% else %}2{% endif %}</span><div><strong>Target Job</strong><small>{% if has_job %}Ready{% else %}Required{% endif %}</small></div></a><a href="/ats" class="prerequisite-card {% if has_ats %}complete{% endif %}"><span>{% if has_ats %}✓{% else %}3{% endif %}</span><div><strong>ATS Analysis</strong><small>{% if has_ats %}Ready{% else %}Required{% endif %}</small></div></a></div>{% endif %}
 
-{% if not changes %}
-<section class="panel action-panel">
-    <div class="action-illustration">⚡</div><h2>Generate targeted improvements</h2><p>Ollama proposes summary, headline, and bullet changes. The fact guard flags unsupported numbers, entities, and skills for manual review.</p>
-    <form method="POST" action="/optimize/run" class="processing-form"><button type="submit" class="btn btn-primary btn-large" {% if not has_resume or not has_job or not has_ats %}disabled{% endif %}>Run Optimization</button></form>
-</section>
+{% if not changes %}<section class="panel action-panel"><div class="action-illustration"><svg viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"/></svg></div><h2>Generate evidence-checked improvements</h2><p>Your local Ollama model proposes headline, summary, and bullet rewrites. ResumeAI flags new numbers, entities, and skills before any change is applied.</p><form method="post" action="/optimize/run" class="processing-form"><button class="btn btn-primary btn-large" {% if not has_resume or not has_job or not has_ats %}disabled{% endif %}>Run Optimization</button></form></section>
 {% else %}
+<div class="score-comparison panel"><div><span>Original ATS score</span><strong>{{ original_score if original_score is not none else '—' }}</strong></div><div class="score-arrow">→</div><div><span>{% if optimized_score is not none %}Current saved score{% else %}Estimated safe-change score{% endif %}</span><strong>{{ optimized_score if optimized_score is not none else estimated_score if estimated_score is not none else '—' }}</strong></div><p>Score changes are local estimates from ResumeAI’s rules engine and do not guarantee an employer result.</p></div>
 <div class="review-layout">
-    <section class="panel">
-        <div class="panel-heading"><div><h2>Proposed Changes</h2><p>Select only changes that are accurate and appropriate.</p></div><span class="badge">{{ changes|length }}</span></div>
-        <form method="POST" action="/optimize/apply" id="changesForm">
-            <div class="review-toolbar"><button type="button" class="text-button" id="selectSafeButton">Select supported</button><button type="button" class="text-button" id="clearSelectionButton">Clear selection</button></div>
-            <div class="changes-list">
-                {% for change in changes %}
-                <label class="change-card {% if change.flagged %}flagged{% endif %}">
-                    <input type="checkbox" name="accepted_indexes" value="{{ change.index }}" {% if change.accepted is sameas true %}checked{% elif not change.flagged and change.accepted is not sameas false %}checked{% endif %} data-safe="{{ 'false' if change.flagged else 'true' }}">
-                    <div class="change-body">
-                        <div class="change-meta"><span class="change-type">{{ change.change_type.value if change.change_type.value is defined else change.change_type }}</span><span class="badge {% if change.flagged %}badge-warning{% else %}badge-success{% endif %}">{% if change.flagged %}Review required{% else %}Supported{% endif %}</span></div>
-                        {% if change.section %}<div class="change-section">{{ change.section }}</div>{% endif %}
-                        {% if change.original %}<div class="change-text original"><span>Original</span><p>{{ change.original }}</p></div>{% endif %}
-                        {% if change.rewritten %}<div class="change-text proposed"><span>Proposed</span><p>{{ change.rewritten }}</p></div>{% endif %}
-                        {% if change.review_reason %}<div class="change-reason">{{ change.review_reason }}</div>{% endif %}
-                    </div>
-                </label>
-                {% endfor %}
-            </div>
-            <div class="sticky-action-bar"><span id="selectionCount">0 selected</span><button type="submit" class="btn btn-primary">Apply Selected Changes</button></div>
-        </form>
-    </section>
-
-    <aside class="panel preview-panel">
-        <div class="panel-heading"><div><h2>Export Preview</h2><p>Updates after you apply selected changes.</p></div></div>
-        <pre class="resume-preview" id="optimizedPreview">{{ optimized_markdown }}</pre>
-        <div class="stacked-actions"><a class="btn btn-primary" href="/optimize/download">Download Markdown</a><a class="btn btn-secondary" href="/cover-letter">Create Cover Letter</a><form method="post" action="/optimize/run" class="processing-form"><button class="btn btn-secondary btn-block" type="submit">Generate New Suggestions</button></form></div>
-    </aside>
+<section class="panel">
+    <div class="panel-heading"><div><h2>Proposed Changes</h2><p>Supported changes are preselected. Flagged changes always require your judgment.</p></div><span class="badge">{{ changes|length }}</span></div>
+    <form method="post" action="/optimize/apply" id="changesForm">
+        <div class="review-toolbar"><button type="button" class="text-button" id="selectSafeButton">Accept all supported</button><button type="button" class="text-button" id="clearSelectionButton">Reject all</button><select id="changeFilter" aria-label="Filter changes"><option value="all">All changes</option><option value="safe">Supported only</option><option value="flagged">Review required</option></select></div>
+        <div class="changes-list">{% for change in changes %}<article class="change-card {% if change.flagged %}flagged{% endif %}" data-kind="{% if change.flagged %}flagged{% else %}safe{% endif %}"><label class="change-select"><input type="checkbox" name="accepted_indexes" value="{{ change.index }}" {% if change.accepted is sameas true %}checked{% elif not change.flagged and change.accepted is not sameas false %}checked{% endif %} data-safe="{{ 'false' if change.flagged else 'true' }}"><span>{% if change.accepted is sameas false %}Rejected{% else %}Apply change{% endif %}</span></label><div class="change-body"><div class="change-meta"><span class="change-type">{{ change.change_type.value if change.change_type.value is defined else change.change_type }}</span><span class="badge {% if change.flagged %}badge-warning{% else %}badge-success{% endif %}">{% if change.flagged %}Review required{% else %}Fact-supported{% endif %}</span></div>{% if change.section %}<div class="change-section">{{ change.section }}</div>{% endif %}<div class="diff-grid">{% if change.original %}<div class="change-text original"><span>Original</span><p>{{ change.original }}</p></div>{% endif %}{% if change.rewritten %}<div class="change-text proposed"><span>Proposed</span><p>{{ change.rewritten }}</p></div>{% endif %}</div>{% if change.review_reason %}<div class="change-reason"><strong>Why review is needed</strong><p>{{ change.review_reason }}</p></div>{% endif %}</div></article>{% endfor %}</div>
+        <div class="sticky-action-bar"><span id="selectionCount">0 selected</span><button class="btn btn-primary">Apply, Save and Recalculate</button></div>
+    </form>
+</section>
+<aside class="panel preview-panel"><div class="panel-heading"><div><h2>Current Resume Preview</h2><p>After applying changes, the same saved resume opens in the builder.</p></div></div><pre class="resume-preview" id="optimizedPreview">{{ optimized_markdown }}</pre><div class="export-grid"><a class="btn btn-primary" href="/optimize/download/docx">Download DOCX</a><a class="btn btn-primary" href="/optimize/download/pdf">Download PDF</a><a class="btn btn-secondary" href="/optimize/download/md">Markdown</a><a class="btn btn-secondary" href="/optimize/download/txt">Plain Text</a><a class="btn btn-secondary" href="/optimize/download/json">JSON Backup</a><a class="btn btn-secondary" href="/builder/">Edit in Builder</a></div><a class="btn btn-secondary btn-block" href="/cover-letter">Create Cover Letter</a></aside>
 </div>
 {% endif %}
 {% endblock %}
-{% block scripts %}
-{% if changes %}
-<script>
-(() => {
-  const boxes = [...document.querySelectorAll('input[name="accepted_indexes"]')];
-  const count = document.getElementById('selectionCount');
-  const update = () => count.textContent = `${boxes.filter(box => box.checked).length} selected`;
-  boxes.forEach(box => box.addEventListener('change', update)); update();
-  document.getElementById('selectSafeButton').addEventListener('click', () => { boxes.forEach(box => box.checked = box.dataset.safe === 'true'); update(); });
-  document.getElementById('clearSelectionButton').addEventListener('click', () => { boxes.forEach(box => box.checked = false); update(); });
-})();
-</script>
-{% endif %}
-{% endblock %}
+{% block scripts %}{% if changes %}<script>(()=>{const boxes=[...document.querySelectorAll('input[name="accepted_indexes"]')],count=document.getElementById('selectionCount');const update=()=>count.textContent=`${boxes.filter(box=>box.checked).length} selected`;boxes.forEach(box=>box.addEventListener('change',update));update();document.getElementById('selectSafeButton').addEventListener('click',()=>{boxes.forEach(box=>box.checked=box.dataset.safe==='true');update();});document.getElementById('clearSelectionButton').addEventListener('click',()=>{boxes.forEach(box=>box.checked=false);update();});document.getElementById('changeFilter').addEventListener('change',event=>document.querySelectorAll('.change-card').forEach(card=>card.hidden=event.target.value!=='all'&&card.dataset.kind!==event.target.value));})();</script>{% endif %}{% endblock %}

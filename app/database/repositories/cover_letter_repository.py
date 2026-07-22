@@ -1,5 +1,6 @@
 """Repository for cover letter CRUD."""
 import logging
+from datetime import datetime
 
 from app.database.models import CoverLetter
 from app.database.repositories.base import BaseRepository
@@ -34,6 +35,14 @@ class CoverLetterRepository(BaseRepository):
             .filter(CoverLetter.id == cl_id)
             .first()
         )
+
+    def update(self, cl_id: int, content: str) -> bool:
+        row = self.get(cl_id)
+        if row is None:
+            return False
+        row.content = content
+        row.updated_at = datetime.utcnow()
+        return True
 
     def list_all(self) -> list[CoverLetter]:
         return (

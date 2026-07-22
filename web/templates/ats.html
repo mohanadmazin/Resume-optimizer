@@ -1,38 +1,36 @@
 {% extends "base.html" %}
-{% block title %}ATS Analysis - Resume Optimizer{% endblock %}
+{% block title %}ATS Analysis — ResumeAI{% endblock %}
 {% block content %}
 <div class="page-header page-header-split">
-    <div><span class="eyebrow">Step 3</span><h1>ATS Match Analysis</h1><p class="subtitle">Compare the selected resume with the target job description.</p></div>
-    {% if result %}<form method="post" action="/ats/run"><button type="submit" class="btn btn-secondary">Run Again</button></form>{% endif %}
+    <div><span class="eyebrow">Targeting · Step 3</span><h1>Explainable ATS Analysis</h1><p class="subtitle">See what matched, what is missing, where evidence appears, and what to improve without inventing experience.</p></div>
+    {% if result %}<form method="post" action="/ats/run" class="processing-form"><button class="btn btn-secondary">Run Again</button></form>{% endif %}
 </div>
-
-{% if request.query_params.get('error') == 'missing_input' %}<div class="alert alert-error">Select a resume and save a job description first.</div>{% endif %}
+{% if request.query_params.get('error') == 'missing_input' %}<div class="alert alert-error">Select a resume and target job first.</div>{% endif %}
+{% if request.query_params.get('done') %}<div class="alert alert-success">Analysis saved to your local history.</div>{% endif %}
 {% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
 
-{% if not has_resume or not has_job %}
-<div class="prerequisite-grid">
-    <a href="/upload" class="prerequisite-card {% if has_resume %}complete{% endif %}"><span>{% if has_resume %}✓{% else %}1{% endif %}</span><div><strong>Resume</strong><small>{% if has_resume %}Selected{% else %}Upload or select a resume{% endif %}</small></div></a>
-    <a href="/jobs" class="prerequisite-card {% if has_job %}complete{% endif %}"><span>{% if has_job %}✓{% else %}2{% endif %}</span><div><strong>Job Description</strong><small>{% if has_job %}Selected{% else %}Save a target job{% endif %}</small></div></a>
-</div>
-{% endif %}
+{% if not has_resume or not has_job %}<div class="prerequisite-grid"><a href="/upload" class="prerequisite-card {% if has_resume %}complete{% endif %}"><span>{% if has_resume %}✓{% else %}1{% endif %}</span><div><strong>Resume</strong><small>{% if has_resume %}Selected{% else %}Select or build one{% endif %}</small></div></a><a href="/jobs" class="prerequisite-card {% if has_job %}complete{% endif %}"><span>{% if has_job %}✓{% else %}2{% endif %}</span><div><strong>Target Job</strong><small>{% if has_job %}Selected{% else %}Save vacancy details{% endif %}</small></div></a></div>{% endif %}
 
 {% if not result %}
-<section class="panel action-panel">
-    <div class="action-illustration">✓</div><h2>Ready to check your ATS match?</h2><p>The analysis scores keyword coverage, required skills, structure, and formatting without using AI.</p>
-    <form method="POST" action="/ats/run" class="processing-form"><button type="submit" class="btn btn-primary btn-large" {% if not has_resume or not has_job %}disabled{% endif %}>Run ATS Analysis</button></form>
-</section>
+<section class="panel action-panel"><div class="action-illustration"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4V4Zm4 8 3 3 5-6"/></svg></div><h2>Measure the current match</h2><p>ResumeAI scores keyword coverage, skills, content, formatting, best practices, and application readiness using deterministic rules.</p><form method="post" action="/ats/run" class="processing-form"><button class="btn btn-primary btn-large" {% if not has_resume or not has_job %}disabled{% endif %}>Run ATS Analysis</button></form></section>
 {% else %}
-<div class="score-hero panel">
+<section class="score-hero panel">
     <div class="score-ring" style="--score: {{ result.ats_score }}"><div><strong>{{ result.ats_score }}</strong><span>/100</span></div></div>
-    <div class="score-copy"><span class="eyebrow">Overall ATS Score</span><h2>{% if result.ats_score >= 80 %}Strong Match{% elif result.ats_score >= 60 %}Good Foundation{% elif result.ats_score >= 40 %}Needs Targeting{% else %}Major Improvements Needed{% endif %}</h2><p>Use the missing keywords and suggestions below only where they accurately reflect your experience.</p><a href="/optimize" class="btn btn-primary">Review AI Optimization</a></div>
-    <div class="score-metrics"><div><span>Keyword Match</span><strong>{{ "%.1f"|format(result.keyword_match_pct) }}%</strong></div><div><span>Skills Match</span><strong>{{ "%.1f"|format(result.skills_match_pct) }}%</strong></div><div><span>Missing Skills</span><strong>{{ result.missing_skills|length }}</strong></div></div>
-</div>
+    <div class="score-copy"><span class="eyebrow">Overall match</span><h2>{% if result.ats_score >= 80 %}Strong Targeted Match{% elif result.ats_score >= 60 %}Good Foundation{% elif result.ats_score >= 40 %}Needs Targeting{% else %}Major Improvements Needed{% endif %}</h2><p>This is ResumeAI’s local rules-based estimate, not a guarantee of any employer’s screening result.</p><a href="/optimize" class="btn btn-primary">Review Optimization Suggestions</a></div>
+    <div class="score-metrics"><div><span>Keyword coverage</span><strong>{{ "%.1f"|format(result.keyword_match_pct) }}%</strong></div><div><span>Required skills</span><strong>{{ "%.1f"|format(result.skills_match_pct) }}%</strong></div><div><span>Missing skills</span><strong>{{ result.missing_skills|length }}</strong></div></div>
+</section>
+
+{% if result.score_report %}<section class="panel"><div class="panel-heading"><div><h2>Score Breakdown</h2><p>Rule-level categories explain where the score comes from.</p></div><span class="badge">Ruleset {{ result.score_report.ruleset_version }}</span></div><div class="category-score-grid">{% for category in result.score_report.categories %}<article class="category-score-card"><div><span>{{ category.category.value|replace('_',' ')|title }}</span><strong>{{ category.score }}</strong></div><div class="meter"><span style="width:{{ category.score }}%"></span></div><small>{{ category.issues|length }} finding(s) · {{ (category.weight * 100)|round|int }}% weight</small></article>{% endfor %}</div></section>{% endif %}
 
 <div class="results-columns">
-    <section class="panel"><div class="panel-heading"><div><h2>Matched Keywords</h2><p>Terms already represented in your resume.</p></div><span class="badge badge-success">{{ result.matched_keywords|length }}</span></div>{% if result.matched_keywords %}<div class="tag-list">{% for kw in result.matched_keywords %}<span class="tag tag-green">{{ kw }}</span>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No target keywords matched yet.</p></div>{% endif %}</section>
-    <section class="panel"><div class="panel-heading"><div><h2>Missing Keywords</h2><p>Add only when supported by your actual background.</p></div><span class="badge badge-danger">{{ result.missing_keywords|length }}</span></div>{% if result.missing_keywords %}<div class="tag-list">{% for kw in result.missing_keywords %}<span class="tag tag-red">{{ kw }}</span>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No missing target keywords detected.</p></div>{% endif %}</section>
+<section class="panel"><div class="panel-heading"><div><h2>Matched Keywords</h2><p>Terms already supported by your resume.</p></div><span class="badge badge-success">{{ result.matched_keywords|length }}</span></div>{% if result.matched_keywords %}<div class="tag-list">{% for kw in result.matched_keywords %}<span class="tag tag-green">{{ kw }}</span>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No target keywords matched yet.</p></div>{% endif %}</section>
+<section class="panel"><div class="panel-heading"><div><h2>Missing Keywords</h2><p>Use these only when they honestly describe your background.</p></div><span class="badge badge-danger">{{ result.missing_keywords|length }}</span></div>{% if result.missing_keywords %}<div class="tag-list">{% for kw in result.missing_keywords %}<span class="tag tag-red" title="Importance {{ result.keyword_weights.get(kw, 0) }}">{{ kw }}</span>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No missing target keywords detected.</p></div>{% endif %}</section>
 </div>
 
-<section class="panel" style="margin-top:1rem"><div class="panel-heading"><div><h2>Recommendations</h2><p>Prioritized changes to improve ATS readiness.</p></div></div><ol class="recommendation-list">{% for rec in result.suggestions %}<li><span>{{ loop.index }}</span><p>{{ rec }}</p></li>{% endfor %}</ol></section>
+{% if result.keyword_targets %}<section class="panel"><div class="panel-heading"><div><h2>Keyword Evidence</h2><p>Where each requirement is represented and whether confirmation is needed.</p></div></div><div class="table-wrap"><table class="evidence-table"><thead><tr><th>Requirement</th><th>Importance</th><th>Status</th><th>Evidence location</th></tr></thead><tbody>{% for target in result.keyword_targets %}<tr><td><strong>{{ target.canonical_name }}</strong></td><td>{{ (target.importance * 100)|round|int }}%</td><td><span class="badge {% if target.status.value == 'present' %}badge-success{% elif target.status.value == 'partial' %}badge-warning{% else %}badge-danger{% endif %}">{{ target.status.value|title }}</span></td><td>{% if target.evidence_paths %}{{ target.evidence_paths|join(', ') }}{% else %}<span class="muted">No evidence found</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+
+<section class="panel"><div class="panel-heading"><div><h2>Prioritized Recommendations</h2><p>Each recommendation should be checked against your real experience.</p></div></div><ol class="recommendation-list">{% for rec in result.suggestions %}<li><span>{{ loop.index }}</span><div><strong>Recommended action</strong><p>{{ rec }}</p></div></li>{% endfor %}</ol></section>
+
+{% if result.score_report %}<section class="panel"><div class="panel-heading"><div><h2>Detailed Findings</h2><p>Problem, location, and corrective action from the rules engine.</p></div></div><div class="finding-list">{% for category in result.score_report.categories %}{% for issue in category.issues %}<article class="finding-row"><span class="badge {% if issue.severity.value == 'error' %}badge-danger{% elif issue.severity.value == 'warning' %}badge-warning{% endif %}">{{ issue.severity.value|title }}</span><div><strong>{{ issue.message }}</strong><small>{{ issue.path or category.category.value|replace('_',' ')|title }}</small><p>{{ issue.recommendation }}</p></div><span class="penalty">-{{ issue.penalty }}</span></article>{% endfor %}{% endfor %}</div></section>{% endif %}
 {% endif %}
 {% endblock %}

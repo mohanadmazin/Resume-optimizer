@@ -92,6 +92,21 @@ def _has_alembic_version(db_path: Path) -> bool:
         return False
 
 
+
+
+def _table_exists(db_path: Path, table: str) -> bool:
+    """Return whether *table* exists using a parameterized sqlite_master query."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def _table_columns(db_path: Path, table: str) -> set[str]:
     """Return the set of column names for *table*."""
     if table not in _INTROSPECTABLE_TABLES:
@@ -103,6 +118,18 @@ def _table_columns(db_path: Path, table: str) -> set[str]:
         conn.close()
     return {row[1] for row in rows}
 
+
+
+def _table_columns_unrestricted(db_path: Path, table: str) -> set[str]:
+    """Read columns after validating a conservative SQL identifier."""
+    if not table.replace("_", "").isalnum():
+        raise ValueError("Invalid table identifier")
+    conn = sqlite3.connect(str(db_path))
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
+        return {row[1] for row in rows}
+    finally:
+        conn.close()
 
 def _has_cascade_fk(
     db_path: Path,
@@ -139,25 +166,41 @@ _INTROSPECTABLE_TABLES = frozenset({"resumes", "analyses", "optimizations"})
 
 
 def _infer_legacy_revision(db_path: Path) -> str:
-    """Infer the Alembic revision that matches the current schema.
+    """Infer the newest revision fully represented by a pre-Alembic schema.
 
-    Returns:
-        "0001" if tracking columns are missing.
-        "0002" if tracking columns exist but cascade FKs are missing.
-        "head" if the schema is already fully current.
+    Legacy ``create_all`` databases can contain a mixture of generations. We
+    stamp only the last revision whose sentinel tables/columns are present,
+    then let Alembic apply every later migration instead of incorrectly
+    stamping an incomplete database at ``head``.
     """
     columns = _table_columns(db_path, "resumes")
-
     if not _TRACKING_COLUMNS.issubset(columns):
         return "0001"
 
     analyses_cascade = _has_cascade_fk(db_path, "analyses", "resumes")
     optimizations_cascade = _has_cascade_fk(db_path, "optimizations", "resumes")
+    if not (analyses_cascade and optimizations_cascade):
+        return "0002"
 
-    if analyses_cascade and optimizations_cascade:
-        return "head"
+    if not _table_exists(db_path, "resume_versions"):
+        return "0003"
+    if not _table_exists(db_path, "career_facts"):
+        return "0004"
+    if not _table_exists(db_path, "master_profiles"):
+        return "0005"
 
-    return "0002"
+    required_job_columns = {
+        "company", "location", "source_url", "employment_type", "salary",
+        "date_posted", "status", "updated_at",
+    }
+    job_columns = _table_columns_unrestricted(db_path, "job_descriptions")
+    if (
+        not required_job_columns.issubset(job_columns)
+        or not _table_exists(db_path, "web_sessions")
+        or not _table_exists(db_path, "generated_documents")
+    ):
+        return "0006"
+    return "head"
 
 
 # ── Backup / restore ────────────────────────────────────────────────────────
