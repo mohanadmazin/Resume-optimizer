@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.database import db
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 from app.services.ats_engine import analyze
 
 

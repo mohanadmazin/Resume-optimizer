@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.schemas import ResumeData, SkillGapResult
+from app.domain.resume import ResumeData
+from app.domain.skill_gap import SkillGapResult
 from app.services.skill_gap import analyze_skill_gap
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker

@@ -15,8 +15,6 @@ import json
 import logging
 import re
 import tempfile
-import time
-import uuid
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +26,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.database.migrate import run_migrations
 from app.logging_config import setup_logging
+from app.web.session_state import WorkflowSessionStore
 
 setup_logging()
 run_migrations()
@@ -44,154 +43,12 @@ app.mount("/builder", StaticFiles(directory=str(_BUILDER_DIR), html=True), name=
 
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 ALLOWED_RESUME_SUFFIXES = {".pdf", ".docx", ".doc", ".txt"}
-SESSION_COOKIE = "resume_optimizer_sid"
-SESSION_MAX_AGE = 60 * 60 * 12
-MAX_SESSIONS = 250
-
-# In-memory workflow state. Persistent resume/job records remain in SQLite.
-_sessions: dict[str, dict[str, Any]] = {}
-_session_seen: dict[str, float] = {}
-
-
-def _new_session_id() -> str:
-    return uuid.uuid4().hex
-
-
-def _prune_sessions() -> None:
-    """Bound the local in-memory session store and discard stale entries."""
-    now = time.time()
-    stale = [sid for sid, seen in _session_seen.items() if now - seen > SESSION_MAX_AGE]
-    for sid in stale:
-        _sessions.pop(sid, None)
-        _session_seen.pop(sid, None)
-
-    if len(_sessions) <= MAX_SESSIONS:
-        return
-    overflow = len(_sessions) - MAX_SESSIONS
-    for sid, _ in sorted(_session_seen.items(), key=lambda item: item[1])[:overflow]:
-        _sessions.pop(sid, None)
-        _session_seen.pop(sid, None)
-
-
-def _serialize_session(session: dict[str, Any]) -> dict[str, Any]:
-    """Convert runtime objects into a JSON-safe workflow snapshot."""
-    from app.domain.analysis import ATSResult
-    from app.domain.fact_guard import FactGuardResult
-    from app.domain.resume import ResumeData
-
-    output: dict[str, Any] = {}
-    for key, value in session.items():
-        if key == "resume" and isinstance(value, ResumeData):
-            output["resume_json"] = value.model_dump(mode="json")
-        elif key == "optimized_resume" and isinstance(value, ResumeData):
-            output["optimized_resume_json"] = value.model_dump(mode="json")
-        elif key == "fact_guard" and isinstance(value, FactGuardResult):
-            output["fact_guard_json"] = value.model_dump(mode="json")
-        elif key == "ats_result" and isinstance(value, ATSResult):
-            output["ats_result_json"] = value.to_dict()
-        elif key not in {"resume_json", "optimized_resume_json", "fact_guard_json", "ats_result_json"}:
-            try:
-                json.dumps(value, default=str)
-            except (TypeError, ValueError):
-                continue
-            output[key] = value
-    return output
-
-
-def _deserialize_session(payload: dict[str, Any]) -> dict[str, Any]:
-    """Rebuild Pydantic/dataclass objects from a stored workflow snapshot."""
-    from app.domain.analysis import ATSResult
-    from app.domain.fact_guard import FactGuardResult
-    from app.domain.resume import ResumeData
-    from app.domain.scoring import ResumeScoreReport
-
-    data = dict(payload or {})
-    resume_json = data.pop("resume_json", None)
-    optimized_json = data.pop("optimized_resume_json", None)
-    fact_json = data.pop("fact_guard_json", None)
-    ats_json = data.pop("ats_result_json", None)
-    try:
-        if resume_json:
-            data["resume"] = ResumeData.model_validate(resume_json)
-        if optimized_json:
-            data["optimized_resume"] = ResumeData.model_validate(optimized_json)
-        if fact_json:
-            data["fact_guard"] = FactGuardResult.model_validate(fact_json)
-        if ats_json:
-            ats_data = dict(ats_json)
-            report = ats_data.get("score_report")
-            if isinstance(report, dict):
-                ats_data["score_report"] = ResumeScoreReport.model_validate(report)
-            data["ats_result"] = ATSResult(**ats_data)
-    except Exception:
-        logger.warning("A persisted web workflow could not be fully restored", exc_info=True)
-    return data
-
-
-def _load_persisted_session(sid: str) -> dict[str, Any]:
-    try:
-        from app.database.repositories.web_repository import WebSessionRepository
-        from app.database.session import get_session
-        with get_session() as db_session:
-            return _deserialize_session(WebSessionRepository(db_session).load(sid))
-    except Exception:
-        logger.warning("Could not restore web session", exc_info=True)
-        return {}
-
-
-def _save_persisted_session(sid: str, session: dict[str, Any]) -> None:
-    try:
-        from app.database.repositories.web_repository import WebSessionRepository
-        from app.database.session import get_session
-        with get_session() as db_session:
-            repo = WebSessionRepository(db_session)
-            repo.save(sid, _serialize_session(session))
-            repo.prune(SESSION_MAX_AGE)
-    except Exception:
-        logger.warning("Could not persist web session", exc_info=True)
+workflow_sessions = WorkflowSessionStore()
 
 
 @app.middleware("http")
 async def attach_local_session(request: Request, call_next):
-    """Restore and persist a bounded local workflow session.
-
-    Only a random session identifier is stored in the browser. Resume content,
-    job descriptions and generated documents remain in the local SQLite file.
-    """
-    _prune_sessions()
-    sid = request.cookies.get(SESSION_COOKIE, "")
-    is_new = not sid
-    if not sid:
-        sid = _new_session_id()
-    if sid not in _sessions:
-        _sessions[sid] = _load_persisted_session(sid)
-    _session_seen[sid] = time.time()
-    request.state.resume_optimizer_sid = sid
-
-    try:
-        response = await call_next(request)
-    finally:
-        _save_persisted_session(sid, _sessions.get(sid, {}))
-
-    if is_new:
-        response.set_cookie(
-            SESSION_COOKIE,
-            sid,
-            max_age=SESSION_MAX_AGE,
-            httponly=True,
-            samesite="lax",
-            secure=False,  # localhost HTTP by default
-        )
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Referrer-Policy", "same-origin")
-    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    response.headers.setdefault(
-        "Content-Security-Policy",
-        "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-        "script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:*",
-    )
-    return response
+    return await workflow_sessions.attach_local_session(request, call_next)
 
 
 @app.get("/builder")
@@ -199,53 +56,8 @@ async def builder_root() -> RedirectResponse:
     return RedirectResponse("/builder/", status_code=308)
 
 
-def _ensure_workflow_objects(session: dict[str, Any]) -> None:
-    """Hydrate selected records after process restarts or session restoration."""
-    from app.database.repositories.job_repository import JobRepository
-    from app.database.repositories.resume_repository import ResumeRepository
-    from app.database.session import get_session
-    from app.domain.resume import ResumeData
-
-    resume_id = session.get("resume_id")
-    job_id = session.get("job_id")
-    if (resume_id and session.get("resume") is None) or (job_id and not session.get("job_text")):
-        try:
-            with get_session() as db_session:
-                if resume_id and session.get("resume") is None:
-                    row = ResumeRepository(db_session).get_by_id(int(resume_id))
-                    if row is not None:
-                        session["resume"] = ResumeData.model_validate_json(row.data_json)
-                        session["resume_name"] = row.name or "Untitled"
-                        session["resume_text"] = row.raw_text or ""
-                if job_id and not session.get("job_text"):
-                    row = JobRepository(db_session).get_by_id(int(job_id))
-                    if row is not None:
-                        session.update({
-                            "job_title": row.title or "",
-                            "job_text": row.content or "",
-                            "job_company": row.company or "",
-                            "job_location": row.location or "",
-                            "job_source_url": row.source_url or "",
-                            "job_employment_type": row.employment_type or "",
-                            "job_salary": row.salary or "",
-                            "job_date_posted": row.date_posted or "",
-                            "job_status": row.status or "saved",
-                        })
-        except Exception:
-            logger.warning("Could not hydrate selected workflow records", exc_info=True)
-
-
 def _get_session(request: Request) -> dict[str, Any]:
-    sid = getattr(request.state, "resume_optimizer_sid", None)
-    if not sid:
-        sid = request.cookies.get(SESSION_COOKIE) or _new_session_id()
-        request.state.resume_optimizer_sid = sid
-    if sid not in _sessions:
-        _sessions[sid] = _load_persisted_session(sid)
-    session = _sessions.setdefault(sid, {})
-    _ensure_workflow_objects(session)
-    _session_seen[sid] = time.time()
-    return session
+    return workflow_sessions.get(request)
 
 
 def _workflow_context(session: dict[str, Any]) -> dict[str, Any]:

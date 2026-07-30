@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from app.ai.ollama_client import OllamaClient
 from app.ai.prompts import COVER_LETTER_PROMPT, COVER_LETTER_SYSTEM
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 from app.services.job_context import select_job_context
 
 logger = logging.getLogger(__name__)

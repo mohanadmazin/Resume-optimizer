@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from app.database.session import get_session
 from app.database.repositories.resume_repository import ResumeRepository
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 from app.services.resume_comparison import compare_resumes
 
 logger = logging.getLogger(__name__)

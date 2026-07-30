@@ -12,7 +12,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.schemas import ResumeData, SalaryEstimate
+from app.domain.resume import ResumeData
+from app.domain.salary import SalaryEstimate
 from app.services.salary_estimator import estimate_salary
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker

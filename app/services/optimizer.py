@@ -15,7 +15,7 @@ from app.ai.prompts import OPTIMIZE_PROMPT, OPTIMIZE_SYSTEM
 from app.domain.analysis import ATSResult
 from app.domain.fact_guard import ChangeType, FactGuardResult, ProposedChange
 from app.domain.optimization import OptimizationAIOutput
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 from app.services.fact_guard import FactGuard
 from app.services.job_context import select_job_context
 

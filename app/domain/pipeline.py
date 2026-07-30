@@ -6,7 +6,7 @@ from app.domain.analysis import ATSResult
 from app.domain.fact_guard import FactGuardResult
 from app.domain.salary import SalaryEstimate
 from app.domain.skill_gap import SkillGapResult
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 
 
 @dataclass

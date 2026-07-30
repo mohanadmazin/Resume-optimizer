@@ -3,7 +3,8 @@ import logging
 
 from app.ai.ollama_client import OllamaClient
 from app.ai.prompts import SKILL_GAP_PROMPT, SKILL_GAP_SYSTEM
-from app.schemas import ResumeData, SkillGapResult
+from app.domain.resume import ResumeData
+from app.domain.skill_gap import SkillGapResult
 
 logger = logging.getLogger(__name__)
 

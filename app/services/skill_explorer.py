@@ -6,7 +6,7 @@ compared against the candidate's existing skills. No AI calls needed.
 import re
 from dataclasses import dataclass
 
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 
 
 @dataclass

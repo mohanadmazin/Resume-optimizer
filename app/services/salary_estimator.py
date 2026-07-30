@@ -23,7 +23,8 @@ from app.data.salary_benchmarks import (
     RoleBenchmark,
     SalaryMarket,
 )
-from app.schemas import ResumeData, SalaryEstimate
+from app.domain.resume import ResumeData
+from app.domain.salary import SalaryEstimate
 from app.domain.salary import (
     SalaryAdjustment,
     SalaryBenchmarkSelection,

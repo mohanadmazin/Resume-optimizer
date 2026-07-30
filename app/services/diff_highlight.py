@@ -7,7 +7,7 @@ bullets) for experience bullets. Fields the optimizer never touches
 from difflib import SequenceMatcher
 from html import escape
 
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 
 HIGHLIGHT = '<span style="color:#ff5c5c;">{}</span>'
 

@@ -6,7 +6,7 @@ grouped into categories and weighted to produce an overall score 0-100.
 import re
 from dataclasses import dataclass, field
 
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 
 
 @dataclass

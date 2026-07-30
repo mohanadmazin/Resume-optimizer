@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 from app.ai.ollama_client import OllamaClient
 from app.database import db
 from app.exports.exporter import export_text_docx, export_text_pdf
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 from app.services.cover_letter import CoverLetterResult, generate_cover_letter
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker

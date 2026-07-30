@@ -12,7 +12,7 @@ from app.ai.prompts import PARSE_PROMPT, PARSE_SYSTEM
 from app.domain.fact_guard import HallucinatedField
 from app.domain.certification import format_certification
 from app.services.parser_fact_guard import verify_parse
-from app.schemas import ContactInfo, EducationItem, ExperienceItem, ParseWarning, ProjectItem, ResumeData
+from app.domain.resume import ContactInfo, EducationItem, ExperienceItem, ParseWarning, ProjectItem, ResumeData
 
 logger = logging.getLogger(__name__)
 

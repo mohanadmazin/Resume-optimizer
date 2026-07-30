@@ -6,7 +6,7 @@ from typing import Tuple
 
 from app.domain.analysis import ATSResult
 from app.domain.skill_lexicon import SKILL_ALIASES
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 
 logger = logging.getLogger(__name__)
 

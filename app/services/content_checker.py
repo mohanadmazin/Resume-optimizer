@@ -7,7 +7,7 @@ score from 0-100.
 import re
 
 from app.domain.content_check import ContentCheckResult, ContentIssue, IssueType
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 
 WEAK_WORDS = {
     "responsible for": "Replace with an action verb (led, built, delivered)",

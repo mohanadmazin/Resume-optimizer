@@ -1,5 +1,5 @@
 """Data validation logic for resume schemas."""
-from app.schemas import ResumeData
+from app.domain.resume import ResumeData
 
 
 def validate_resume(resume_data: ResumeData) -> dict:
