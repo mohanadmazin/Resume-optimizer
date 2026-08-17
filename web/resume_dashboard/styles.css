@@ -353,6 +353,52 @@ svg {
   padding: 27px 69px 80px 80px;
 }
 
+.content-area.live-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 460px);
+  gap: 26px;
+  align-items: start;
+}
+
+.live-preview-panel {
+  display: none;
+  position: sticky;
+  top: 132px;
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  border-radius: 10px;
+  padding: 20px;
+  background: #aeb7c5;
+  box-shadow: var(--shadow);
+  scrollbar-width: thin;
+}
+
+.content-area.live-preview .live-preview-panel {
+  display: block;
+}
+
+.live-preview-panel.hidden {
+  display: none !important;
+}
+
+.live-preview-heading {
+  margin-bottom: 0;
+  padding: 9px 12px;
+  border-radius: 8px 8px 0 0;
+  background: #f3f5f8;
+  color: #4d5a70;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.live-preview-panel .resume-paper {
+  width: 100%;
+  min-height: 0;
+  padding: 36px 40px;
+}
+
 .page-panel {
   display: none;
 }
@@ -1222,6 +1268,15 @@ select {
 @media (max-width: 1190px) {
   .topbar-row {
     width: 100%;
+  }
+
+  .content-area.live-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .live-preview-panel {
+    position: static;
+    max-height: none;
   }
 
   .section-tabs {

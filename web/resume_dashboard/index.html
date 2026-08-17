@@ -103,6 +103,7 @@
         <div class="topbar-row topbar-actions-row">
           <span class="server-save-status" id="serverSaveStatus" role="status">Local draft</span>
           <button class="action-button" type="button" data-page="preview">Finish Up &amp; Preview</button>
+          <button class="action-button" type="button" id="livePreviewToggle" aria-pressed="false">Live Preview</button>
           <button class="action-button" type="button" data-page="cover-letter">Quick Letter Draft</button>
           <button class="action-button primary-action" type="button" id="continueToTargetingButton">Save &amp; Continue</button>
           <a class="action-button action-link" href="/resignation-letter">Resignation Letter</a>
@@ -515,6 +516,12 @@ Business Research Methods</textarea>
               <textarea id="coverLetterOutput" aria-label="Generated cover letter" placeholder="Your generated cover letter will appear here."></textarea>
             </section>
           </div>
+        </section>
+
+        <!-- LIVE PREVIEW -->
+        <section class="live-preview-panel" id="livePreviewPanel" aria-label="Live resume preview">
+          <div class="live-preview-heading">Live Resume Preview</div>
+          <article class="resume-paper" id="livePreview" aria-label="Live resume preview content"></article>
         </section>
       </section>
     </main>

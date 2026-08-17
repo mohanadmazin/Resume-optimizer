@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "startup": {},
+  "skills": {
+    "preloaded": [
+      "find-skills",
+      "improve-codebase-architecture",
+      "requesting-code-review",
+      "python-performance-optimization",
+      "python-error-handling"
+    ]
+  }
+}

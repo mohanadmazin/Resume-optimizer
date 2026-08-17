@@ -189,11 +189,21 @@ function navigate(page, updateHash = true) {
 
   if (page === "preview") renderPreview();
   if (page === "cover-letter") populateCoverLetterForm();
+  syncLivePreviewVisibility();
 
   if (updateHash) {
-    history.replaceState(null, "", `#${page}`);
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${page}`);
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function syncLivePreviewVisibility() {
+  const contentArea = document.querySelector(".content-area");
+  const livePanel = document.querySelector("#livePreviewPanel");
+  if (!contentArea || !livePanel) return;
+  const liveOn = contentArea.classList.contains("live-preview");
+  const onPreview = document.querySelector("#page-preview")?.classList.contains("active");
+  livePanel.classList.toggle("hidden", liveOn && Boolean(onPreview));
 }
 
 pageButtons.forEach((button) => {
@@ -229,7 +239,15 @@ function normaliseLines(value) {
 
 function formatMonth(value) {
   if (!value) return "";
-  const date = new Date(`${value}-01T00:00:00`);
+  const raw = String(value).trim();
+  if (!raw) return "";
+  if (/^\d{4}$/.test(raw)) return raw;
+  const candidate = /^\d{4}-\d{2}$/.test(raw) ? `${raw}-01` : raw;
+  const date = new Date(candidate);
+  if (Number.isNaN(date.getTime())) {
+    const yearMatch = raw.match(/\d{4}/);
+    return yearMatch ? yearMatch[0] : "";
+  }
   return new Intl.DateTimeFormat("en", { month: "short", year: "numeric" }).format(date);
 }
 
@@ -251,6 +269,7 @@ document.querySelector("#resumeYear").value = state.year;
 document.querySelector("#resumeYear").addEventListener("change", (event) => {
   state.year = event.target.value;
   persistState("Resume year updated.");
+  schedulePreviewRender();
 });
 
 document.querySelectorAll("[data-visibility]").forEach((toggle) => {
@@ -265,6 +284,7 @@ document.querySelectorAll("[data-visibility]").forEach((toggle) => {
     toggle.setAttribute("aria-pressed", String(next));
     state.contact.visibility[key] = next;
     persistState(`${key[0].toUpperCase()}${key.slice(1)} visibility updated.`);
+    schedulePreviewRender();
   });
 });
 
@@ -278,6 +298,7 @@ contactForm.addEventListener("submit", (event) => {
   };
   persistState("Basic information saved.");
   setSaveStatus(contactForm);
+  renderPreview();
 });
 
 /* Dynamic entries */
@@ -346,6 +367,7 @@ function renderEntryList(type) {
         if (key === config.titleField) {
           card.querySelector(".entry-title").textContent = field.value || `New ${type}`;
         }
+        schedulePreviewRender();
       });
     });
 
@@ -353,6 +375,7 @@ function renderEntryList(type) {
       state[config.stateKey].splice(index, 1);
       renderEntryList(type);
       persistState(`${type[0].toUpperCase()}${type.slice(1)} removed.`);
+      schedulePreviewRender();
     });
 
     list.appendChild(fragment);
@@ -373,6 +396,7 @@ document.querySelectorAll(".add-entry").forEach((button) => {
     renderEntryList(type);
     const list = document.querySelector(config.list);
     list.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "center" });
+    schedulePreviewRender();
   });
 });
 
@@ -381,6 +405,7 @@ document.querySelectorAll(".save-section").forEach((button) => {
     const section = button.dataset.section;
     persistState(`${section[0].toUpperCase()}${section.slice(1)} saved.`);
     setSaveStatus(button.closest(".resume-card"));
+    renderPreview();
   });
 });
 
@@ -392,6 +417,7 @@ courseworkForm.addEventListener("submit", (event) => {
   state.coursework = formToObject(courseworkForm);
   persistState("Coursework saved.");
   setSaveStatus(courseworkForm);
+  renderPreview();
 });
 
 /* Skills */
@@ -416,6 +442,7 @@ function renderSkills() {
       state.skills.splice(index, 1);
       renderSkills();
       persistState("Skill removed.");
+      schedulePreviewRender();
     });
     skillsBoard.appendChild(card);
   });
@@ -435,6 +462,7 @@ document.querySelector("#addSkillButton").addEventListener("click", () => {
   skillName.value = "";
   renderSkills();
   persistState("Skill added.");
+  schedulePreviewRender();
 });
 
 skillName.addEventListener("keydown", (event) => {
@@ -461,6 +489,7 @@ summaryForm.addEventListener("submit", (event) => {
   state.summary = formToObject(summaryForm);
   persistState("Professional summary saved.");
   setSaveStatus(summaryForm);
+  renderPreview();
 });
 
 document.querySelector("#generateSummaryButton").addEventListener("click", () => {
@@ -486,7 +515,11 @@ function bulletList(text) {
 
 function dateRange(start, end) {
   const left = formatMonth(start);
-  const right = end ? formatMonth(end) : "Present";
+  let right = "";
+  if (end) {
+    const normalized = String(end).trim().toLowerCase();
+    right = ["present", "current", "now"].includes(normalized) ? "Present" : formatMonth(end);
+  }
   return [left, right].filter(Boolean).join(" – ");
 }
 
@@ -554,7 +587,7 @@ function renderPreview() {
     ? `<div class="resume-skill-list">${state.skills.map((skill) => `<span><strong>${escapeHtml(skill.name)}</strong> (${escapeHtml(skill.level)})</span>`).join("")}</div>`
     : "";
 
-  document.querySelector("#resumePreview").innerHTML = `
+  const previewHtml = `
     <header>
       <h1>${escapeHtml(contact.fullName || "YOUR NAME")}</h1>
       <div class="resume-title">${escapeHtml(state.summary.professionalTitle || "")}</div>
@@ -569,7 +602,19 @@ function renderPreview() {
     ${sectionHtml("Skills", skillsHtml)}
   `;
 
+  const previewEl = document.querySelector("#resumePreview");
+  if (previewEl) previewEl.innerHTML = previewHtml;
+
+  const liveEl = document.querySelector("#livePreview");
+  if (liveEl) liveEl.innerHTML = previewHtml;
+
   updateCompletion();
+}
+
+let previewRenderTimer;
+function schedulePreviewRender() {
+  window.clearTimeout(previewRenderTimer);
+  previewRenderTimer = window.setTimeout(() => renderPreview(), 150);
 }
 
 function updateCompletion() {
@@ -597,6 +642,19 @@ document.querySelector("#downloadTextButton").addEventListener("click", () => {
   renderPreview();
   const text = document.querySelector("#resumePreview").innerText;
   downloadFile(`${safeFileName(state.contact.fullName || "resume")}.txt`, text, "text/plain");
+});
+
+/* Live preview while building */
+const livePreviewToggle = document.querySelector("#livePreviewToggle");
+livePreviewToggle.addEventListener("click", () => {
+  const contentArea = document.querySelector(".content-area");
+  if (!contentArea) return;
+  const on = contentArea.classList.toggle("live-preview");
+  livePreviewToggle.classList.toggle("active", on);
+  livePreviewToggle.setAttribute("aria-pressed", String(on));
+  if (on) renderPreview();
+  syncLivePreviewVisibility();
+  showToast(on ? "Live preview enabled." : "Live preview disabled.");
 });
 
 /* Cover letter */
@@ -788,6 +846,7 @@ document.querySelector("#confirmResetButton").addEventListener("click", () => {
   closeResetModal();
   navigate("contact");
   persistState("Blank resume created.");
+  schedulePreviewRender();
 });
 
 /* Upload resume file */
@@ -878,10 +937,15 @@ function importParsedResume(data) {
   state.contact.linkedin = contact.linkedin || "";
   state.contact.website = contact.website || "";
   if (contact.location) {
-    const parts = contact.location.split(",").map(s => s.trim());
-    state.contact.city = parts[0] || "";
-    state.contact.state = parts[1] || "";
-    state.contact.country = parts[2] || parts[1] || parts[0] || "";
+    const parts = contact.location.split(",").map(s => s.trim()).filter(Boolean);
+    if (parts.length === 2) {
+      state.contact.city = parts[0] || "";
+      state.contact.country = parts[1] || "";
+    } else {
+      state.contact.city = parts[0] || "";
+      state.contact.state = parts[1] || "";
+      state.contact.country = parts[2] || parts[1] || parts[0] || "";
+    }
   }
 
   state.summary.professionalTitle = data.headline || "";
@@ -942,6 +1006,8 @@ function importParsedResume(data) {
   renderSkills();
   populateForm(summaryForm, state.summary);
   updateSummaryCount();
+  populateForm(courseworkForm, state.coursework);
+  renderPreview();
   showToast("Resume imported. Review each section and save.");
 }
 
@@ -1019,6 +1085,7 @@ document.addEventListener("input", (event) => {
     syncAllFormsToState();
     persistState("");
   }, 700);
+  schedulePreviewRender();
 });
 
 document.addEventListener("keydown", (event) => {
