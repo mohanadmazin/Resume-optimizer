@@ -1538,7 +1538,455 @@ async def ollama_test(request: Request):
     return JSONResponse(result, status_code=200 if result["connected"] else 503)
 
 
+_CSS_PATH = Path(__file__).parent / "web" / "resume_dashboard" / "styles.css"
+
+
+def _filter_resume_paper_css(css: str) -> str:
+    """Keep only CSS rules that apply inside the resume paper (and @page)."""
+    keep_selectors = (
+        ".resume-paper", ".resume-", ".skill-", ".contact-",
+        ".cert-", "@page", "body", "html",
+    )
+    lines = css.split("\n")
+    result: list[str] = []
+    depth = 0
+    kept_depth = 0
+    keeping = False
+
+    for line in lines:
+        stripped = line.strip()
+        opens = stripped.count("{")
+        closes = stripped.count("}")
+
+        if keeping:
+            result.append(line)
+            depth += opens
+            depth -= closes
+            if depth <= kept_depth:
+                keeping = False
+                depth = max(depth, 0)
+            continue
+
+        if any(sel in stripped for sel in keep_selectors):
+            keeping = True
+            kept_depth = depth
+            depth += opens
+            depth -= closes
+            result.append(line)
+            if depth <= kept_depth:
+                keeping = False
+                depth = max(depth, 0)
+        else:
+            depth += opens
+            depth -= closes
+
+    return "\n".join(result)
+
+
+def _build_resume_full_html(preview_html: str) -> str:
+    """Wrap the preview inner HTML in a standalone document with the project CSS."""
+    css_text = _CSS_PATH.read_text(encoding="utf-8") if _CSS_PATH.exists() else ""
+    filtered = _filter_resume_paper_css(css_text)
+    return (
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+        "<style>"
+        "* { margin: 0; padding: 0; box-sizing: border-box; }\n"
+        f"{filtered}\n"
+        "</style>"
+        "</head><body>"
+        f"<div class=\"resume-paper\">{preview_html}</div>"
+        "</body></html>"
+    )
+
+
+@app.post("/api/builder/export/{file_format}")
+async def builder_export(request: Request, file_format: str):
+    import tempfile
+
+    body = await request.json()
+    html_content = body.get("html", "")
+    file_format = file_format.lower()
+
+    if file_format not in {"docx", "pdf"}:
+        raise HTTPException(status_code=400, detail="Unsupported format")
+
+    stem = _safe_filename(body.get("filename", "resume") or "resume", "resume")
+
+    if file_format == "docx" and body.get("state"):
+        return await _export_docx_from_state(body["state"], stem)
+
+    if not html_content:
+        raise HTTPException(status_code=400, detail="No HTML content")
+
+    full_html = _build_resume_full_html(html_content)
+
+    if file_format == "pdf":
+        return await _export_pdf_playwright(full_html, stem)
+    else:
+        return await _export_docx_playwright(full_html, stem)
+
+
+async def _export_docx_from_state(state: dict, stem: str) -> Response:
+    """Build a DOCX directly from the builder's structured state data using the
+    same template as the optimize endpoint."""
+    import tempfile
+    from pathlib import Path
+    from app.exports.exporter import export_docx
+    from app.domain.resume import (
+        ResumeData, ContactInfo, ExperienceItem, EducationItem,
+        ProjectItem,
+    )
+
+    contact_raw = state.get("contact", {})
+    location = ", ".join(filter(None, [
+        contact_raw.get("city", ""),
+        contact_raw.get("state", ""),
+        contact_raw.get("country", ""),
+    ]))
+
+    resume = ResumeData(
+        contact=ContactInfo(
+            name=contact_raw.get("fullName", ""),
+            email=contact_raw.get("email", ""),
+            phone=contact_raw.get("phone", ""),
+            location=location,
+            linkedin=contact_raw.get("linkedin", ""),
+            website=contact_raw.get("website", ""),
+        ),
+        headline=state.get("summary", {}).get("professionalTitle", ""),
+        summary=state.get("summary", {}).get("summaryText", ""),
+        skills=[s.get("name", "") for s in state.get("skills", []) if s.get("name")],
+        experience=[
+            ExperienceItem(
+                title=e.get("title", ""),
+                company=e.get("company", ""),
+                start_date=e.get("start", ""),
+                end_date=e.get("end", ""),
+                location=e.get("location", ""),
+                bullets=[b.strip() for b in (e.get("description", "") or "").split("\n") if b.strip()],
+            )
+            for e in state.get("experience", [])
+        ],
+        projects=[
+            ProjectItem(
+                title=p.get("name", ""),
+                meta=" · ".join(filter(None, [p.get("role", ""), p.get("tools", "")])),
+                start_date=p.get("start", ""),
+                end_date=p.get("end", ""),
+                bullets=[b.strip() for b in (p.get("description", "") or "").split("\n") if b.strip()],
+            )
+            for p in state.get("project", [])
+        ],
+        education=[
+            EducationItem(
+                degree=e.get("qualification", ""),
+                institution=e.get("institution", ""),
+                location=e.get("location", ""),
+                cgpa=e.get("grade", ""),
+                year=e.get("end", ""),
+            )
+            for e in state.get("education", [])
+        ],
+        certifications=[
+            c if isinstance(c, str) else c.get("name", "")
+            for c in state.get("certifications", [])
+        ],
+    )
+
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
+            tmp_path = tmp.name
+        export_docx(resume, tmp_path)
+        content = Path(tmp_path).read_bytes()
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{stem}.docx"'},
+        )
+    finally:
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
+
+
+async def _export_pdf_playwright(full_html: str, stem: str) -> Response:
+    import tempfile
+    from pathlib import Path
+    from playwright.async_api import async_playwright
+
+    tmp = str(Path(tempfile.gettempdir()) / f"{stem}.pdf")
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch()
+            page = await browser.new_page()
+            await page.set_content(full_html, wait_until="networkidle")
+            await page.pdf(
+                path=tmp,
+                format="A4",
+                margin={"top": "0mm", "right": "0mm", "bottom": "0mm", "left": "0mm"},
+                print_background=True,
+            )
+            await browser.close()
+        content = Path(tmp).read_bytes()
+        return Response(
+            content=content,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{stem}.pdf"'},
+        )
+    finally:
+        Path(tmp).unlink(missing_ok=True)
+
+
+async def _export_docx_playwright(full_html: str, stem: str) -> Response:
+    import tempfile
+    from pathlib import Path
+    from html.parser import HTMLParser
+    from docx import Document
+    from docx.shared import Pt, Mm, RGBColor, Emu
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+
+    class ResumeParser(HTMLParser):
+        _skip_tags = {"style", "script", "head", "meta", "link"}
+
+        def __init__(self):
+            super().__init__()
+            self.tag_stack: list[str] = []
+            self.attrs_stack: list[dict] = []
+            self.results: list[dict[str, Any]] = []
+            self._text_buf: list[str] = []
+            self._in_li = False
+            self._in_skip = False
+            self._text_tag = ""
+            self._text_cls = ""
+
+        def _flush(self):
+            txt = "".join(self._text_buf).strip()
+            if txt:
+                self.results.append({
+                    "type": "bullet" if self._in_li else "text",
+                    "text": txt,
+                    "tag": self._text_tag,
+                    "cls": self._text_cls,
+                })
+            self._text_buf = []
+            self._text_tag = ""
+            self._text_cls = ""
+
+        def _current_classes(self) -> str:
+            return " ".join(a.get("class", "") for a in self.attrs_stack)
+
+        def _in_class(self, cls: str) -> bool:
+            return cls in self._current_classes()
+
+        def _should_split_before(self, tag: str) -> bool:
+            if tag in ("h1", "h2", "h3", "p", "li", "section", "header", "ul", "ol"):
+                return True
+            if tag == "div" and self._in_class("resume-item-heading"):
+                return False
+            if tag == "div":
+                return True
+            if tag in ("strong", "span", "a") and self._in_class("resume-item-heading"):
+                return True
+            if tag == "span" and self._in_class("resume-skill-grid"):
+                return True
+            if tag == "span" and self._in_class("resume-contact"):
+                return False
+            if tag == "span" and self._in_class("contact-sep"):
+                return False
+            return False
+
+        def handle_starttag(self, tag, attrs):
+            if tag in self._skip_tags:
+                self._in_skip = True
+            if not self._in_skip and self._should_split_before(tag):
+                self._text_tag = tag
+                self._text_cls = self._current_classes()
+                self._flush()
+            self.tag_stack.append(tag)
+            self.attrs_stack.append(dict(attrs))
+            if tag == "li":
+                self._in_li = True
+
+        def handle_endtag(self, tag):
+            if tag in self._skip_tags:
+                self._in_skip = False
+            if not self._in_skip and self._should_split_before(tag):
+                if not self._text_tag:
+                    self._text_tag = tag
+                    self._text_cls = self._current_classes()
+                self._flush()
+            if self.tag_stack and self.tag_stack[-1] == tag:
+                self.tag_stack.pop()
+                self.attrs_stack.pop()
+            if tag == "li":
+                self._in_li = False
+
+        def handle_data(self, data):
+            if not self._in_skip:
+                self._text_buf.append(data)
+
+        def finish(self):
+            self._in_skip = False
+            self._flush()
+
+    parser = ResumeParser()
+    parser.feed(full_html)
+    parser.finish()
+
+    doc = Document()
+    sec = doc.sections[0]
+    sec.page_width = Mm(210)
+    sec.page_height = Mm(297)
+    sec.top_margin = Mm(18)
+    sec.bottom_margin = Mm(18)
+    sec.left_margin = Mm(22)
+    sec.right_margin = Mm(22)
+
+    normal = doc.styles["Normal"]
+    normal.font.name = "Arial"
+    normal.font.size = Pt(10)
+    normal.font.color.rgb = RGBColor(0x18, 0x21, 0x33)
+    normal.paragraph_format.space_after = Pt(2)
+    normal.paragraph_format.space_before = Pt(0)
+
+    in_ul = False
+    skill_items: list[str] = []
+
+    for item in parser.results:
+        if item["type"] != "text" and item["type"] != "bullet":
+            continue
+
+        tag = item.get("tag", "")
+        text = item["text"]
+        cls = item.get("cls", "")
+
+        if item["type"] == "bullet":
+            p = doc.add_paragraph(text, style="List Bullet")
+            for run in p.runs:
+                run.font.name = "Arial"
+                run.font.size = Pt(9.5)
+                run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+            continue
+
+        if tag == "h1":
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(text)
+            run.font.name = "Arial"
+            run.font.size = Pt(22)
+            run.bold = True
+            run.font.color.rgb = RGBColor(0x18, 0x21, 0x33)
+            p.paragraph_format.space_after = Pt(2)
+            continue
+
+        if tag == "h2":
+            p = doc.add_paragraph()
+            run = p.add_run(text.upper())
+            run.font.name = "Arial"
+            run.font.size = Pt(11)
+            run.bold = True
+            run.font.color.rgb = RGBColor(0x18, 0x21, 0x33)
+            p.paragraph_format.space_before = Pt(12)
+            p.paragraph_format.space_after = Pt(4)
+            pb = p.paragraph_format.element
+            pbPr = pb.get_or_add_pPr()
+            pBdr = pbPr.makeelement(qn("w:pBdr"), {})
+            bottom = pBdr.makeelement(qn("w:bottom"), {
+                qn("w:val"): "single",
+                qn("w:sz"): "4",
+                qn("w:space"): "1",
+                qn("w:color"): "B7BFCC",
+            })
+            pBdr.append(bottom)
+            pbPr.append(pBdr)
+            continue
+
+        if "resume-title" in cls:
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(text)
+            run.font.name = "Arial"
+            run.font.size = Pt(11)
+            run.bold = True
+            run.font.color.rgb = RGBColor(0x4E, 0x5C, 0x74)
+            p.paragraph_format.space_after = Pt(2)
+            continue
+
+        if "resume-skill-grid" in cls or "resume-skill-list" in cls:
+            skill_items.append(text)
+            continue
+
+        p = doc.add_paragraph()
+        is_bold = tag == "strong"
+        run = p.add_run(text)
+        run.font.name = "Arial"
+        run.bold = is_bold
+        run.font.color.rgb = RGBColor(0x18, 0x21, 0x33)
+
+        if is_bold:
+            run.font.size = Pt(10.5)
+        elif text.startswith("http") or "@" in text or text.startswith("+") or "|" in text:
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+        else:
+            run.font.size = Pt(10)
+            run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after = Pt(1)
+
+    if skill_items:
+        cols = 3
+        rows_count = (len(skill_items) + cols - 1) // cols
+        table = doc.add_table(rows=rows_count, cols=cols)
+        table.autofit = True
+        for idx, skill in enumerate(skill_items):
+            row_i = idx // cols
+            col_i = idx % cols
+            cell = table.cell(row_i, col_i)
+            cell.text = ""
+            p = cell.paragraphs[0]
+            run = p.add_run(skill)
+            run.font.name = "Arial"
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(0)
+            tc = cell._element
+            tcPr = tc.get_or_add_tcPr()
+            borders = tcPr.makeelement(qn("w:tcBorders"), {})
+            for edge in ("top", "left", "bottom", "right"):
+                el = borders.makeelement(qn(f"w:{edge}"), {
+                    qn("w:val"): "none",
+                    qn("w:sz"): "0",
+                    qn("w:space"): "0",
+                    qn("w:color"): "auto",
+                })
+                borders.append(el)
+            tcPr.append(borders)
+        tbl = table._element
+        tblPr = tbl.tblPr if tbl.tblPr is not None else tbl.makeelement(qn("w:tblPr"), {})
+        tblW = tblPr.makeelement(qn("w:tblW"), {qn("w:type"): "pct", qn("w:w"): "5000"})
+        existingW = tblPr.find(qn("w:tblW"))
+        if existingW is not None:
+            tblPr.remove(existingW)
+        tblPr.append(tblW)
+
+    tmp_docx = str(Path(tempfile.gettempdir()) / f"{stem}.docx")
+    try:
+        doc.save(tmp_docx)
+        content = Path(tmp_docx).read_bytes()
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{stem}.docx"'},
+        )
+    finally:
+        Path(tmp_docx).unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("web_main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("web_main:app", host="127.0.0.1", port=8000, reload=False)

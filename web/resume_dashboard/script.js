@@ -11,7 +11,7 @@ const defaultData = {
     linkedin: "",
     website: "",
     country: "Malaysia",
-    state: "",
+    state: "Kuala Lumpur",
     city: "",
     visibility: { country: true, state: true, city: true }
   },
@@ -422,7 +422,6 @@ courseworkForm.addEventListener("submit", (event) => {
 
 /* Skills */
 const skillName = document.querySelector("#skillName");
-const skillLevel = document.querySelector("#skillLevel");
 const skillsBoard = document.querySelector("#skillsBoard");
 
 function renderSkills() {
@@ -436,14 +435,38 @@ function renderSkills() {
     const card = document.createElement("div");
     card.className = "skill-card";
     card.innerHTML = `
-      <div><strong>${escapeHtml(skill.name)}</strong><span>${escapeHtml(skill.level)}</span></div>
+      <div class="skill-card-body">
+        <input class="skill-edit-name" type="text" value="${escapeHtml(skill.name)}" aria-label="Skill name" />
+      </div>
       <button class="skill-remove" type="button" aria-label="Remove ${escapeHtml(skill.name)}">×</button>`;
-    card.querySelector("button").addEventListener("click", () => {
+
+    const nameInput = card.querySelector(".skill-edit-name");
+
+    nameInput.addEventListener("change", () => {
+      const val = nameInput.value.trim();
+      if (val) {
+        state.skills[index].name = val;
+        persistState("Skill updated.");
+        schedulePreviewRender();
+      } else {
+        nameInput.value = skill.name;
+      }
+    });
+
+    nameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        nameInput.blur();
+      }
+    });
+
+    card.querySelector(".skill-remove").addEventListener("click", () => {
       state.skills.splice(index, 1);
       renderSkills();
       persistState("Skill removed.");
       schedulePreviewRender();
     });
+
     skillsBoard.appendChild(card);
   });
 }
@@ -458,7 +481,7 @@ document.querySelector("#addSkillButton").addEventListener("click", () => {
     return;
   }
 
-  state.skills.push({ name, level: skillLevel.value });
+  state.skills.push({ name });
   skillName.value = "";
   renderSkills();
   persistState("Skill added.");
@@ -536,7 +559,7 @@ function renderPreview() {
   const contactItems = [contact.email, contact.phone, location, contact.linkedin, contact.website]
     .filter(Boolean)
     .map((item) => `<span>${escapeHtml(item)}</span>`)
-    .join("");
+    .join('<span class="contact-sep" aria-hidden="true"> | </span>');
 
   const experienceHtml = state.experience.map((item) => `
     <div class="resume-item">
@@ -572,7 +595,7 @@ function renderPreview() {
   const certificationHtml = state.certifications.map((item) => `
     <div class="resume-item">
       <div class="resume-item-heading">
-        <strong>${escapeHtml(item.name || "Certification")}</strong>
+        <span class="cert-name">${escapeHtml(item.name || "Certification")}</span>
         <span>${escapeHtml(formatMonth(item.issue))}</span>
       </div>
       <div class="resume-item-sub">${escapeHtml([item.issuer, item.credentialId].filter(Boolean).join(" · "))}</div>
@@ -580,11 +603,11 @@ function renderPreview() {
 
   const courseworkLines = normaliseLines(state.coursework.courseworkItems);
   const courseworkHtml = courseworkLines.length
-    ? `<div class="resume-skill-list">${courseworkLines.map((item) => `<span>${escapeHtml(item)}</span>`).join("<span>•</span>")}</div>`
+    ? `<div class="resume-skill-list">${courseworkLines.map((item) => `<span>${escapeHtml(item)}</span>`).join("<span> | </span>")}</div>`
     : "";
 
   const skillsHtml = state.skills.length
-    ? `<div class="resume-skill-list">${state.skills.map((skill) => `<span><strong>${escapeHtml(skill.name)}</strong> (${escapeHtml(skill.level)})</span>`).join("")}</div>`
+    ? `<div class="resume-skill-grid">${state.skills.map((skill) => `<span>${escapeHtml(skill.name)}</span>`).join("")}</div>`
     : "";
 
   const previewHtml = `
@@ -633,9 +656,84 @@ function updateCompletion() {
   document.querySelector("#completionBar").style.width = `${completion}%`;
 }
 
-document.querySelector("#printResumeButton").addEventListener("click", () => {
+document.querySelector("#exportPdfButton").addEventListener("click", async () => {
   renderPreview();
-  window.print();
+  const btn = document.querySelector("#exportPdfButton");
+  btn.disabled = true;
+  btn.textContent = "Exporting PDF...";
+  try {
+    const preview = document.querySelector("#resumePreview");
+    const css = Array.from(document.querySelectorAll("link[rel=stylesheet]"))
+      .map((l) => { try { return Array.from(document.styleSheets).find((s) => s.href === l.href)?.cssRules ? Array.from(Array.from(document.styleSheets).find((s) => s.href === l.href).cssRules).map((r) => r.cssText).join("\n") : ""; } catch { return ""; } })
+      .join("\n");
+    const inlineCss = document.querySelector("#resumePreviewStyle")?.textContent || "";
+    const body = {
+      html: preview.innerHTML,
+      css: css + "\n" + inlineCss,
+      filename: `${safeFileName(state.contact.fullName || "resume")}.pdf`,
+    };
+    const response = await fetch("/api/builder/export/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error("Export failed");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safeFileName(state.contact.fullName || "resume")}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 5000);
+    showToast("PDF exported successfully.");
+  } catch (err) {
+    showToast("PDF export failed. Try Print instead.");
+    window.print();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Export PDF";
+  }
+});
+
+document.querySelector("#exportDocxButton").addEventListener("click", async () => {
+  renderPreview();
+  const btn = document.querySelector("#exportDocxButton");
+  btn.disabled = true;
+  btn.textContent = "Exporting DOCX...";
+  try {
+    const preview = document.querySelector("#resumePreview");
+    const css = Array.from(document.querySelectorAll("link[rel=stylesheet]"))
+      .map((l) => { try { return Array.from(document.styleSheets).find((s) => s.href === l.href)?.cssRules ? Array.from(Array.from(document.styleSheets).find((s) => s.href === l.href).cssRules).map((r) => r.cssText).join("\n") : ""; } catch { return ""; } })
+      .join("\n");
+    const inlineCss = document.querySelector("#resumePreviewStyle")?.textContent || "";
+    const body = {
+      html: preview.innerHTML,
+      css: css + "\n" + inlineCss,
+      filename: `${safeFileName(state.contact.fullName || "resume")}.docx`,
+      state: state,
+    };
+    const response = await fetch("/api/builder/export/docx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error("Export failed");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safeFileName(state.contact.fullName || "resume")}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 5000);
+    showToast("DOCX exported successfully.");
+  } catch (err) {
+    showToast("DOCX export failed.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Export DOCX";
+  }
 });
 
 document.querySelector("#downloadTextButton").addEventListener("click", () => {
@@ -951,7 +1049,7 @@ function importParsedResume(data) {
   state.summary.professionalTitle = data.headline || "";
   state.summary.summaryText = data.summary || "";
 
-  state.skills = (data.skills || []).map(name => ({ name, level: "Intermediate" }));
+  state.skills = (data.skills || []).map(name => ({ name }));
 
   state.experience = (data.experience || []).map(item => ({
     title: item.title || "",

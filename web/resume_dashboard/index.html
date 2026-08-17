@@ -352,17 +352,6 @@ Business Research Methods</textarea>
                 <label for="skillName">Skill</label>
                 <input id="skillName" type="text" placeholder="e.g. Power BI" />
               </div>
-              <div class="form-field">
-                <label for="skillLevel">Proficiency</label>
-                <div class="select-wrap">
-                  <select id="skillLevel">
-                    <option>Advanced</option>
-                    <option selected>Intermediate</option>
-                    <option>Beginner</option>
-                  </select>
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
-                </div>
-              </div>
               <button class="secondary-button skill-add-button" type="button" id="addSkillButton">+ Add Skill</button>
             </div>
 
@@ -430,7 +419,8 @@ Business Research Methods</textarea>
                   </div>
                   <div class="progress-track"><span id="completionBar"></span></div>
                 </div>
-                <button class="primary-button wide-button" type="button" id="printResumeButton">Print / Save as PDF</button>
+                <button class="primary-button wide-button" type="button" id="exportPdfButton">Export PDF</button>
+                <button class="primary-button wide-button" type="button" id="exportDocxButton">Export DOCX</button>
                 <button class="secondary-button wide-button" type="button" id="downloadTextButton">Download Plain Text</button>
               </div>
 
@@ -691,7 +681,7 @@ Business Research Methods</textarea>
         </div>
         <div class="form-field">
           <label>Issue Date</label>
-          <input data-field="issue" type="month" />
+          <input data-field="issue" type="text" placeholder="e.g. 2024 or 2024-06" />
         </div>
         <div class="form-field">
           <label>Expiry Date (optional)</label>
@@ -748,6 +738,6 @@ Business Research Methods</textarea>
     </div>
   </div>
 
-  <script src="/builder/script.js"></script>
+  <script src="/builder/script.js?v=20260817"></script>
 </body>
 </html>
