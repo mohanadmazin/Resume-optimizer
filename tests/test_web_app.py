@@ -416,3 +416,55 @@ def test_unsafe_job_source_url_is_not_persisted(client):
     )
     jobs = client.get("/api/jobs").json()
     assert jobs[0]["source_url"] == ""
+
+
+def test_job_match_against_master_profile(client):
+    from app.database.repositories.master_profile_repository import (
+        MasterProfileRepository,
+    )
+    from app.domain.master_profile import CareerEntry, MasterCareerProfile
+
+    MasterProfileRepository().save(
+        MasterCareerProfile(
+            name="Test",
+            skills=["python", "sql", "aws"],
+            entries=[
+                CareerEntry(role="Senior Backend Engineer", date_from="2019", date_to="2024")
+            ],
+        )
+    )
+
+    client.post(
+        "/jobs",
+        data={
+            "job_title": "Senior Python Engineer",
+            "job_company": "Example",
+            "job_text": (
+                "Senior Python Engineer responsible for building services. "
+                "Must have 5 years experience. Skills: Python, SQL, AWS."
+            ),
+        },
+        follow_redirects=False,
+    )
+    job_id = client.get("/api/jobs").json()[0]["id"]
+
+    response = client.post(f"/jobs/{job_id}/match", follow_redirects=False)
+    assert response.status_code in (302, 303)
+
+    jobs_page = client.get(f"/jobs?matched={job_id}").text
+    assert "Job Match" in jobs_page
+    assert "Strong match" in jobs_page or "Good match" in jobs_page
+
+
+def test_job_match_requires_master_profile(client):
+    client.post(
+        "/jobs",
+        data={
+            "job_title": "SRE",
+            "job_text": "Skills: Terraform, Kubernetes.",
+        },
+        follow_redirects=False,
+    )
+    job_id = client.get("/api/jobs").json()[0]["id"]
+    response = client.post(f"/jobs/{job_id}/match", follow_redirects=False)
+    assert "no_profile" in response.headers.get("location", "")

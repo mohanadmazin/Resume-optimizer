@@ -5,6 +5,8 @@
 {% if request.query_params.get('saved') %}<div class="alert alert-success">Job saved and selected. Company and location will remain available across sessions.</div>{% endif %}
 {% if request.query_params.get('loaded') %}<div class="alert alert-success">Saved target job loaded.</div>{% endif %}
 {% if request.query_params.get('deleted') %}<div class="alert alert-success">Target job removed.</div>{% endif %}
+{% if request.query_params.get('matched') %}<div class="alert alert-success">Job match updated.</div>{% endif %}
+{% if request.query_params.get('error') == 'no_profile' %}<div class="alert alert-error">Build a Master Profile first before running a job match.</div>{% endif %}
 {% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
 
 <div class="content-grid content-grid-main">
@@ -33,8 +35,27 @@
 
 <aside class="panel records-panel">
     <div class="panel-heading"><div><h2>Saved Target Jobs</h2><p>Reuse complete vacancy records.</p></div><span class="badge">{{ jobs|length }}</span></div>
-    {% if jobs %}<div class="record-list compact-record-list">{% for job in jobs %}<article class="record-row {% if job.id == active_job_id %}selected{% endif %}"><div class="record-main"><strong>{{ job.title or 'Untitled role' }}</strong><span>{{ job.company or 'Company not specified' }}{% if job.location %} · {{ job.location }}{% endif %}</span><small>{{ job.status|title }} · {{ job.created_at }}</small></div><div class="record-actions">{% if job.id == active_job_id %}<span class="badge badge-success">Active</span>{% endif %}<form method="post" action="/jobs/{{ job.id }}/use"><button class="btn btn-secondary btn-small">Use</button></form><form method="post" action="/jobs/{{ job.id }}/delete" data-confirm="Delete this target job and related analyses?"><button class="btn btn-danger btn-small">Delete</button></form></div></article>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No target jobs saved.</p></div>{% endif %}
+    {% if jobs %}<div class="record-list compact-record-list">{% for job in jobs %}<article class="record-row {% if job.id == active_job_id %}selected{% endif %}"><div class="record-main"><strong>{{ job.title or 'Untitled role' }}</strong><span>{{ job.company or 'Company not specified' }}{% if job.location %} · {{ job.location }}{% endif %}</span><small>{{ job.status|title }} · {{ job.created_at }}</small></div><div class="record-actions">{% if job.id == active_job_id %}<span class="badge badge-success">Active</span>{% endif %}<form method="post" action="/jobs/{{ job.id }}/match" class="inline-form"><button class="btn btn-secondary btn-small" {% if not profile_exists %}disabled title="Build a Master Profile first"{% endif %}>Match</button></form><form method="post" action="/jobs/{{ job.id }}/use"><button class="btn btn-secondary btn-small">Use</button></form><form method="post" action="/jobs/{{ job.id }}/delete" data-confirm="Delete this target job and related analyses?"><button class="btn btn-danger btn-small">Delete</button></form></div></article>{% endfor %}</div>{% else %}<div class="empty-compact"><p>No target jobs saved.</p></div>{% endif %}
 </aside>
 </div>
+
+{% if job_match %}
+<div class="content-grid content-grid-main match-panel">
+<section class="panel">
+    <div class="panel-heading"><div><h2>Job Match</h2><p>{{ job_match.job_title }}</p></div><span class="match-badge match-{{ job_match.strength }}">{{ (job_match.overall_score * 100) | round | int }}%</span></div>
+    <p class="match-recommendation"><strong>{{ job_match.recommendation }}</strong></p>
+    <div class="match-bars">
+        {% for cat in job_match.categories %}
+        <div class="match-row"><span class="match-label">{{ cat.category | title }}</span><div class="match-bar-track"><div class="match-bar" style="width: {{ (cat.score * 100) | round | int }}%"></div></div><span class="match-value">{{ (cat.score * 100) | round | int }}%</span></div>
+        {% endfor %}
+    </div>
+    {% if job_match.strengths %}
+    <div class="match-lists"><div><h4>Strong matches</h4><ul>{% for s in job_match.strengths %}<li>✓ {{ s.skill }}</li>{% endfor %}</ul></div>
+    {% endif %}
+    {% if job_match.gaps %}
+    <div><h4>Gaps</h4><ul>{% for g in job_match.gaps %}<li>⚠ {{ g.skill }}</li>{% endfor %}</ul></div>{% endif %}</div>
+</section>
+</div>
+{% endif %}
 {% endblock %}
 {% block scripts %}<script>(()=>{const field=document.getElementById('job_text'),counter=document.getElementById('jobCharacterCount');const update=()=>counter.textContent=`${field.value.length.toLocaleString()} characters`;field.addEventListener('input',update);update();document.getElementById('jobForm').addEventListener('submit',()=>{const button=document.getElementById('saveJobButton');button.disabled=true;button.textContent='Saving…';});})();</script>{% endblock %}

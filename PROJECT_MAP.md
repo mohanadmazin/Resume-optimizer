@@ -111,6 +111,7 @@ Legend:
 | Evidence Vault (save evidence)        | ✅      |
 | Master Profile (career summary)       | ✅      |
 | Requirement Matrix (JD comparison)    | ✅      |
+| Job match against Master Profile      | ✅      |
 | Discovery Interview (prep session)    | ✅      |
 | ResumeAI contact page                 | ✅      |
 | Content checker (23-factor scoring)   | ✅      |
@@ -277,7 +278,7 @@ The roadmap intentionally stays within the current **single-user, local-first mo
 ### Phase 2 — Job Discovery and Matching
 
 6. **Job discovery/search** — build a local job-search domain around normalized job records and imported job descriptions.
-7. **Job matching against Master Profile** — score jobs against the user's Master Profile, skills, experience, evidence, and preferences.
+7. **Job matching against Master Profile** — ✅ implemented (`app/domain/job_match.py`, `app/services/job_matcher.py`, web UI on the Target Jobs page).
 8. **Saved searches** — save reusable search criteria, filters, and matching preferences locally.
 9. **Optional job-board integrations** — add integrations only where they can be implemented safely and compatibly; imported/manual jobs remain a first-class path.
 10. **Job-specific intelligence** — connect job matches to Requirement Matrix, skill gaps, resume variants, cover letters, and application tracking.

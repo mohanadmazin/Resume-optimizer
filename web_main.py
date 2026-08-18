@@ -504,11 +504,21 @@ async def restore_resume_version(request: Request, resume_id: int, version_id: i
 @app.get("/jobs", response_class=HTMLResponse)
 async def jobs_page(request: Request):
     from app.database.repositories.job_repository import JobRepository
+    from app.database.repositories.master_profile_repository import (
+        MasterProfileRepository,
+    )
     from app.database.session import get_session
 
     session = _get_session(request)
     with get_session() as db_session:
         jobs = JobRepository(db_session).get_all()
+    profile_exists = MasterProfileRepository().get_id() is not None
+    matched_id = request.query_params.get("matched")
+    stored_job_id = session.get("job_match_job_id")
+    job_match = session.pop("job_match", None)
+    session.pop("job_match_job_id", None)
+    if not (job_match and matched_id and str(stored_job_id) == str(matched_id)):
+        job_match = None
     return _render(
         request,
         "jobs.html",
@@ -525,6 +535,9 @@ async def jobs_page(request: Request):
             "job_status": session.get("job_status", "saved"),
             "jobs": jobs,
             "active_job_id": session.get("job_id"),
+            "profile_exists": profile_exists,
+            "job_match": job_match,
+            "matched_job_id": matched_id,
             "error_message": _pop_error(session),
         },
     )
@@ -1984,6 +1997,50 @@ async def _export_docx_playwright(full_html: str, stem: str) -> Response:
         )
     finally:
         Path(tmp_docx).unlink(missing_ok=True)
+
+
+@app.post("/jobs/{job_id}/match")
+async def match_job_against_profile(request: Request, job_id: int):
+    """Score a saved job against the Master Profile (local, deterministic)."""
+    from app.database.repositories.job_repository import JobRepository
+    from app.database.repositories.master_profile_repository import (
+        MasterProfileRepository,
+    )
+    from app.database.session import get_session
+    from app.domain.evidence import CareerFact
+    from app.services.evidence_vault import EvidenceVault
+    from app.services.job_matcher import match_job
+
+    session = _get_session(request)
+    with get_session() as db_session:
+        row = JobRepository(db_session).get_by_id(job_id)
+        if row is None:
+            return _redirect("/jobs?error=not_found")
+        job_text = row.content or ""
+        job_title = row.title or ""
+        job_salary = row.salary or ""
+
+    profile = MasterProfileRepository().get()
+    if profile is None:
+        return _redirect("/jobs?error=no_profile")
+
+    vault = EvidenceVault()
+    raw_facts = vault.list_facts()
+    facts: list[CareerFact] = [
+        f if isinstance(f, CareerFact) else CareerFact(**f)
+        for f in raw_facts
+    ]
+
+    match = match_job(
+        job_text=job_text,
+        job_title=job_title,
+        profile=profile,
+        facts=facts,
+        job_salary_text=job_salary,
+    )
+    session["job_match"] = match.model_dump(mode="json")
+    session["job_match_job_id"] = job_id
+    return _redirect(f"/jobs?matched={job_id}")
 
 
 if __name__ == "__main__":
