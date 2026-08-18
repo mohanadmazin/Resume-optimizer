@@ -1628,6 +1628,11 @@ def _build_resume_full_html(
             )
         except (TypeError, ValueError):
             layout_css = ""
+    body_html = preview_html.strip()
+    if re.match(r"^<(?:div|article)\b[^>]*class=[\"'][^\"']*resume-paper", body_html):
+        paper_wrap = body_html
+    else:
+        paper_wrap = f"<div class=\"resume-paper\">{body_html}</div>"
     return (
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
         "<style>"
@@ -1635,7 +1640,7 @@ def _build_resume_full_html(
         f"{filtered}\n{export_css}\n{layout_css}"
         "</style>"
         "</head><body>"
-        f"<div class=\"resume-paper\">{preview_html}</div>"
+        f"{paper_wrap}"
         "</body></html>"
     )
 

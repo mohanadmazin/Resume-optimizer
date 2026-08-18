@@ -139,10 +139,14 @@
     if (btn) { btn.disabled = true; btn.textContent = 'Aligning…'; }
     if (stat) stat.textContent = 'Testing page count, margins, typography and spacing live…';
 
+    const chosenDensity = ['spacious', 'normal', 'compact'].includes(s.density)
+      ? [s.density]
+      : ['spacious', 'normal', 'compact'];
+
     const candidates = [];
     for (const fontPt of [9.6, 9.8, 10.0, 10.2, 10.4]) {
       for (const marginMm of [18, 19, 20]) {
-        for (const density of ['spacious', 'normal', 'compact']) candidates.push({ fontPt, marginMm, density });
+        for (const density of chosenDensity) candidates.push({ fontPt, marginMm, density });
       }
     }
 
@@ -213,7 +217,13 @@
       `line-height:${d.line}`,
       'background:#fff',
       'color:#182133',
-      'font-family:Arial,sans-serif'
+      'font-family:Arial,sans-serif',
+      `--auto-font-pt:${activeConfig.fontPt}pt`,
+      `--auto-margin-mm:${activeConfig.marginMm}mm`,
+      `--auto-h-margin-mm:${BASE.horizontalMarginMm}mm`,
+      `--auto-line-height:${d.line}`,
+      `--auto-section-scale:${d.section}`,
+      `--auto-paragraph-scale:${d.paragraph}`
     ].join(';');
     return `<div class="resume-paper auto-aligned" style="${wrapperStyle}">${el.innerHTML}</div>`;
   }

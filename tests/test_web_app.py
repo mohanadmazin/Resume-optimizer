@@ -488,7 +488,7 @@ def _stub_docx_export(client, monkeypatch):
     import web_main as web_main_module
     from fastapi.responses import Response
 
-    async def fake_export(full_html: str, stem: str) -> Response:
+    async def fake_export(full_html: str, stem: str, auto_align: dict | None = None) -> Response:
         return Response(
             content=b"PK-example-docx",
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
