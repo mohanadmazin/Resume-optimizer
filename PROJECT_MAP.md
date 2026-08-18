@@ -122,8 +122,19 @@ Legend:
 | Web dashboard with resume, jobs, ATS, optimize, cover letter, applications | ✅ |
 | Web resignation letter generator     | ✅      |
 | Web DOCX export (same template as optimize endpoint) | ✅ |
-| Optional encrypted sensitive fields  | 🔭      |
-| Optional job-board integrations      | 🔭      |
+| Encrypted sensitive fields (optional)  | 🔭      |
+| Data export/delete (privacy)          | 🔭      |
+| Job discovery/search                  | 🔭      |
+| Job matching against Master Profile   | 🔭      |
+| Saved searches                        | 🔭      |
+| Career progression dashboard          | 🔭      |
+| Skill development roadmap             | 🔭      |
+| Market-demand trends                  | 🔭      |
+| Salary trend history                  | 🔭      |
+| Resume A/B comparison experiment      | 🔭      |
+| Web/desktop feature parity            | 🔭      |
+| Portable career-profile import/export | 🔭      |
+| Optional job-board integrations       | 🔭      |
 
 ---
 
@@ -1180,3 +1191,74 @@ A feature is complete only when:
 * No original resume data is overwritten
 * `ruff check` passes clean
 * All tests pass with `pytest`
+
+---
+
+## 16. PROPOSED_FUTURE_ROADMAP
+
+Proposed future work. Only items judged doable on the current architecture are listed;
+each is scoped to reuse existing domains (score history, salary benchmarks, career
+embeddings, master profile, repositories, FastAPI interface).
+
+### Phase 1 — Stability & Public Release
+
+* Get all Windows/macOS/Linux CI checks green
+* Increase test coverage; add web E2E coverage (Playwright)
+* Add automated release builds
+* PyInstaller releases for Windows/macOS/Linux
+* Versioned GitHub releases
+* Improve onboarding and first-run experience
+* Add screenshots / demo video to README
+
+### Phase 2 — Privacy & Security
+
+* Encrypted sensitive fields (optional)
+* Secure local secrets/configuration
+* Stronger privacy controls with data export/delete
+* Security regression suite
+* Dependency/license auditing
+* Signed releases / checksums
+
+### Phase 3 — Job Intelligence
+
+* Job discovery/search
+* Saved searches
+* Job deduplication
+* Job matching against Master Profile
+* Job recommendation ranking
+* Application deadline/reminder tracking
+
+### Phase 4 — Career Intelligence
+
+* Career progression dashboard
+* Skill development roadmap
+* Learning-resource recommendations
+* Market-demand trends
+* Salary trend history
+* Career-path recommendations
+* Resume performance analytics
+
+### Phase 5 — Resume Intelligence
+
+* More ATS engines/scoring profiles
+* Industry-specific scoring
+* Job-specific optimization strategies
+* Resume experiment / A/B comparison
+* Automatic keyword/evidence recommendations
+* Better semantic evidence matching
+* Resume quality benchmarking
+
+### Phase 6 — Web & Collaboration
+
+* Complete feature parity between desktop and web
+* Optional self-hosted deployment
+* Authentication for self-hosted web deployments
+* Import/export portable career profile
+
+### Phase 7 — Open Source Ecosystem
+
+* Plugin architecture
+* Custom ATS scoring rules
+* Custom resume templates
+* Custom AI providers
+* Contributor/API documentation
