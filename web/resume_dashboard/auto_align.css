@@ -1,7 +1,7 @@
 .resume-paper.auto-aligned {
   --auto-font-pt: 10pt;
   --auto-margin-mm: 18mm;
-  --auto-h-margin-mm: 20mm;
+  --auto-h-margin-mm: 22mm;
   --auto-line-height: 1.32;
   --auto-section-scale: 1;
   --auto-paragraph-scale: 1;
@@ -12,39 +12,40 @@
   box-sizing: border-box;
 }
 
+/* Keep the browser preview on the same typography baseline as DOCX/PDF. */
 .resume-paper.auto-aligned h1 {
-  font-size: clamp(18pt, calc(var(--auto-font-pt) * 2.2), 22pt);
+  font-size: 22pt;
 }
 
 .resume-paper.auto-aligned .resume-title {
-  font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.08), 11pt);
+  font-size: 11pt;
 }
 
 .resume-paper.auto-aligned .resume-contact {
-  font-size: clamp(8pt, calc(var(--auto-font-pt) * 0.9), 9pt);
+  font-size: 9pt;
 }
 
 .resume-paper.auto-aligned .resume-section {
-  margin-top: calc(clamp(15px, calc(var(--auto-font-pt) * 1.9), 22px) * var(--auto-section-scale));
+  margin-top: calc(19px * var(--auto-section-scale));
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
 .resume-paper.auto-aligned .resume-section h2 {
-  font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.08), 11pt);
-  margin-bottom: calc(clamp(7px, calc(var(--auto-font-pt) * 1.05), 11px) * var(--auto-section-scale));
+  font-size: 11pt;
+  margin-bottom: calc(8px * var(--auto-section-scale));
   break-after: avoid;
   page-break-after: avoid;
 }
 
 .resume-paper.auto-aligned .resume-summary,
 .resume-paper.auto-aligned .resume-item-sub {
-  font-size: clamp(8.5pt, var(--auto-font-pt), 10pt);
+  font-size: 10pt;
   line-height: var(--auto-line-height);
 }
 
 .resume-paper.auto-aligned .resume-item-heading strong {
-  font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.04), 10.5pt);
+  font-size: 10.5pt;
 }
 
 .resume-paper.auto-aligned .resume-item,
@@ -56,14 +57,14 @@
 }
 
 .resume-paper.auto-aligned ul {
-  font-size: clamp(9px, calc(var(--auto-font-pt) * 0.82), 11px);
+  font-size: 9.5pt;
   line-height: var(--auto-line-height);
   margin-top: calc(5px * var(--auto-paragraph-scale));
 }
 
 .resume-paper.auto-aligned .resume-skill-list,
 .resume-paper.auto-aligned .resume-skill-grid {
-  font-size: clamp(9px, calc(var(--auto-font-pt) * 0.84), 11px);
+  font-size: 9pt;
   line-height: var(--auto-line-height);
 }
 
