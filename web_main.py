@@ -1612,11 +1612,55 @@ def _build_resume_full_html(preview_html: str) -> str:
     )
 
 
+_MAX_EXPORT_BODY_BYTES = 2_000_000
+
+
+async def _parse_json_body_strict(request: Request) -> dict[str, Any]:
+    """Read and parse a single JSON document from a request body.
+
+    Raises:
+        HTTPException(413): if the body exceeds the bounded size limit.
+        HTTPException(400): if the body is not one complete JSON object
+            (malformed, or a second JSON document / trailing bytes follow
+            the first value).
+    """
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > _MAX_EXPORT_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="Request body too large")
+        chunks.append(chunk)
+    body_bytes = b"".join(chunks)
+
+    if not body_bytes:
+        raise HTTPException(status_code=400, detail="Empty request body")
+
+    try:
+        text = body_bytes.decode("utf-8")
+        decoder = json.JSONDecoder()
+        decoded, end = decoder.raw_decode(text)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Malformed JSON request body: {exc}",
+        ) from exc
+
+    if text[end:].strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Request body contains trailing data after the JSON document",
+        )
+    if not isinstance(decoded, dict):
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+    return decoded
+
+
 @app.post("/api/builder/export/{file_format}")
 async def builder_export(request: Request, file_format: str):
     import tempfile
 
-    body = await request.json()
+    body = await _parse_json_body_strict(request)
     html_content = body.get("html", "")
     file_format = file_format.lower()
 

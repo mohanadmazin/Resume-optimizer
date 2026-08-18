@@ -1,6 +1,8 @@
 """Integration coverage for the unified FastAPI web workflow."""
 from __future__ import annotations
 
+import json
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -468,3 +470,99 @@ def test_job_match_requires_master_profile(client):
     job_id = client.get("/api/jobs").json()[0]["id"]
     response = client.post(f"/jobs/{job_id}/match", follow_redirects=False)
     assert "no_profile" in response.headers.get("location", "")
+
+
+def _builder_export_payload(**overrides) -> dict:
+    payload = {
+        "html": "<h1>Test Resume</h1><p>Fifi Test — Sales Manager.</p>",
+        "css": "h1 { color: navy; }",
+        "filename": "test-resume.pdf",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _stub_docx_export(client, monkeypatch):
+    """Replace the downstream DOCX exporter so tests cover only the JSON
+    parsing boundary and do not require Playwright/Chromium."""
+    import web_main as web_main_module
+    from fastapi.responses import Response
+
+    async def fake_export(full_html: str, stem: str) -> Response:
+        return Response(
+            content=b"PK-example-docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    monkeypatch.setattr(web_main_module, "_export_docx_playwright", fake_export)
+
+
+def test_builder_export_accepts_single_json_document(client, monkeypatch):
+    _stub_docx_export(client, monkeypatch)
+    response = client.post(
+        "/api/builder/export/docx",
+        json=_builder_export_payload(),
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert response.content.startswith(b"PK")
+
+
+def test_builder_export_accepts_trailing_whitespace(client, monkeypatch):
+    _stub_docx_export(client, monkeypatch)
+    body = json.dumps(_builder_export_payload()) + "   \n\t  "
+    response = client.post(
+        "/api/builder/export/docx",
+        content=body,
+        headers={"Content-Type": "application/json"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert response.content.startswith(b"PK")
+
+
+def test_builder_export_rejects_concatenated_json_documents(client, monkeypatch):
+    _stub_docx_export(client, monkeypatch)
+    body = json.dumps(_builder_export_payload()) + json.dumps(
+        _builder_export_payload(filename="second.pdf")
+    )
+    response = client.post(
+        "/api/builder/export/docx",
+        content=body,
+        headers={"Content-Type": "application/json"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert response.text and "trailing data" in response.text.lower()
+
+
+def test_builder_export_rejects_malformed_json(client):
+    response = client.post(
+        "/api/builder/export/docx",
+        content='{"html": "unterminated',
+        headers={"Content-Type": "application/json"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert "malformed" in response.text.lower()
+
+
+def test_builder_export_rejects_empty_body(client):
+    response = client.post(
+        "/api/builder/export/docx",
+        content="",
+        headers={"Content-Type": "application/json"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert "empty" in response.text.lower()
+
+
+def test_builder_export_rejects_oversized_body(client):
+    big_html = "<p>" + ("x" * (2_000_000)) + "</p>"
+    response = client.post(
+        "/api/builder/export/docx",
+        json=_builder_export_payload(html=big_html),
+        follow_redirects=False,
+    )
+    assert response.status_code == 413
