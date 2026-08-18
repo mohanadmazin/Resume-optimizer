@@ -1596,15 +1596,43 @@ def _filter_resume_paper_css(css: str) -> str:
     return "\n".join(result)
 
 
-def _build_resume_full_html(preview_html: str) -> str:
-    """Wrap the preview inner HTML in a standalone document with the project CSS."""
+# AUTO_ALIGN_EXPORT_PARITY_V2
+def _build_resume_full_html(
+    preview_html: str,
+    export_css: str = "",
+    auto_align: dict[str, Any] | None = None,
+) -> str:
+    """Wrap preview HTML in a standalone document using the live export CSS/layout."""
     css_text = _CSS_PATH.read_text(encoding="utf-8") if _CSS_PATH.exists() else ""
     filtered = _filter_resume_paper_css(css_text)
+    layout_css = ""
+    if isinstance(auto_align, dict):
+        try:
+            font_pt = float(auto_align.get("fontPt", 10))
+            margin_mm = float(auto_align.get("marginMm", 18))
+            h_margin_mm = float(auto_align.get("horizontalMarginMm", 22))
+            density = str(auto_align.get("density", "normal"))
+            line_height = {"compact": 1.20, "normal": 1.30, "spacious": 1.40}.get(density, 1.30)
+            section_scale = {"compact": .82, "normal": 1.00, "spacious": 1.12}.get(density, 1.00)
+            paragraph_scale = {"compact": .78, "normal": 1.00, "spacious": 1.12}.get(density, 1.00)
+            layout_css = (
+                f".resume-paper.auto-aligned {{ box-sizing:border-box; width:210mm; "
+                f"min-height:297mm; padding:{margin_mm}mm {h_margin_mm}mm; "
+                f"font-size:{font_pt}pt; line-height:{line_height}; background:#fff; }}\n"
+                f".resume-paper.auto-aligned .resume-summary, .resume-paper.auto-aligned .resume-item-sub {{ "
+                f"font-size:10pt; line-height:{line_height}; }}\n"
+                f".resume-paper.auto-aligned ul {{ font-size:9.5pt; line-height:{line_height}; "
+                f"margin-top:{5 * paragraph_scale}px; margin-bottom:{3 * paragraph_scale}px; }}\n"
+                f".resume-paper.auto-aligned .resume-section {{ margin-top:{19 * section_scale}px; }}\n"
+                f".resume-paper.auto-aligned .resume-section h2 {{ margin-bottom:{8 * section_scale}px; }}\n"
+            )
+        except (TypeError, ValueError):
+            layout_css = ""
     return (
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
         "<style>"
         "* { margin: 0; padding: 0; box-sizing: border-box; }\n"
-        f"{filtered}\n"
+        f"{filtered}\n{export_css}\n{layout_css}"
         "</style>"
         "</head><body>"
         f"<div class=\"resume-paper\">{preview_html}</div>"
@@ -1669,18 +1697,26 @@ async def builder_export(request: Request, file_format: str):
 
     stem = _safe_filename(body.get("filename", "resume") or "resume", "resume")
 
-    if file_format == "docx" and body.get("state"):
-        return await _export_docx_from_state(body["state"], stem)
-
+    # Prefer the live preview HTML whenever supplied. The legacy structured-state
+    # DOCX exporter is only a fallback for callers that do not send HTML.
     if not html_content:
+        if file_format == "docx" and body.get("state"):
+            return await _export_docx_from_state(body["state"], stem)
         raise HTTPException(status_code=400, detail="No HTML content")
 
-    full_html = _build_resume_full_html(html_content)
+    full_html = _build_resume_full_html(
+        html_content,
+        str(body.get("css", "") or ""),
+        body.get("autoAlign") if isinstance(body.get("autoAlign"), dict) else None,
+    )
 
     if file_format == "pdf":
         return await _export_pdf_playwright(full_html, stem)
-    else:
-        return await _export_docx_playwright(full_html, stem)
+    return await _export_docx_playwright(
+        full_html,
+        stem,
+        body.get("autoAlign") if isinstance(body.get("autoAlign"), dict) else None,
+    )
 
 
 async def _export_docx_from_state(state: dict, stem: str) -> Response:
@@ -1794,7 +1830,11 @@ async def _export_pdf_playwright(full_html: str, stem: str) -> Response:
         Path(tmp).unlink(missing_ok=True)
 
 
-async def _export_docx_playwright(full_html: str, stem: str) -> Response:
+async def _export_docx_playwright(
+    full_html: str,
+    stem: str,
+    auto_align: dict[str, Any] | None = None,
+) -> Response:
     import tempfile
     from pathlib import Path
     from html.parser import HTMLParser
@@ -1891,21 +1931,34 @@ async def _export_docx_playwright(full_html: str, stem: str) -> Response:
     parser.feed(full_html)
     parser.finish()
 
+    layout = auto_align if isinstance(auto_align, dict) else {}
+    try:
+        body_pt = float(layout.get("fontPt", 10))
+        margin_mm = float(layout.get("marginMm", 18))
+        h_margin_mm = float(layout.get("horizontalMarginMm", 22))
+    except (TypeError, ValueError):
+        body_pt, margin_mm, h_margin_mm = 10.0, 18.0, 22.0
+    density = str(layout.get("density", "normal"))
+    line_height = {"compact": 1.20, "normal": 1.30, "spacious": 1.40}.get(density, 1.30)
+    section_scale = {"compact": .82, "normal": 1.00, "spacious": 1.12}.get(density, 1.00)
+    paragraph_scale = {"compact": .78, "normal": 1.00, "spacious": 1.12}.get(density, 1.00)
+
     doc = Document()
     sec = doc.sections[0]
     sec.page_width = Mm(210)
     sec.page_height = Mm(297)
-    sec.top_margin = Mm(18)
-    sec.bottom_margin = Mm(18)
-    sec.left_margin = Mm(22)
-    sec.right_margin = Mm(22)
+    sec.top_margin = Mm(margin_mm)
+    sec.bottom_margin = Mm(margin_mm)
+    sec.left_margin = Mm(h_margin_mm)
+    sec.right_margin = Mm(h_margin_mm)
 
     normal = doc.styles["Normal"]
     normal.font.name = "Arial"
-    normal.font.size = Pt(10)
+    normal.font.size = Pt(body_pt)
     normal.font.color.rgb = RGBColor(0x18, 0x21, 0x33)
-    normal.paragraph_format.space_after = Pt(2)
+    normal.paragraph_format.space_after = Pt(2 * paragraph_scale)
     normal.paragraph_format.space_before = Pt(0)
+    normal.paragraph_format.line_spacing = line_height
 
     in_ul = False
     skill_items: list[str] = []
@@ -1922,7 +1975,7 @@ async def _export_docx_playwright(full_html: str, stem: str) -> Response:
             p = doc.add_paragraph(text, style="List Bullet")
             for run in p.runs:
                 run.font.name = "Arial"
-                run.font.size = Pt(9.5)
+                run.font.size = Pt(max(9.0, body_pt - 0.5))
                 run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
             continue
 
@@ -1944,8 +1997,9 @@ async def _export_docx_playwright(full_html: str, stem: str) -> Response:
             run.font.size = Pt(11)
             run.bold = True
             run.font.color.rgb = RGBColor(0x18, 0x21, 0x33)
-            p.paragraph_format.space_before = Pt(12)
-            p.paragraph_format.space_after = Pt(4)
+            p.paragraph_format.space_before = Pt(12 * section_scale)
+            p.paragraph_format.space_after = Pt(4 * section_scale)
+            p.paragraph_format.line_spacing = line_height
             pb = p.paragraph_format.element
             pbPr = pb.get_or_add_pPr()
             pBdr = pbPr.makeelement(qn("w:pBdr"), {})
@@ -1982,16 +2036,17 @@ async def _export_docx_playwright(full_html: str, stem: str) -> Response:
         run.font.color.rgb = RGBColor(0x18, 0x21, 0x33)
 
         if is_bold:
-            run.font.size = Pt(10.5)
+            run.font.size = Pt(body_pt + 0.5)
         elif text.startswith("http") or "@" in text or text.startswith("+") or "|" in text:
             run.font.size = Pt(9)
             run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
         else:
-            run.font.size = Pt(10)
+            run.font.size = Pt(body_pt)
             run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
 
-        p.paragraph_format.space_before = Pt(1)
-        p.paragraph_format.space_after = Pt(1)
+        p.paragraph_format.space_before = Pt(1 * paragraph_scale)
+        p.paragraph_format.space_after = Pt(1 * paragraph_scale)
+        p.paragraph_format.line_spacing = line_height
 
     if skill_items:
         cols = 3
