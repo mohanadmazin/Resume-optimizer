@@ -277,7 +277,7 @@ class MainWindow(QMainWindow):
     def _shortcut_save(self) -> None:
         page = self.stack.currentWidget()
         if hasattr(page, "force_save"):
-            page.force_save()
+            page.force_save()  # type: ignore[union-attr]
             self.notify("Saved.")
         else:
             self.notify("No save action available on this page.")
@@ -285,7 +285,7 @@ class MainWindow(QMainWindow):
     def _shortcut_export(self) -> None:
         page = self.stack.currentWidget()
         if hasattr(page, "export"):
-            page.export()
+            page.export()  # type: ignore[union-attr]
         else:
             self.notify("No export action available on this page.")
 
