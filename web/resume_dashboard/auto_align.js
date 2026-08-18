@@ -162,16 +162,12 @@
     const observer = new MutationObserver(() => {
       if (!activeConfig || applying) return;
       const el = paper();
-      if (!el || el.dataset.autoAlignObserved === '1') return;
-      el.dataset.autoAlignObserved = '1';
+      if (!el) return;
       requestAnimationFrame(() => apply(el, activeConfig));
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
-  // Do not replace the application's normal PDF/DOCX handlers. If a separate
-  // parity exporter is installed, it can opt in through this hook; otherwise
-  // the existing builder export code remains untouched.
   function installExportParity() {
     if (typeof window.exportAlignedResume !== 'function') return;
     document.addEventListener('click', async event => {
