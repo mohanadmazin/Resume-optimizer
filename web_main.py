@@ -3,7 +3,7 @@
 Run with either::
 
     python web_main.py
-    uvicorn web_main:app --reload --port 8000
+    uvicorn web_main:app --reload --port 8080
 
 The web interface shares the same local SQLite database and service layer as the
 PySide desktop application.  Session state is intentionally kept server-side so
@@ -2046,4 +2046,4 @@ async def match_job_against_profile(request: Request, job_id: int):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("web_main:app", host="127.0.0.1", port=8000, reload=False)
+    uvicorn.run("web_main:app", host="127.0.0.1", port=8080, reload=False)

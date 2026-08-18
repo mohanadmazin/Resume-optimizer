@@ -7,7 +7,7 @@ python -m pip install -e ".[web]"
 python web_main.py
 ```
 
-Open `http://127.0.0.1:8000`.
+Open `http://127.0.0.1:8080`.
 
 The application binds to localhost by default. FastAPI interactive documentation and the OpenAPI endpoint are disabled in the production app.
 

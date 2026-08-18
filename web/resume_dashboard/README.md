@@ -34,4 +34,4 @@ python -m pip install -e ".[web]"
 python web_main.py
 ```
 
-Open `http://127.0.0.1:8000/builder/`.
+Open `http://127.0.0.1:8080/builder/`.
