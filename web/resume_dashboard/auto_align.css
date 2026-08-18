@@ -1,23 +1,121 @@
 .resume-paper.auto-aligned {
   --auto-font-pt: 10pt;
   --auto-margin-mm: 18mm;
-  --auto-h-margin-mm: 21mm;
+  --auto-h-margin-mm: 20mm;
+  --auto-line-height: 1.32;
+  --auto-section-scale: 1;
+  --auto-paragraph-scale: 1;
   padding: var(--auto-margin-mm) var(--auto-h-margin-mm);
   font-size: var(--auto-font-pt);
-  transition: padding 180ms ease, font-size 180ms ease;
+  line-height: var(--auto-line-height);
+  transition: padding 180ms ease, font-size 180ms ease, line-height 180ms ease;
+  box-sizing: border-box;
 }
 
-.resume-paper.auto-aligned h1 { font-size: clamp(18pt, calc(var(--auto-font-pt) * 2.2), 22pt); }
-.resume-paper.auto-aligned .resume-title { font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.08), 11pt); }
-.resume-paper.auto-aligned .resume-contact { font-size: clamp(8pt, calc(var(--auto-font-pt) * 0.9), 9pt); }
-.resume-paper.auto-aligned .resume-section { margin-top: clamp(15px, calc(var(--auto-font-pt) * 1.9), 22px); }
-.resume-paper.auto-aligned .resume-section h2 { font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.08), 11pt); margin-bottom: clamp(7px, calc(var(--auto-font-pt) * 1.05), 11px); }
-.resume-paper.auto-aligned .resume-summary,
-.resume-paper.auto-aligned .resume-item-sub { font-size: clamp(8.5pt, var(--auto-font-pt), 10pt); line-height: 1.42; }
-.resume-paper.auto-aligned .resume-item-heading strong { font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.04), 10.5pt); }
-.resume-paper.auto-aligned ul { font-size: clamp(9px, calc(var(--auto-font-pt) * 0.82), 11px); line-height: 1.42; margin-top: 5px; }
-.resume-paper.auto-aligned .resume-skill-list,
-.resume-paper.auto-aligned .resume-skill-grid { font-size: clamp(9px, calc(var(--auto-font-pt) * 0.84), 11px); }
-.resume-paper.auto-aligning { transition: none; }
+.resume-paper.auto-aligned h1 {
+  font-size: clamp(18pt, calc(var(--auto-font-pt) * 2.2), 22pt);
+}
 
-.auto-align-status { min-height: 17px; margin: 8px 0 0; color: #8f9bb0; font-size: 11px; line-height: 1.4; }
+.resume-paper.auto-aligned .resume-title {
+  font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.08), 11pt);
+}
+
+.resume-paper.auto-aligned .resume-contact {
+  font-size: clamp(8pt, calc(var(--auto-font-pt) * 0.9), 9pt);
+}
+
+.resume-paper.auto-aligned .resume-section {
+  margin-top: calc(clamp(15px, calc(var(--auto-font-pt) * 1.9), 22px) * var(--auto-section-scale));
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.resume-paper.auto-aligned .resume-section h2 {
+  font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.08), 11pt);
+  margin-bottom: calc(clamp(7px, calc(var(--auto-font-pt) * 1.05), 11px) * var(--auto-section-scale));
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.resume-paper.auto-aligned .resume-summary,
+.resume-paper.auto-aligned .resume-item-sub {
+  font-size: clamp(8.5pt, var(--auto-font-pt), 10pt);
+  line-height: var(--auto-line-height);
+}
+
+.resume-paper.auto-aligned .resume-item-heading strong {
+  font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.04), 10.5pt);
+}
+
+.resume-paper.auto-aligned .resume-item,
+.resume-paper.auto-aligned .resume-entry,
+.resume-paper.auto-aligned .resume-job,
+.resume-paper.auto-aligned li {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.resume-paper.auto-aligned ul {
+  font-size: clamp(9px, calc(var(--auto-font-pt) * 0.82), 11px);
+  line-height: var(--auto-line-height);
+  margin-top: calc(5px * var(--auto-paragraph-scale));
+}
+
+.resume-paper.auto-aligned .resume-skill-list,
+.resume-paper.auto-aligned .resume-skill-grid {
+  font-size: clamp(9px, calc(var(--auto-font-pt) * 0.84), 11px);
+  line-height: var(--auto-line-height);
+}
+
+.resume-paper.auto-aligning {
+  transition: none;
+}
+
+.auto-align-options {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 8px 0 0;
+  flex-wrap: wrap;
+}
+
+.auto-align-options label {
+  display: grid;
+  gap: 4px;
+  color: #8f9bb0;
+  font-size: 10px;
+  letter-spacing: .02em;
+}
+
+.auto-align-options select {
+  min-width: 105px;
+  border: 1px solid rgba(143, 155, 176, .25);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, .72);
+  color: inherit;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.auto-align-status {
+  min-height: 17px;
+  margin: 8px 0 0;
+  color: #8f9bb0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+@media print {
+  .resume-paper.auto-aligned {
+    transition: none;
+  }
+
+  .resume-paper.auto-aligned .resume-section,
+  .resume-paper.auto-aligned .resume-item,
+  .resume-paper.auto-aligned .resume-entry,
+  .resume-paper.auto-aligned .resume-job,
+  .resume-paper.auto-aligned li {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
