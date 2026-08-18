@@ -7,6 +7,7 @@
   <base href="/" />
   <title>ResumeAI — Resume Builder</title>
   <link rel="stylesheet" href="/builder/styles.css" />
+  <link rel="stylesheet" href="/builder/auto_align.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -419,6 +420,8 @@ Business Research Methods</textarea>
                   </div>
                   <div class="progress-track"><span id="completionBar"></span></div>
                 </div>
+                <button class="primary-button wide-button" type="button" id="autoAlignButton">Auto Align Resume</button>
+                <div class="auto-align-status" id="autoAlignStatus" role="status">Automatically balance page count, typography, and margins.</div>
                 <button class="primary-button wide-button" type="button" id="exportPdfButton">Export PDF</button>
                 <button class="primary-button wide-button" type="button" id="exportDocxButton">Export DOCX</button>
                 <button class="secondary-button wide-button" type="button" id="downloadTextButton">Download Plain Text</button>
@@ -739,5 +742,6 @@ Business Research Methods</textarea>
   </div>
 
   <script src="/builder/script.js?v=20260817"></script>
+  <script src="/builder/auto_align.js" defer></script>
 </body>
 </html>

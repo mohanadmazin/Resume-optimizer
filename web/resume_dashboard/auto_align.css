@@ -1,0 +1,23 @@
+.resume-paper.auto-aligned {
+  --auto-font-pt: 10pt;
+  --auto-margin-mm: 18mm;
+  --auto-h-margin-mm: 21mm;
+  padding: var(--auto-margin-mm) var(--auto-h-margin-mm);
+  font-size: var(--auto-font-pt);
+  transition: padding 180ms ease, font-size 180ms ease;
+}
+
+.resume-paper.auto-aligned h1 { font-size: clamp(18pt, calc(var(--auto-font-pt) * 2.2), 22pt); }
+.resume-paper.auto-aligned .resume-title { font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.08), 11pt); }
+.resume-paper.auto-aligned .resume-contact { font-size: clamp(8pt, calc(var(--auto-font-pt) * 0.9), 9pt); }
+.resume-paper.auto-aligned .resume-section { margin-top: clamp(15px, calc(var(--auto-font-pt) * 1.9), 22px); }
+.resume-paper.auto-aligned .resume-section h2 { font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.08), 11pt); margin-bottom: clamp(7px, calc(var(--auto-font-pt) * 1.05), 11px); }
+.resume-paper.auto-aligned .resume-summary,
+.resume-paper.auto-aligned .resume-item-sub { font-size: clamp(8.5pt, var(--auto-font-pt), 10pt); line-height: 1.42; }
+.resume-paper.auto-aligned .resume-item-heading strong { font-size: clamp(9pt, calc(var(--auto-font-pt) * 1.04), 10.5pt); }
+.resume-paper.auto-aligned ul { font-size: clamp(9px, calc(var(--auto-font-pt) * 0.82), 11px); line-height: 1.42; margin-top: 5px; }
+.resume-paper.auto-aligned .resume-skill-list,
+.resume-paper.auto-aligned .resume-skill-grid { font-size: clamp(9px, calc(var(--auto-font-pt) * 0.84), 11px); }
+.resume-paper.auto-aligning { transition: none; }
+
+.auto-align-status { min-height: 17px; margin: 8px 0 0; color: #8f9bb0; font-size: 11px; line-height: 1.4; }
