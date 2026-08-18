@@ -88,12 +88,17 @@ class CompileFromProfileUseCase:
 
         _emit("Complete", 100)
 
+        from app.domain.analysis import ATSResult
         from app.domain.fact_guard import FactGuardResult
         return PipelineResult(
-            ats_before=None,
+            ats_before=ATSResult(
+                ats_score=0,
+                keyword_match_pct=0.0,
+                skills_match_pct=0.0,
+            ),
             optimized=optimized,
             cover_letter="",
-            cover_letter_warnings=[],
+            cover_letter_warnings=(),
             fact_guard=FactGuardResult(),
             ats_after_score=0,
             skill_gap=None,

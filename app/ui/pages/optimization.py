@@ -35,13 +35,19 @@ from app.services.optimizer import apply_accepted_changes, optimize_resume
 from app.services.resume_parser import parse_resume
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 
 class OptimizationPage(QWidget):
-    def __init__(self, window):
+
+    window: "MainWindow"  # type: ignore[assignment]
+    def __init__(self, window: "MainWindow"):
         super().__init__()
         self.window = window
-        self._worker = None
+        self._worker: "Worker | None" = None
         self._overlay = LoadingOverlayManager()
         self._change_cards: dict[int, tuple[ProposedChange, QFrame]] = {}
         self._original_resume = None
@@ -460,8 +466,11 @@ class OptimizationPage(QWidget):
         # Clear old content
         while self.review_layout.count():
             child = self.review_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+            if child is None:
+                continue
+            child_widget = child.widget()
+            if child_widget is not None:
+                child_widget.deleteLater()
 
         header = QLabel("Proposed Changes — Accept or Reject Each:")
         header.setObjectName("reviewHeader")
@@ -767,7 +776,7 @@ class OptimizationPage(QWidget):
         studio_page = self.window.get_page("Resume Studio")
         if studio_page is not None:
             studio_page.load_from_state()
-        items = self.window.nav.findItems("Resume Studio", Qt.MatchExactly)
+        items = self.window.nav.findItems("Resume Studio", Qt.MatchFlag.MatchExactly)
         if items:
             self.window.nav.setCurrentItem(items[0])
         self.window.notify("Optimized resume loaded into the Studio for editing.")

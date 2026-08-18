@@ -74,6 +74,7 @@ class SectionTabBar(QWidget):
         self._sections = list(self.DEFAULT_SECTIONS)
         self._tabs: dict[str, SectionTab] = {}
         self._selected = self._sections[0]
+        self._layout = QHBoxLayout(self)
 
         self.setStyleSheet(
             f"background-color: {RESUMEAI_COLORS['window_bg']};"
@@ -81,7 +82,7 @@ class SectionTabBar(QWidget):
             "border-radius: 10px;"
         )
 
-        layout = QHBoxLayout(self)
+        layout = self._layout
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(1)
 
@@ -128,7 +129,7 @@ class SectionTabBar(QWidget):
             return
         tab = SectionTab(name)
         tab.clicked.connect(lambda _checked=False, n=name: self.select_tab(n))
-        self.layout().insertWidget(self.layout().count() - 1, tab)
+        self._layout.insertWidget(self._layout.count() - 1, tab)
         self._tabs[name] = tab
         self._sections.append(name)
 
@@ -136,7 +137,7 @@ class SectionTabBar(QWidget):
         if name not in self._tabs:
             return
         tab = self._tabs.pop(name)
-        self.layout().removeWidget(tab)
+        self._layout.removeWidget(tab)
         tab.deleteLater()
         self._sections.remove(name)
         if self._selected == name and self._sections:

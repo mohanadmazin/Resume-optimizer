@@ -19,14 +19,14 @@ class MasterProfileRepository:
                 existing.name = profile.name or existing.name
                 existing.profile_json = profile.model_dump_json()
                 session.flush()
-                return existing.id
+                return existing.id  # type: ignore[return-value]
             row = MasterProfileModel(
                 name=profile.name or "Default Profile",
                 profile_json=profile.model_dump_json(),
             )
             session.add(row)
             session.flush()
-            return row.id
+            return row.id  # type: ignore[return-value]
 
     def get(self, profile_id: int | None = None) -> MasterCareerProfile | None:
         """Retrieve the master profile. If profile_id is None, returns the first."""
@@ -43,7 +43,7 @@ class MasterProfileRepository:
         """Return the ID of the existing master profile, or None."""
         with get_session() as session:
             row = session.query(MasterProfileModel).first()
-            return row.id if row else None
+            return row.id if row else None  # type: ignore[return-value]
 
     def delete(self, profile_id: int) -> bool:
         with get_session() as session:

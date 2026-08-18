@@ -191,7 +191,7 @@ class MainWindow(QMainWindow):
 
         self.stack.setCurrentIndex(index)
         page = self.stack.widget(index)
-        if hasattr(page, "on_show"):
+        if page is not None and hasattr(page, "on_show"):
             page.on_show()
 
     def _switch_to_page(self, name: str) -> None:
@@ -325,7 +325,7 @@ class MainWindow(QMainWindow):
             settings = QSettings()
             dark_key = settings.value("AppsUseDarkTheme", None)
             if dark_key is not None:
-                return "light" if int(dark_key) == 0 else "dark"
+                return "light" if int(str(dark_key)) == 0 else "dark"
         except Exception:
             pass
         return "dark"
@@ -353,7 +353,7 @@ class MainWindow(QMainWindow):
 
     def _cleanup_warm_worker(self) -> None:
         worker = getattr(self, "_warm_worker", None)
-        self._warm_worker = None
+        self._warm_worker = None  # type: ignore[assignment]
         if worker is not None:
             worker.deleteLater()
 

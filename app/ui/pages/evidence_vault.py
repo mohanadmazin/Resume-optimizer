@@ -96,7 +96,7 @@ class _FactDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    def get_data(self) -> dict[str, object]:
+    def get_data(self) -> dict[str, str | FactType | FactConfidence]:
         return {
             "statement": self._statement.toPlainText().strip(),
             "fact_type": FactType(self._type_combo.currentText()),
@@ -233,14 +233,14 @@ class EvidenceVaultPage(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
             fact = CareerFact(
-                statement=data["statement"],
-                fact_type=data["fact_type"],
-                confidence=data["confidence"],
-                employer=data["employer"],
-                project=data["project"],
-                date_from=data["date_from"],
-                date_to=data["date_to"],
-                notes=data["notes"],
+                statement=str(data["statement"]),
+                fact_type=FactType(str(data["fact_type"])),
+                confidence=FactConfidence(str(data["confidence"])),
+                employer=str(data["employer"]),
+                project=str(data["project"]),
+                date_from=str(data["date_from"]),
+                date_to=str(data["date_to"]),
+                notes=str(data["notes"]),
             )
             self._vault.add_fact(fact)
             self.refresh()

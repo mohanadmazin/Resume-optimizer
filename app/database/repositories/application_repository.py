@@ -1,4 +1,4 @@
-"""Repository for job application CRUD."""
+﻿"""Repository for job application CRUD."""
 from __future__ import annotations
 
 import logging
@@ -41,7 +41,7 @@ class ApplicationRepository(BaseRepository):
             if status == "applied" and existing.applied_at is None:
                 existing.applied_at = datetime.utcnow()
             self.flush()
-            return int(existing.id)
+            return int(existing.id)  # type: ignore[arg-type]
 
         row = JobApplication(
             resume_id=resume_id,
@@ -54,7 +54,7 @@ class ApplicationRepository(BaseRepository):
         self.add(row)
         self.flush()
         logger.info("Created application %d", row.id)
-        return int(row.id)
+        return int(row.id)  # type: ignore[arg-type]
 
     def get(self, app_id: int) -> JobApplication | None:
         return (
@@ -118,13 +118,13 @@ class ApplicationRepository(BaseRepository):
 
     def update_status(self, app_id: int, status: str) -> bool:
         row = self.get(app_id)
-        return self.update(app_id, status=status, notes=row.notes if row else "")
+        return self.update(app_id, status=status, notes=row.notes or "" if row else "")
 
     def update_notes(self, app_id: int, notes: str) -> bool:
         row = self.get(app_id)
         if row is None:
             return False
-        return self.update(app_id, status=row.status, notes=notes)
+        return self.update(app_id, status=row.status or "saved", notes=notes)
 
     def delete(self, app_id: int) -> bool:
         row = self.get(app_id)

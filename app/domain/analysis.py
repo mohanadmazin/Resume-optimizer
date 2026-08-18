@@ -20,6 +20,6 @@ class ATSResult:
 
     def to_dict(self) -> dict:
         d = asdict(self)
-        if d.get("score_report") is not None:
+        if self.score_report is not None:
             d["score_report"] = self.score_report.model_dump()
         return d

@@ -30,7 +30,7 @@ class OllamaStatusLabel(QWidget):
     def __init__(self, base_url: str = "http://localhost:11434", parent=None):
         super().__init__(parent)
         self.base_url = base_url
-        self._checker = None
+        self._checker: OllamaCheckerThread | None = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 0, 8, 0)

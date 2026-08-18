@@ -180,6 +180,8 @@ class DiscoveryPage(QWidget):
         # Clear chat
         while self._chat_layout.count():
             item = self._chat_layout.takeAt(0)
+            if item is None:
+                continue
             w = item.widget()
             if w:
                 w.deleteLater()
@@ -223,8 +225,12 @@ class DiscoveryPage(QWidget):
         self._bubble_count += 1
         if self._bubble_count > self.MAX_DISPLAY_BUBBLES:
             first = self._chat_layout.takeAt(0)
-            if first and first.widget():
-                first.widget().deleteLater()
+            if first is None:
+                return
+            first_widget = first.widget()
+            if first_widget is None:
+                return
+            first_widget.deleteLater()
 
     def _update_progress(self) -> None:
         if self._session:

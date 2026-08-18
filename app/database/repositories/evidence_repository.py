@@ -30,7 +30,7 @@ class CareerFactRepository:
             )
             session.add(row)
             session.flush()
-            return row.id
+            return row.id  # type: ignore[return-value]
 
     def get(self, fact_id: int) -> CareerFact | None:
         with get_session() as session:

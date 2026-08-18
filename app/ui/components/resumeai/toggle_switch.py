@@ -40,7 +40,7 @@ class ResumeAiToggleSwitch(QWidget):
     def thumb_x(self) -> float:
         return self._thumb_x
 
-    @thumb_x.setter
+    @thumb_x.setter  # type: ignore[no-redef]
     def thumb_x(self, value: float) -> None:
         self._thumb_x = value
         self.update()

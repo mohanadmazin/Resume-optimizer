@@ -33,7 +33,7 @@ class EvidenceSourceRepository:
             )
             session.add(row)
             session.flush()
-            return row.id
+            return row.id  # type: ignore[return-value]
 
     def get_source(self, source_id: int) -> EvidenceSource | None:
         with get_session() as session:
@@ -137,7 +137,7 @@ class EvidenceSourceRepository:
             )
             session.add(row)
             session.flush()
-            return row.id
+            return row.id  # type: ignore[return-value]
 
     def get_verification_history(self, fact_id: int) -> list[FactVerificationEventModel]:
         with get_session() as session:

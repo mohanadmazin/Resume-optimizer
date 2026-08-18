@@ -1,6 +1,8 @@
 """Cover Letter Library page — browse, search, and reuse saved cover letters."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import logging
 
 from PySide6.QtWidgets import (
@@ -22,10 +24,14 @@ from PySide6.QtWidgets import (
 from app.database import db
 from app.database.repositories.cover_letter_repository import CoverLetterRepository
 
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
+
 logger = logging.getLogger(__name__)
 
 
 class CoverLetterLibraryPage(QWidget):
+    window: "MainWindow"  # type: ignore[assignment]
     """Library for browsing and managing saved cover letters."""
 
     def __init__(self, window) -> None:
@@ -122,7 +128,10 @@ class CoverLetterLibraryPage(QWidget):
         if not rows:
             return None
         row = rows[0].row()
-        return int(self._table.item(row, 0).text())
+        item = self._table.item(row, 0)
+        if item is None:
+            return None
+        return int(item.text())
 
     def _on_search(self) -> None:
         query = self._search_input.text().strip()

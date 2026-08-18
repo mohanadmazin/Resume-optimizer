@@ -8,6 +8,10 @@ from pydantic import BaseModel
 
 from app.ai.prompts import GENERATE_SUMMARY_PROMPT, GENERATE_SUMMARY_SYSTEM
 from app.domain.resume import ResumeData
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.ai.ollama_client import OllamaClient
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +28,7 @@ class SummaryResult:
 def generate_summary(
     resume: ResumeData,
     jd_text: str = "",
-    client: object | None = None,
+    client: "OllamaClient | None" = None,
 ) -> SummaryResult:
     """Generate a professional summary from resume experience and skills.
 

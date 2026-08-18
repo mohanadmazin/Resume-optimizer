@@ -20,11 +20,16 @@ from app.ai.ollama_client import OllamaClient
 from app.ui.workers import Worker
 
 from app.core.settings import settings_service
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 
 class SettingsPage(QWidget):
 
-    def __init__(self, window):
+    window: "MainWindow"  # type: ignore[assignment]
+    def __init__(self, window: "MainWindow"):
         super().__init__()
 
         self.window = window

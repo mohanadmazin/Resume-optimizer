@@ -1,4 +1,4 @@
-"""Repository for persisted optimization runs and review decisions."""
+﻿"""Repository for persisted optimization runs and review decisions."""
 from __future__ import annotations
 
 import json
@@ -32,7 +32,7 @@ class OptimizationRepository(BaseRepository):
         )
         self.add(row)
         self.flush()
-        return int(row.id)
+        return int(row.id)  # type: ignore[arg-type]
 
     def get(self, optimization_id: int) -> Optimization | None:
         return self.session.query(Optimization).filter(Optimization.id == optimization_id).first()

@@ -185,8 +185,10 @@ class ResumeAiContactPage(QWidget):
             from app.domain.resume import ContactInfo
             self._state.resume = type(self._state.resume).model_copy(
                 update={"contact": ContactInfo(
-                    name=name, email=email, phone=data["phone"],
-                    linkedin=data["linkedin"], website=data["website"],
+                    name=name, email=email,
+                    phone=str(data["phone"]),
+                    linkedin=str(data["linkedin"]),
+                    website=str(data["website"]),
                 )} if self._state.resume else {}
             ) if self._state.resume else None
 

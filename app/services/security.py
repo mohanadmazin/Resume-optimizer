@@ -106,5 +106,5 @@ def resolve_and_validate(url: str) -> ResolvedTarget:
 
     first_ip = results[0][4][0]
     return ResolvedTarget(
-        hostname=hostname, ip=first_ip, port=port, scheme=scheme
+        hostname=hostname, ip=str(first_ip), port=port, scheme=scheme
     )

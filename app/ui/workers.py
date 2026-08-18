@@ -5,7 +5,7 @@ import logging
 import threading
 from typing import Any, Callable
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QObject, QThread, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class Worker(QThread):
         fn: Callable[..., Any],
         *args: Any,
         timeout_seconds: int = 180,
-        parent: object = None,
+        parent: QObject | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(parent)
@@ -83,7 +83,7 @@ class Worker(QThread):
         finally:
             timeout_timer.cancel()
 
-    def _emit_once(self, signal: Signal, value: Any = _MISSING) -> None:
+    def _emit_once(self, signal: Any, value: Any = _MISSING) -> None:
         with self._terminal_lock:
             if self._terminal_emitted:
                 return

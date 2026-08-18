@@ -1,6 +1,8 @@
 """Persistent, feature-rich Resume Studio with review-gated export."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 import copy
 import logging
 import re
@@ -32,6 +34,10 @@ from app.ui.components.section_editor import SectionEditor
 from app.ui.components.section_navigator import SectionNavigator
 from app.ui.view_models.studio_vm import SECTION_NAMES, ResumeStudioViewModel
 
+if TYPE_CHECKING:
+    from app.domain.resume import ResumeData
+    from app.ui.main_window import MainWindow
+
 logger = logging.getLogger(__name__)
 
 _AUTO_SAVE_INTERVAL_MS = 2000
@@ -41,12 +47,14 @@ class ResumeStudioPage(QWidget):
     """Edit, analyze, review, approve, and export one working resume."""
 
     destination_changed = Signal(str)
+    window: "MainWindow"  # type: ignore[assignment]
 
-    def __init__(self, window: object, parent: QWidget | None = None) -> None:
+    def __init__(self, window: "MainWindow", parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.window = window
         self._vm = ResumeStudioViewModel(state=window.state, parent=self)
-        self._pending_preview_resume = None
+        self._pending_preview_resume: ResumeData | None = None
+        self._gen_worker: Any = None
         self._loaded_resume_id: int | None = None
         self._review_tab_index = -1
 

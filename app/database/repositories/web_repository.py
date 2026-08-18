@@ -62,7 +62,7 @@ class GeneratedDocumentRepository(BaseRepository):
         row.metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
         row.updated_at = datetime.utcnow()
         self.flush()
-        return int(row.id)
+        return int(row.id)  # type: ignore[arg-type]
 
     def get(self, document_id: int) -> GeneratedDocument | None:
         return self.session.query(GeneratedDocument).filter(GeneratedDocument.id == document_id).first()

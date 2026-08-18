@@ -34,8 +34,8 @@ def save_score_snapshot(
                 resume_id=resume_id,
                 job_id=job_id,
                 ats_score=ats_score,
-                keyword_match=kw_match,
-                skills_match=skills_match,
+                keyword_match=kw_match,  # type: ignore[arg-type]
+                skills_match=skills_match,  # type: ignore[arg-type]
                 score_report_json=report_json,
             )
             session.add(row)

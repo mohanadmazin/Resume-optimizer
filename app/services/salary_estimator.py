@@ -858,6 +858,7 @@ def _confidence_details(
         missing.extend(item for item in analysis.confidence.missing_inputs if item)
 
     score = max(Decimal("0"), min(Decimal("1"), score))
+    level: Literal["low", "medium", "high"]
     if score >= Decimal("0.80"):
         level = "high"
     elif score >= Decimal("0.55"):
@@ -975,6 +976,7 @@ def estimate_salary(
         )
 
     management_evidence = _has_management_evidence(role, resume)
+    career_track: Literal["individual_contributor", "management"]
     if analysis is not None and analysis.career_track == "management" and not management_evidence:
         career_track = "individual_contributor"
     elif analysis is not None:

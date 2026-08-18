@@ -60,7 +60,7 @@ class SectionEditor(QWidget):
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._container: QWidget | None = None
-        self._container_layout: QVBoxLayout | None = None
+        self._container_layout: QVBoxLayout = QVBoxLayout()
         self._replace_container()
         root.addWidget(self._scroll)
 
@@ -186,7 +186,7 @@ class SectionEditor(QWidget):
         te.setAcceptRichText(False)
         te.setMinimumHeight(100)
         te.setObjectName(field_name + "_editor")
-        te.editingFinished = lambda: None
+        te.editingFinished = lambda: None  # type: ignore[attr-defined]
         _orig_focus = te.focusOutEvent
 
         def _on_focus_out(event) -> None:
@@ -254,12 +254,14 @@ class SectionEditor(QWidget):
         self._container_layout.addLayout(btn_row)
 
     def _add_list_item(self) -> None:
+        assert self._list_widget is not None
         self._list_widget.addItem("(new)")
         new_item = self._list_widget.item(self._list_widget.count() - 1)
         new_item.setFlags(new_item.flags() | Qt.ItemFlag.ItemIsEditable)
         self._list_widget.editItem(new_item)
 
     def _remove_list_item(self) -> None:
+        assert self._list_widget is not None
         row = self._list_widget.currentRow()
         if row >= 0:
             self._list_widget.takeItem(row)

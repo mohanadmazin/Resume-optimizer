@@ -537,7 +537,7 @@ def export_docx(resume: ResumeData, path: str, theme: ExportTheme | None = None)
         section_heading("Core Technical Skills")
         categorized = [_skill_label_value(skill) for skill in skills]
         if len(skills) > 1 and all(categorized):
-            for label, value in categorized:
+            for label, value in categorized:  # type: ignore[misc]
                 paragraph = doc.add_paragraph(style="Compact")
                 add_run(paragraph, label + ": ", bold=True)
                 add_run(paragraph, value)
@@ -793,7 +793,7 @@ def export_pdf(resume: ResumeData, path: str, theme: ExportTheme | None = None, 
             section_title("Core Technical Skills")
             categorized = [_skill_label_value(skill) for skill in skills]
             if len(skills) > 1 and all(categorized):
-                for label, value in categorized:
+                for label, value in categorized:  # type: ignore[misc]
                     draw_wrapped([
                         (label + ": ", True, text_f, False),
                         (value, False, text_f, False),
@@ -873,6 +873,7 @@ def export_pdf(resume: ResumeData, path: str, theme: ExportTheme | None = None, 
         body_size -= 0.5
         logger.debug("PDF overflows target %d pages, reducing font to %.1f", target_pages, body_size)
 
+    assert doc is not None
     doc.save(path)
     doc.close()
 

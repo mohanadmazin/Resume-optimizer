@@ -1,6 +1,8 @@
 """Interview Prep page — generate interview questions with STAR outlines."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import logging
 
 from PySide6.QtCore import Qt
@@ -22,6 +24,9 @@ from app.database.models import InterviewSession
 from app.services.interview_prep import InterviewPrepService, InterviewQuestionsResult
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +82,7 @@ class _QuestionCard(QFrame):
 
 
 class InterviewPrepPage(QWidget):
+    window: "MainWindow"  # type: ignore[assignment]
     """Interview preparation page with question generation and STAR outlines."""
 
     def __init__(self, window) -> None:
@@ -242,6 +248,9 @@ class InterviewPrepPage(QWidget):
     def _clear_cards(self) -> None:
         while self._cards_layout.count():
             child = self._cards_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+            if child is None:
+                continue
+            child_widget = child.widget()
+            if child_widget is not None:
+                child_widget.deleteLater()
         self._cards_layout.addStretch()

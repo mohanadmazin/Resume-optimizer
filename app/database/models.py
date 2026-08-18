@@ -1,11 +1,13 @@
 """SQLAlchemy database schema."""
 from datetime import datetime
+from typing import List
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import Mapped
 
 Base = declarative_base()
 
@@ -22,8 +24,8 @@ class Resume(Base):
     source_hash = Column(String(64), default="")
     is_original = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    analyses = relationship("Analysis", cascade="all, delete-orphan", passive_deletes=True)
-    optimizations = relationship("Optimization", cascade="all, delete-orphan", passive_deletes=True)
+    analyses: Mapped[List["Analysis"]] = relationship("Analysis", cascade="all, delete-orphan", passive_deletes=True)
+    optimizations: Mapped[List["Optimization"]] = relationship("Optimization", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class JobDescription(Base):
@@ -41,8 +43,8 @@ class JobDescription(Base):
     status = Column(String(50), default="saved")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    analyses = relationship("Analysis", cascade="all, delete-orphan", passive_deletes=True)
-    optimizations = relationship("Optimization", cascade="all, delete-orphan", passive_deletes=True)
+    analyses: Mapped[List["Analysis"]] = relationship("Analysis", cascade="all, delete-orphan", passive_deletes=True)
+    optimizations: Mapped[List["Optimization"]] = relationship("Optimization", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class Analysis(Base):
@@ -321,7 +323,7 @@ class CareerFact(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    sources = relationship(
+    sources: Mapped[List["EvidenceSource"]] = relationship(
         "EvidenceSource",
         secondary="career_fact_sources",
         back_populates="facts",
@@ -341,7 +343,7 @@ class EvidenceSource(Base):
     notes = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    facts = relationship(
+    facts: Mapped[List["CareerFact"]] = relationship(
         "CareerFact",
         secondary="career_fact_sources",
         back_populates="sources",

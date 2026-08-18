@@ -44,7 +44,7 @@ class VersioningRepository(BaseRepository):
         logger.info(
             "Created resume version %d for resume %d", next_version, resume_id
         )
-        return row.id
+        return row.id  # type: ignore[return-value]
 
     def get_version(self, version_id: int) -> ResumeVersion | None:
         return (
@@ -106,7 +106,7 @@ class VersioningRepository(BaseRepository):
             "Created targeting session %d (version=%d, job=%d)",
             row.id, resume_version_id, job_id,
         )
-        return row.id
+        return row.id  # type: ignore[return-value]
 
     def get_targeting_session(self, session_id: int) -> TargetingSession | None:
         return (
@@ -143,7 +143,7 @@ class VersioningRepository(BaseRepository):
         )
         self.add(row)
         self.flush()
-        return row.id
+        return row.id  # type: ignore[return-value]
 
     def update_suggestion_status(
         self, suggestion_id: int, status: str

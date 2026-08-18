@@ -126,9 +126,11 @@ class RequirementMatrixPage(QWidget):
         """Reload job list."""
         self._job_combo.clear()
         try:
+            from app.database.session import get_session
             from app.database.repositories.job_repository import JobRepository
-            repo = JobRepository()
-            jobs = repo.get_all()
+            with get_session() as session:
+                repo = JobRepository(session)
+                jobs = repo.get_all()
             for job in jobs:
                 title = job.get("title", "") if isinstance(job, dict) else getattr(job, "title", "")
                 jid = job.get("id", 0) if isinstance(job, dict) else getattr(job, "id", 0)
@@ -155,14 +157,16 @@ class RequirementMatrixPage(QWidget):
 
     def _build_worker(self, job_id: int) -> None:
         try:
+            from app.database.session import get_session
             from app.database.repositories.job_repository import JobRepository
             from app.domain.evidence import CareerFact
             from app.domain.job_requirements import JobRequirements
             from app.services.evidence_vault import EvidenceVault
             from app.services.requirement_matrix import build_matrix
 
-            job_repo = JobRepository()
-            orm_job = job_repo.get_by_id(job_id)
+            with get_session() as session:
+                job_repo = JobRepository(session)
+                orm_job = job_repo.get_by_id(job_id)
             if orm_job is None:
                 self._finish_build("Job not found")
                 return
@@ -207,7 +211,7 @@ class RequirementMatrixPage(QWidget):
             if error:
                 QMessageBox.warning(self, "Build Failed", error)
 
-        QMetaObject.invokeMethod(self, _update, QtEnum.QueuedConnection)
+        QMetaObject.invokeMethod(self, _update, QtEnum.QueuedConnection)  # type: ignore[call-overload, attr-defined]
 
     def _apply_filter(self) -> None:
         if self._matrix is None:

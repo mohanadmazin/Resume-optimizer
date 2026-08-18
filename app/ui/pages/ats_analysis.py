@@ -23,6 +23,10 @@ from PySide6.QtWidgets import (
 from app.database import db
 from app.domain.resume import ResumeData
 from app.services.ats_engine import analyze
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 
 def _card(title: str) -> tuple[QFrame, QLabel]:
@@ -85,7 +89,8 @@ def _highlight_keywords(text: str, matched: list[str], missing: list[str]) -> st
 
 class ATSAnalysisPage(QWidget):
 
-    def __init__(self, window):
+    window: "MainWindow"  # type: ignore[assignment]
+    def __init__(self, window: "MainWindow"):
         super().__init__()
 
         self.window = window
@@ -487,7 +492,7 @@ class ATSAnalysisPage(QWidget):
             self._matrix_strengths.setPlainText(
                 "\n".join(f"• {s}" for s in matrix.strengths) or "No strengths identified"
             )
-        QMetaObject.invokeMethod(self, _update, Qt.QueuedConnection)
+        QMetaObject.invokeMethod(self, _update, Qt.QueuedConnection)  # type: ignore[call-overload, attr-defined]
 
     def _finish_matrix_build(self, error: str) -> None:
         def _update():
@@ -495,4 +500,4 @@ class ATSAnalysisPage(QWidget):
             self._matrix_build_btn.setText("Build Matrix")
             if error:
                 QMessageBox.warning(self, "Matrix Build Failed", error)
-        QMetaObject.invokeMethod(self, _update, Qt.QueuedConnection)
+        QMetaObject.invokeMethod(self, _update, Qt.QueuedConnection)  # type: ignore[call-overload, attr-defined]

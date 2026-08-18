@@ -91,7 +91,7 @@ def _atomic_write_json(path: Path, data: str) -> None:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        _replace_with_retry(tmp_path, path)
+        _replace_with_retry(Path(tmp_path), path)
     except BaseException:
         try:
             os.unlink(tmp_path)

@@ -27,7 +27,7 @@ class CoverLetterRepository(BaseRepository):
         self.add(row)
         self.flush()
         logger.info("Created cover letter %d", row.id)
-        return row.id
+        return row.id  # type: ignore[return-value]
 
     def get(self, cl_id: int) -> CoverLetter | None:
         return (

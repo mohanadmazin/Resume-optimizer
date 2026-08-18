@@ -33,10 +33,11 @@ class ResumeAiToast(QLabel):
 
     def show_toast(self) -> None:
         """Show the toast, positioned at bottom-right of parent, then auto-hide."""
-        if self.parent():
-            pw = self.parent().width()
+        parent = self.parentWidget()
+        if parent is not None:
+            pw = parent.width()
             self.setFixedWidth(min(300, pw // 3))
-            self.move(pw - self.width() - 30, self.parent().height() - 60)
+            self.move(pw - self.width() - 30, parent.height() - 60)
         self.show()
         self.raise_()
         QTimer.singleShot(self._duration, self.hide)

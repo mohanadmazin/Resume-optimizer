@@ -16,15 +16,15 @@ class AnalysisRepository(BaseRepository):
             resume_id=resume_id,
             job_id=job_id,
             ats_score=int(result.get("ats_score", 0)),
-            keyword_match=float(result.get("keyword_match_pct", 0.0)),
-            skills_match=float(result.get("skills_match_pct", 0.0)),
+            keyword_match=float(result.get("keyword_match_pct", 0.0)),  # type: ignore[arg-type]
+            skills_match=float(result.get("skills_match_pct", 0.0)),  # type: ignore[arg-type]
             missing_keywords=json.dumps(result.get("missing_keywords", [])),
             suggestions=json.dumps(result.get("suggestions", [])),
             result_json=json.dumps(result, ensure_ascii=False, default=str),
         )
         self.add(row)
         self.flush()
-        return int(row.id)
+        return int(row.id)  # type: ignore[arg-type]
 
     def get_recent(self, limit: int = 10) -> list[dict]:
         rows = (

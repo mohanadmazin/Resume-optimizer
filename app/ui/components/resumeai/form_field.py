@@ -61,6 +61,7 @@ class ResumeAiFormField(QWidget):
     ) -> None:
         super().__init__(parent)
         self._label_text = label
+        self._toggle: ResumeAiToggleSwitch | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -84,14 +85,14 @@ class ResumeAiFormField(QWidget):
             self._toggle = None
 
         # ── Label ──
-        label = QLabel(self._label_text.upper())
-        label.setStyleSheet(
+        label_widget = QLabel(self._label_text.upper())
+        label_widget.setStyleSheet(
             f"color: {RESUMEAI_COLORS['text_primary']};"
             f" font-size: 13px; font-weight: 800;"
             f" font-family: {RESUMEAI_FONT_FAMILY};"
             f" border: none; background: transparent;"
         )
-        layout.addWidget(label)
+        layout.addWidget(label_widget)
 
         # ── Input row ──
         input_row = QHBoxLayout()

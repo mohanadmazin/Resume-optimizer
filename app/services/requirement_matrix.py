@@ -121,13 +121,15 @@ def _score_requirement(
 
     for fact in facts:
         if _find_exact_phrase(requirement.text, fact.statement):
-            matched_ids.append(fact.id)
+            if fact.id is not None:
+                matched_ids.append(fact.id)
             matched_texts.append(fact.statement)
             if best_level != CoverageLevel.DIRECT_EVIDENCE:
                 best_level = CoverageLevel.DIRECT_EVIDENCE
                 best_score = _COVERAGE_SCORES[CoverageLevel.DIRECT_EVIDENCE]
         elif _find_related_evidence(requirement.text, fact.statement):
-            matched_ids.append(fact.id)
+            if fact.id is not None:
+                matched_ids.append(fact.id)
             matched_texts.append(fact.statement)
             if best_score < _COVERAGE_SCORES[CoverageLevel.RELATED_EVIDENCE]:
                 best_level = CoverageLevel.RELATED_EVIDENCE

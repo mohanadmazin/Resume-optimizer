@@ -17,6 +17,10 @@ from app.domain.salary import SalaryEstimate
 from app.services.salary_estimator import estimate_salary
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 
 def _card(title: str) -> tuple[QFrame, QLabel]:
@@ -34,14 +38,15 @@ def _card(title: str) -> tuple[QFrame, QLabel]:
 
 
 class SalaryEstimatePage(QWidget):
+    window: "MainWindow"  # type: ignore[assignment]
 
     analysis_finished = Signal()
 
-    def __init__(self, window):
+    def __init__(self, window: "MainWindow"):
         super().__init__()
         self.window = window
-        self._worker = None
-        self._result = None
+        self._worker: "Worker | None" = None
+        self._result: "SalaryEstimate | None" = None
         self._overlay = LoadingOverlayManager()
 
         layout = QVBoxLayout(self)

@@ -8,6 +8,10 @@ from pydantic import BaseModel
 
 from app.ai.prompts import GENERATE_HEADLINE_PROMPT, GENERATE_HEADLINE_SYSTEM
 from app.domain.resume import ResumeData
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.ai.ollama_client import OllamaClient
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +28,7 @@ class HeadlineResult:
 def generate_headline(
     resume: ResumeData,
     jd_text: str = "",
-    client: object | None = None,
+    client: "OllamaClient | None" = None,
 ) -> HeadlineResult:
     """Generate a professional headline from resume data.
 

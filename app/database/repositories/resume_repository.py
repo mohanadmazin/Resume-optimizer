@@ -33,7 +33,7 @@ class ResumeRepository(BaseRepository):
         self.add(row)
         self.flush()
         logger.debug("Saved resume id=%d name=%s", row.id, name)
-        return row.id
+        return row.id  # type: ignore[return-value]
 
     def get_latest(self) -> dict | None:
         """Get the most recently created resume."""
@@ -112,8 +112,8 @@ class ResumeRepository(BaseRepository):
         variant_name = f"{source.name} ({variant_label})"
         return self.save(
             name=variant_name,
-            data_json=source.data_json,
-            raw_text=source.raw_text,
+            data_json=source.data_json or "",
+            raw_text=source.raw_text or "",
             source_type="variant",
             source_filename=str(source_id),
         )

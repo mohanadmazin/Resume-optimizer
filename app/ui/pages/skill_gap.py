@@ -19,6 +19,10 @@ from app.domain.skill_gap import SkillGapResult
 from app.services.skill_gap import analyze_skill_gap
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 
 def _card(title: str) -> tuple[QFrame, QLabel]:
@@ -36,14 +40,15 @@ def _card(title: str) -> tuple[QFrame, QLabel]:
 
 
 class SkillGapPage(QWidget):
+    window: "MainWindow"  # type: ignore[assignment]
 
     analysis_finished = Signal()
 
-    def __init__(self, window):
+    def __init__(self, window: "MainWindow"):
         super().__init__()
         self.window = window
-        self._worker = None
-        self._result = None
+        self._worker: "Worker | None" = None
+        self._result: "SkillGapResult | None" = None
         self._overlay = LoadingOverlayManager()
 
         layout = QVBoxLayout(self)

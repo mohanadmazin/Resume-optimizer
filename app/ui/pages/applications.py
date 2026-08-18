@@ -1,6 +1,8 @@
 """Applications page — track job application status."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import logging
 
 from PySide6.QtCore import Qt
@@ -26,6 +28,9 @@ from app.database.repositories.application_repository import (
     ApplicationRepository,
     VALID_STATUSES,
 )
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +69,7 @@ class _ApplicationDialog(QDialog):
 
 
 class ApplicationsPage(QWidget):
+    window: "MainWindow"  # type: ignore[assignment]
     """Job application tracker with status workflow."""
 
     def __init__(self, window) -> None:
@@ -192,7 +198,10 @@ class ApplicationsPage(QWidget):
         if not rows:
             return None
         row = rows[0].row()
-        return int(self._table.item(row, 0).text())
+        item = self._table.item(row, 0)
+        if item is None:
+            return None
+        return int(item.text())
 
     def _on_add(self) -> None:
         resume_id = self.window.state.resume_id or 0

@@ -2,7 +2,7 @@
 from app.domain.resume import ResumeData
 
 
-def validate_resume(resume_data: ResumeData) -> dict:
+def validate_resume(resume_data: ResumeData) -> dict[str, list[str]]:
     """Validate the resume data and return a dictionary of errors.
     
     Args:
@@ -12,7 +12,7 @@ def validate_resume(resume_data: ResumeData) -> dict:
         A dictionary where keys are field names and values are lists of error messages.
         Returns an empty dictionary if validation passes.
     """
-    errors = {}
+    errors: dict[str, list[str]] = {}
 
     # Check required contact information
     if not resume_data.contact.name or not resume_data.contact.name.strip():

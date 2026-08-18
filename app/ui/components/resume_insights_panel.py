@@ -351,6 +351,8 @@ class ResumeInsightsPanel(QWidget):
     def _clear_layout(layout: QVBoxLayout) -> None:
         while layout.count():
             child = layout.takeAt(0)
+            if child is None:
+                continue
             w = child.widget()
             if w is not None:
                 w.deleteLater()

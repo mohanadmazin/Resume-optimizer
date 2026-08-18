@@ -19,6 +19,10 @@ from app.database import db
 from app.services.document_reader import extract_text
 from app.services.job_fetcher import FetchResult, fetch_job
 from app.ui.workers import Worker
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 
 class _FetchWorker(QThread):
@@ -39,11 +43,13 @@ class _FetchWorker(QThread):
 
 
 class JobDescriptionPage(QWidget):
-    def __init__(self, window):
+
+    window: "MainWindow"  # type: ignore[assignment]
+    def __init__(self, window: "MainWindow"):
         super().__init__()
         self.window = window
-        self._fetch_worker = None
-        self._extract_worker = None
+        self._fetch_worker: "_FetchWorker | None" = None
+        self._extract_worker: "Worker | None" = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)

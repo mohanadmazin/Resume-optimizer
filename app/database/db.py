@@ -12,6 +12,9 @@ from app.database.models import Optimization
 
 logger = logging.getLogger(__name__)
 
+# Backwards-compatible alias used by older UI/service code.
+session_scope = get_session
+
 
 # ---------------------------------------------------------------------------
 # Legacy CRUD helpers — delegate to repositories for backward compatibility
@@ -48,7 +51,7 @@ def save_optimization(resume_id: int, job_id: int, model: str, optimized_json: s
         row = Optimization(resume_id=resume_id, job_id=job_id, model=model, optimized_json=optimized_json)
         session.add(row)
         session.flush()
-        return row.id
+        return row.id  # type: ignore[return-value]
 
 
 def latest_resume() -> dict | None:

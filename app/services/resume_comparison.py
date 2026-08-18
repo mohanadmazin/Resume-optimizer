@@ -81,14 +81,14 @@ def compare_resumes(old: ResumeData, new: ResumeData) -> ResumeComparison:
         elif tag == "replace":
             max_len = max(i2 - i1, j2 - j1)
             for k in range(max_len):
-                oe = old.experience[i1 + k] if k < (i2 - i1) else None
-                ne = new.experience[j1 + k] if k < (j2 - j1) else None
-                if oe and ne:
-                    experience_diffs.append(_diff_experience(i1 + k, oe, ne))
-                elif ne:
-                    experience_diffs.append(_all_new_experience(i1 + k, ne))
-                elif oe:
-                    experience_diffs.append(_all_deleted_experience(i1 + k, oe))
+                oe_new = old.experience[i1 + k] if k < (i2 - i1) else None
+                ne_new = new.experience[j1 + k] if k < (j2 - j1) else None
+                if oe_new and ne_new:
+                    experience_diffs.append(_diff_experience(i1 + k, oe_new, ne_new))
+                elif ne_new:
+                    experience_diffs.append(_all_new_experience(i1 + k, ne_new))
+                elif oe_new:
+                    experience_diffs.append(_all_deleted_experience(i1 + k, oe_new))
         elif tag == "insert":
             for k in range(j2 - j1):
                 experience_diffs.append(_all_new_experience(i1 + k, new.experience[j1 + k]))

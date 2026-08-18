@@ -1,4 +1,6 @@
 """Dashboard: one-click pipeline, latest scores and recent analyses."""
+from typing import TYPE_CHECKING, Any
+
 from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -23,6 +25,9 @@ from PySide6.QtWidgets import (
 
 from app.database import db
 
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
+
 
 def _card(title: str) -> tuple[QFrame, QLabel]:
     frame = QFrame()
@@ -39,10 +44,14 @@ def _card(title: str) -> tuple[QFrame, QLabel]:
 
 
 class DashboardPage(QWidget):
-    def __init__(self, window):
+    window: "MainWindow"  # type: ignore[assignment]
+
+    def __init__(self, window: "MainWindow"):
         super().__init__()
         self.window = window
-        self._pipeline_worker = None
+        self._pipeline_worker: Any = None
+        self._extract_worker: Any = None
+        self._parse_worker: Any = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)

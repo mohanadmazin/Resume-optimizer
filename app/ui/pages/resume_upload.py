@@ -21,6 +21,10 @@ from app.services.document_reader import extract_text
 from app.services.resume_parser import parse_resume, parse_resume_ai
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 _MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 
@@ -70,13 +74,15 @@ def _validate_file(path: str) -> str | None:
 
 
 class ResumeUploadPage(QWidget):
-    def __init__(self, window):
+
+    window: "MainWindow"  # type: ignore[assignment]
+    def __init__(self, window: "MainWindow"):
         super().__init__()
         self.window = window
-        self._parsed = None
+        self._parsed: Any = None
         self._raw_text = ""
         self._source_filename = ""
-        self._worker = None
+        self._worker: "Worker | None" = None
         self._overlay = LoadingOverlayManager()
 
         layout = QVBoxLayout(self)

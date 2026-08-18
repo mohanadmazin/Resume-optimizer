@@ -1,4 +1,4 @@
-"""Repository for job description CRUD operations."""
+﻿"""Repository for job description CRUD operations."""
 from __future__ import annotations
 
 import logging
@@ -40,7 +40,7 @@ class JobRepository(BaseRepository):
         self.add(row)
         self.flush()
         logger.debug("Saved job id=%d title=%s", row.id, title)
-        return int(row.id)
+        return int(row.id)  # type: ignore[arg-type]
 
     def update(self, job_id: int, **values) -> bool:
         row = self.get_by_id(job_id)

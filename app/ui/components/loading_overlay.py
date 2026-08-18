@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QLabel, QProgressBar, QVBoxLayout, QWidget
 class LoadingOverlay(QWidget):
     """Full-widget overlay with indeterminate spinner and status message."""
 
-    def __init__(self, parent: QWidget = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setAutoFillBackground(False)
@@ -48,15 +48,17 @@ class LoadingOverlay(QWidget):
 
     def show_with_message(self, message: str = "Processing...") -> None:
         self._message.setText(message)
-        if self.parentWidget():
-            self.setGeometry(self.parentWidget().rect())
+        parent_widget = self.parentWidget()
+        if parent_widget is not None:
+            self.setGeometry(parent_widget.rect())
         self.show()
         self.raise_()
         self.setFocus()
 
     def resizeEvent(self, event) -> None:
-        if self.parent():
-            self.resize(self.parent().size())
+        parent = self.parentWidget()
+        if parent is not None:
+            self.resize(parent.size())
         super().resizeEvent(event)
 
 
@@ -75,9 +77,16 @@ class LoadingOverlayManager:
         overlay.show_with_message(message)
         self._overlays[pid] = overlay
 
-    def hide(self, parent: QWidget) -> None:
+    def hide(self, parent: QWidget | None = None) -> None:
+        if parent is None:
+            for overlay in self._overlays.values():
+                overlay.hide()
+                overlay.deleteLater()
+            self._overlays.clear()
+            return
         pid = id(parent)
-        overlay = self._overlays.pop(pid, None)
-        if overlay is not None:
-            overlay.hide()
-            overlay.deleteLater()
+        existing = self._overlays.get(pid)
+        if existing is not None:
+            self._overlays.pop(pid)
+            existing.hide()
+            existing.deleteLater()

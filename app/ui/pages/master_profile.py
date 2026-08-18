@@ -203,11 +203,16 @@ class MasterProfilePage(QWidget):
         self._job_combo.clear()
         self._job_combo.addItem("(No job selected)", None)
         try:
+            from app.database.session import get_session
             from app.database.repositories.job_repository import JobRepository
-            repo = JobRepository()
-            jobs = repo.get_all()
+            with get_session() as session:
+                repo = JobRepository(session)
+                jobs = repo.get_all()
             for job in jobs:
-                self._job_combo.addItem(job.title, job.id)
+                self._job_combo.addItem(
+                    job["title"] if isinstance(job, dict) else job.title,
+                    job["id"] if isinstance(job, dict) else job.id,
+                )
         except Exception:
             logger.debug("Could not load job descriptions", exc_info=True)
 
@@ -216,29 +221,33 @@ class MasterProfilePage(QWidget):
         from app.domain.resume import ResumeData
 
         try:
+            from app.database.session import get_session
             from app.database.repositories.resume_repository import ResumeRepository
-            resume_repo = ResumeRepository()
-            resumes_raw = resume_repo.get_all()
+            with get_session() as session:
+                resume_repo = ResumeRepository(session)
+                resumes_raw = resume_repo.get_all()
 
-            if not resumes_raw:
-                QMessageBox.information(
-                    self, "No Resumes",
-                    "Import resumes first before building your career profile.",
-                )
-                return
+                if not resumes_raw:
+                    QMessageBox.information(
+                        self, "No Resumes",
+                        "Import resumes first before building your career profile.",
+                    )
+                    return
 
-            total_imported = 0
-            for resume_info in resumes_raw:
-                rid = resume_info.get("id") if isinstance(resume_info, dict) else resume_info.id
-                orm_resume = resume_repo.get_by_id(rid)
-                if orm_resume is None:
-                    continue
-                try:
-                    resume_data = ResumeData.model_validate_json(orm_resume.data_json)
-                except Exception:
-                    continue
-                ids = self._vault.import_from_resume_data(resume_data)
-                total_imported += len(ids)
+                total_imported = 0
+                for resume_info in resumes_raw:
+                    rid = resume_info.get("id") if isinstance(resume_info, dict) else resume_info.id
+                    if rid is None:
+                        continue
+                    orm_resume = resume_repo.get_by_id(int(rid))
+                    if orm_resume is None or orm_resume.data_json is None:
+                        continue
+                    try:
+                        resume_data = ResumeData.model_validate_json(orm_resume.data_json)
+                    except Exception:
+                        continue
+                    ids = self._vault.import_from_resume_data(resume_data)
+                    total_imported += len(ids)
 
             QMessageBox.information(
                 self, "Import Complete",
@@ -291,9 +300,11 @@ class MasterProfilePage(QWidget):
         job_id = self._job_combo.currentData()
         if job_id is not None:
             try:
+                from app.database.session import get_session
                 from app.database.repositories.job_repository import JobRepository
-                job_repo = JobRepository()
-                job = job_repo.get_by_id(job_id)
+                with get_session() as session:
+                    job_repo = JobRepository(session)
+                    job = job_repo.get_by_id(job_id)
                 if job:
                     job_req = JobRequirements(
                         required_skills=[

@@ -8,7 +8,7 @@ import requests
 try:
     from circuitbreaker import CircuitBreakerError, circuit
 except ImportError:  # Keep non-AI parsing and the web UI usable in minimal installs.
-    class CircuitBreakerError(RuntimeError):
+    class CircuitBreakerError(RuntimeError):  # type: ignore[no-redef]
         """Fallback error used when the optional circuit-breaker package is absent."""
 
     def circuit(*_args, **_kwargs):

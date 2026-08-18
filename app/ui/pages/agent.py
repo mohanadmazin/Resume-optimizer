@@ -1,6 +1,8 @@
 """Agent page — chat-style interface for AI resume agent with conversation history."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import json
 import logging
 
@@ -25,6 +27,9 @@ from app.services.agent import AgentService
 from app.ui.components.agent_proposal_card import AgentProposalCard
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +71,7 @@ class _ChatBubble(QFrame):
 
 
 class AgentPage(QWidget):
+    window: "MainWindow"  # type: ignore[assignment]
     """Chat-style agent page with tool selector, message history, and proposal cards."""
 
     proposal_applied = Signal(object)  # emits AgentAction when accepted
@@ -157,12 +163,18 @@ class AgentPage(QWidget):
                 if not convs:
                     return
                 conv = convs[0]
+                if conv.id is None:
+                    return
                 self._conversation_id = conv.id
                 messages = repo.get_messages(conv.id)
                 for msg in messages:
                     if msg.role == "user":
+                        if msg.content is None:
+                            continue
                         self._add_user_message(msg.content)
                     elif msg.role == "assistant":
+                        if msg.content is None:
+                            continue
                         try:
                             data = json.loads(msg.content)
                             if "actions" in data:
@@ -305,8 +317,11 @@ class AgentPage(QWidget):
     def _clear_chat(self) -> None:
         while self._chat_layout.count():
             child = self._chat_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+            if child is None:
+                continue
+            child_widget = child.widget()
+            if child_widget is not None:
+                child_widget.deleteLater()
         self._chat_layout.addStretch()
 
     def _ensure_conversation(self) -> int:

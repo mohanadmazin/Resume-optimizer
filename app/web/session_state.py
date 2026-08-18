@@ -204,23 +204,23 @@ class WorkflowSessionStore:
                 with get_session() as db_session:
                     if resume_id and session.get("resume") is None:
                         row = ResumeRepository(db_session).get_by_id(int(resume_id))
-                        if row is not None:
+                        if row is not None and row.data_json is not None:
                             session["resume"] = ResumeData.model_validate_json(row.data_json)
                             session["resume_name"] = row.name or "Untitled"
                             session["resume_text"] = row.raw_text or ""
                     if job_id and not session.get("job_text"):
-                        row = JobRepository(db_session).get_by_id(int(job_id))
-                        if row is not None:
+                        job_row = JobRepository(db_session).get_by_id(int(job_id))
+                        if job_row is not None:
                             session.update({
-                                "job_title": row.title or "",
-                                "job_text": row.content or "",
-                                "job_company": row.company or "",
-                                "job_location": row.location or "",
-                                "job_source_url": row.source_url or "",
-                                "job_employment_type": row.employment_type or "",
-                                "job_salary": row.salary or "",
-                                "job_date_posted": row.date_posted or "",
-                                "job_status": row.status or "saved",
+                                "job_title": job_row.title or "",
+                                "job_text": job_row.content or "",
+                                "job_company": job_row.company or "",
+                                "job_location": job_row.location or "",
+                                "job_source_url": job_row.source_url or "",
+                                "job_employment_type": job_row.employment_type or "",
+                                "job_salary": job_row.salary or "",
+                                "job_date_posted": job_row.date_posted or "",
+                                "job_status": job_row.status or "saved",
                             })
             except Exception:
                 logger.warning("Could not hydrate selected workflow records", exc_info=True)

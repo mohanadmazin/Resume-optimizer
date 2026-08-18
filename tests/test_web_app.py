@@ -23,12 +23,12 @@ def client(tmp_path, monkeypatch):
     )
     Base.metadata.create_all(engine)
     monkeypatch.setattr(database_session, "SessionLocal", sessionmaker(bind=engine))
-    web_main._sessions.clear()
-    web_main._session_seen.clear()
+    web_main.workflow_sessions._sessions.clear()
+    web_main.workflow_sessions._session_seen.clear()
     with TestClient(web_main.app) as test_client:
         yield test_client
-    web_main._sessions.clear()
-    web_main._session_seen.clear()
+    web_main.workflow_sessions._sessions.clear()
+    web_main.workflow_sessions._session_seen.clear()
     engine.dispose()
 
 
@@ -394,8 +394,8 @@ def test_web_session_restores_selected_resume_after_memory_reset(client):
     resume_id = saved.json()["id"]
 
     # Simulate a server process losing only its in-memory workflow cache.
-    web_main._sessions.clear()
-    web_main._session_seen.clear()
+    web_main.workflow_sessions._sessions.clear()
+    web_main.workflow_sessions._session_seen.clear()
 
     restored = client.get("/api/builder/state")
     assert restored.status_code == 200

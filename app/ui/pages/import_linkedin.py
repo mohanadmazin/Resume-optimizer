@@ -1,6 +1,8 @@
 """LinkedIn Import page — import resume data from LinkedIn data export."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import logging
 from pathlib import Path
 
@@ -22,10 +24,14 @@ from app.domain.resume import ResumeData
 from app.services.linkedin_import import import_linkedin
 from app.ui.workers import Worker
 
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
+
 logger = logging.getLogger(__name__)
 
 
 class LinkedInImportPage(QWidget):
+    window: "MainWindow"  # type: ignore[assignment]
     """Import resume data from a LinkedIn data export file (JSON or CSV)."""
 
     def __init__(self, window) -> None:

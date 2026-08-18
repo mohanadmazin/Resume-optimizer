@@ -25,7 +25,7 @@ class AgentRepository(BaseRepository):
         self.add(row)
         self.flush()
         logger.info("Created agent conversation %d", row.id)
-        return row.id
+        return row.id  # type: ignore[return-value]
 
     def get_conversation(self, conversation_id: int) -> AgentConversation | None:
         return (
@@ -60,7 +60,7 @@ class AgentRepository(BaseRepository):
         )
         self.add(row)
         self.flush()
-        return row.id
+        return row.id  # type: ignore[return-value]
 
     def get_messages(self, conversation_id: int) -> list[AgentMessage]:
         return (

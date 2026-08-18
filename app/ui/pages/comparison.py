@@ -1,6 +1,8 @@
 """Resume comparison page — side-by-side diff view."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import logging
 
 from PySide6.QtCore import Qt
@@ -21,6 +23,9 @@ from app.database.repositories.resume_repository import ResumeRepository
 from app.domain.resume import ResumeData
 from app.services.resume_comparison import compare_resumes
 
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +37,7 @@ _REMOVED_STYLE = "color: #9ca3af; text-decoration: line-through;"
 
 
 class ComparisonPage(QWidget):
+    window: "MainWindow"  # type: ignore[assignment]
     """Side-by-side resume comparison view."""
 
     def __init__(self, window) -> None:

@@ -44,3 +44,5 @@ logs/
 *.doc
 *.txt
 !tests/fixtures/*.txt
+
+*.egg-info/

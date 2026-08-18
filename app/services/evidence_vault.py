@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.database.repositories.evidence_source_repository import (
         EvidenceSourceRepository,
     )
+    from app.domain.master_profile import MasterCareerProfile
 
 FACT_TYPE_KEYWORDS: dict[FactType, list[str]] = {
     FactType.ACHIEVEMENT: ["achieved", "accomplished", "delivered", "exceeded", "surpassed", "improved", "increased", "reduced", "saved"],

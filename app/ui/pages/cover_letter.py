@@ -19,13 +19,19 @@ from app.domain.resume import ResumeData
 from app.services.cover_letter import CoverLetterResult, generate_cover_letter
 from app.ui.components.loading_overlay import LoadingOverlayManager
 from app.ui.workers import Worker
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.ui.main_window import MainWindow
 
 
 class CoverLetterPage(QWidget):
-    def __init__(self, window):
+
+    window: "MainWindow"  # type: ignore[assignment]
+    def __init__(self, window: "MainWindow"):
         super().__init__()
         self.window = window
-        self._worker = None
+        self._worker: "Worker | None" = None
         self._overlay = LoadingOverlayManager()
 
         layout = QVBoxLayout(self)
