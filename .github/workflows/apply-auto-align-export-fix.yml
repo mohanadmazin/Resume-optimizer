@@ -1,0 +1,30 @@
+name: Apply Auto Align export parity fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor == 'mohanadmazin'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply patch
+        run: python scripts/patch_auto_align_export.py
+      - name: Commit patched backend
+        run: |
+          if git diff --quiet -- web_main.py; then
+            echo "No backend patch needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web_main.py
+          git commit -m "Fix Auto Align PDF and DOCX export parity"
+          git push
