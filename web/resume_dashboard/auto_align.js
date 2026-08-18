@@ -4,6 +4,8 @@
   const BASE = { horizontalMarginMm: 22 };
   let activeConfig = null;
   let applying = false;
+  let observerStarted = false;
+  let lastAppliedSignature = "";
 
   const paper = () => document.querySelector('#resumePreview');
   const button = () => document.querySelector('#autoAlignButton');
@@ -14,6 +16,8 @@
     if (density === 'spacious') return { line: 1.40, section: 1.12, paragraph: 1.12 };
     return { line: 1.30, section: 1.00, paragraph: 1.00 };
   };
+
+  const signature = cfg => cfg ? `${cfg.fontPt}|${cfg.marginMm}|${cfg.density}` : '';
 
   function ensureControls() {
     const btn = button();
@@ -38,41 +42,54 @@
     };
   }
 
-  function apply(el, cfg) {
-    if (!el) return;
+  function setImportant(node, name, value) {
+    if (node?.style) node.style.setProperty(name, value, 'important');
+  }
+
+  function apply(el, cfg, force = false) {
+    if (!el || !cfg) return;
+    const sig = signature(cfg);
+    if (!force && sig === lastAppliedSignature && el.classList.contains('auto-aligned')) return;
     const d = densityValues(cfg.density);
-    const set = (node, name, value) => node?.style?.setProperty(name, value, 'important');
 
-    set(el, '--auto-font-pt', `${cfg.fontPt}pt`);
-    set(el, '--auto-margin-mm', `${cfg.marginMm}mm`);
-    set(el, '--auto-h-margin-mm', `${BASE.horizontalMarginMm}mm`);
-    set(el, '--auto-line-height', String(d.line));
-    set(el, '--auto-section-scale', String(d.section));
-    set(el, '--auto-paragraph-scale', String(d.paragraph));
-    el.classList.add('auto-aligned');
-
-    set(el, 'padding-top', `${cfg.marginMm}mm`);
-    set(el, 'padding-bottom', `${cfg.marginMm}mm`);
-    set(el, 'padding-left', `${BASE.horizontalMarginMm}mm`);
-    set(el, 'padding-right', `${BASE.horizontalMarginMm}mm`);
-    set(el, 'font-size', `${cfg.fontPt}pt`);
-    set(el, 'line-height', String(d.line));
+    el.classList.add('auto-aligning');
+    setImportant(el, '--auto-font-pt', `${cfg.fontPt}pt`);
+    setImportant(el, '--auto-margin-mm', `${cfg.marginMm}mm`);
+    setImportant(el, '--auto-h-margin-mm', `${BASE.horizontalMarginMm}mm`);
+    setImportant(el, '--auto-line-height', String(d.line));
+    setImportant(el, '--auto-section-scale', String(d.section));
+    setImportant(el, '--auto-paragraph-scale', String(d.paragraph));
+    setImportant(el, 'padding-top', `${cfg.marginMm}mm`);
+    setImportant(el, 'padding-bottom', `${cfg.marginMm}mm`);
+    setImportant(el, 'padding-left', `${BASE.horizontalMarginMm}mm`);
+    setImportant(el, 'padding-right', `${BASE.horizontalMarginMm}mm`);
+    setImportant(el, 'font-size', `${cfg.fontPt}pt`);
+    setImportant(el, 'line-height', String(d.line));
 
     el.querySelectorAll('.resume-summary, .resume-item-sub').forEach(n => {
-      set(n, 'font-size', '10pt'); set(n, 'line-height', String(d.line));
+      setImportant(n, 'font-size', '10pt');
+      setImportant(n, 'line-height', String(d.line));
     });
-    el.querySelectorAll('.resume-item-heading strong').forEach(n => set(n, 'font-size', '10.5pt'));
+    el.querySelectorAll('.resume-item-heading strong').forEach(n => setImportant(n, 'font-size', '10.5pt'));
     el.querySelectorAll('ul').forEach(n => {
-      set(n, 'font-size', '9.5pt'); set(n, 'line-height', String(d.line));
-      set(n, 'margin-top', `${5 * d.paragraph}px`);
+      setImportant(n, 'font-size', '9.5pt');
+      setImportant(n, 'line-height', String(d.line));
+      setImportant(n, 'margin-top', `${5 * d.paragraph}px`);
+      setImportant(n, 'margin-bottom', `${3 * d.paragraph}px`);
     });
     el.querySelectorAll('.resume-skill-list, .resume-skill-grid').forEach(n => {
-      set(n, 'font-size', '9pt'); set(n, 'line-height', String(d.line));
+      setImportant(n, 'font-size', '9pt');
+      setImportant(n, 'line-height', String(d.line));
     });
-    el.querySelectorAll('.resume-section').forEach(n => set(n, 'margin-top', `${19 * d.section}px`));
+    el.querySelectorAll('.resume-section').forEach(n => setImportant(n, 'margin-top', `${19 * d.section}px`));
     el.querySelectorAll('.resume-section h2').forEach(n => {
-      set(n, 'font-size', '11pt'); set(n, 'margin-bottom', `${8 * d.section}px`);
+      setImportant(n, 'font-size', '11pt');
+      setImportant(n, 'margin-bottom', `${8 * d.section}px`);
     });
+
+    el.classList.remove('auto-aligning');
+    el.classList.add('auto-aligned');
+    lastAppliedSignature = sig;
     void el.offsetHeight;
   }
 
@@ -85,7 +102,12 @@
     const content = Math.max(1, el.scrollHeight - pt - pb);
     const pages = Math.max(1, Math.ceil(content / usable));
     const last = content - usable * (pages - 1);
-    return { pages, lastFill: Math.min(1, Math.max(0, last / usable)), contentHeight: content, usableHeight: usable };
+    return {
+      pages,
+      lastFill: Math.min(1, Math.max(0, last / usable)),
+      contentHeight: content,
+      usableHeight: usable
+    };
   }
 
   function score(m, cfg, target) {
@@ -124,31 +146,38 @@
       }
     }
 
+    const original = activeConfig;
     let best = null;
-    for (const cfg of candidates) {
-      apply(el, cfg);
-      const m = measure(el);
-      const candidate = { cfg, m, score: score(m, cfg, s.targetPages) };
-      if (!best || candidate.score < best.score) best = candidate;
-    }
+    try {
+      for (const cfg of candidates) {
+        apply(el, cfg, true);
+        const m = measure(el);
+        const candidate = { cfg, m, score: score(m, cfg, s.targetPages) };
+        if (!best || candidate.score < best.score) best = candidate;
+      }
 
-    if (best) {
-      activeConfig = best.cfg;
-      apply(el, activeConfig);
-      const finalMetrics = measure(el);
-      if (stat) stat.textContent = `Live: ${message(finalMetrics, activeConfig)}`;
-      if (typeof window.showToast === 'function') window.showToast(`Resume aligned live — ${message(finalMetrics, activeConfig)}.`);
+      if (best) {
+        activeConfig = { ...best.cfg };
+        lastAppliedSignature = '';
+        apply(el, activeConfig, true);
+        const finalMetrics = measure(el);
+        if (stat) stat.textContent = `Live: ${message(finalMetrics, activeConfig)}`;
+        if (typeof window.showToast === 'function') window.showToast(`Resume aligned live — ${message(finalMetrics, activeConfig)}.`);
+      } else if (original) {
+        apply(el, original, true);
+      }
+    } finally {
+      applying = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'Auto Align Resume'; }
     }
-
-    applying = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Auto Align Resume'; }
   }
 
   function resetAutoAlign() {
     activeConfig = null;
+    lastAppliedSignature = '';
     const el = paper();
     if (!el) return;
-    el.classList.remove('auto-aligned');
+    el.classList.remove('auto-aligned', 'auto-aligning');
     ['--auto-font-pt','--auto-margin-mm','--auto-h-margin-mm','--auto-line-height','--auto-section-scale','--auto-paragraph-scale']
       .forEach(n => el.style.removeProperty(n));
     ['padding-top','padding-bottom','padding-left','padding-right','font-size','line-height'].forEach(n => el.style.removeProperty(n));
@@ -158,29 +187,125 @@
     if (status()) status().textContent = 'Auto Align reset — using template defaults.';
   }
 
-  function watchPreview() {
-    const observer = new MutationObserver(() => {
-      if (!activeConfig || applying) return;
-      const el = paper();
-      if (!el) return;
-      requestAnimationFrame(() => apply(el, activeConfig));
+  function collectCss() {
+    const chunks = [];
+    document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+      try {
+        const sheet = Array.from(document.styleSheets).find(s => s.href === link.href);
+        if (sheet?.cssRules) chunks.push(Array.from(sheet.cssRules).map(r => r.cssText).join('\n'));
+      } catch (_) { /* same-origin styles only */ }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    const inlineCss = document.querySelector('#resumePreviewStyle')?.textContent || '';
+    return `${chunks.join('\n')}\n${inlineCss}`;
+  }
+
+  function exportHtml() {
+    const el = paper();
+    if (!el) throw new Error('Resume preview is unavailable.');
+    if (!activeConfig) return el.innerHTML;
+    const d = densityValues(activeConfig.density);
+    const wrapperStyle = [
+      'box-sizing:border-box',
+      'width:210mm',
+      `min-height:297mm`,
+      `padding:${activeConfig.marginMm}mm ${BASE.horizontalMarginMm}mm`,
+      `font-size:${activeConfig.fontPt}pt`,
+      `line-height:${d.line}`,
+      'background:#fff',
+      'color:#182133',
+      'font-family:Arial,sans-serif'
+    ].join(';');
+    return `<div class="resume-paper auto-aligned" style="${wrapperStyle}">${el.innerHTML}</div>`;
+  }
+
+  async function downloadResponse(response, extension, fallbackMessage) {
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(detail || fallbackMessage);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${safeFileName(window.resumeAutoAlignFileName || 'resume')}.${extension}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  function safeFileName(value) {
+    return String(value || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'resume';
+  }
+
+  async function exportAlignedResume(format) {
+    const el = paper();
+    if (!el || !el.classList.contains('auto-aligned')) return false;
+    const fileName = safeFileName(document.querySelector('#fullName')?.value || 'resume');
+    window.resumeAutoAlignFileName = fileName;
+    const body = {
+      html: exportHtml(),
+      css: collectCss(),
+      filename: `${fileName}.${format}`,
+      autoAlign: activeConfig ? { ...activeConfig, horizontalMarginMm: BASE.horizontalMarginMm } : null
+    };
+    const response = await fetch(`/api/builder/export/${format}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    await downloadResponse(response, format, `${format.toUpperCase()} export failed.`);
+    if (typeof window.showToast === 'function') window.showToast(`${format.toUpperCase()} exported with the live Auto Align layout.`);
+    return true;
   }
 
   function installExportParity() {
-    if (typeof window.exportAlignedResume !== 'function') return;
+    if (document.documentElement.dataset.autoAlignExportInstalled === '1') return;
+    document.documentElement.dataset.autoAlignExportInstalled = '1';
     document.addEventListener('click', async event => {
       const target = event.target?.closest?.('#exportPdfButton, #exportDocxButton');
       const el = paper();
       if (!target || !el?.classList.contains('auto-aligned')) return;
-      event.preventDefault(); event.stopImmediatePropagation();
-      await window.exportAlignedResume(target.id === 'exportPdfButton' ? 'pdf' : 'docx');
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      target.disabled = true;
+      const originalText = target.textContent;
+      target.textContent = target.id === 'exportPdfButton' ? 'Exporting PDF…' : 'Exporting DOCX…';
+      try {
+        await exportAlignedResume(target.id === 'exportPdfButton' ? 'pdf' : 'docx');
+      } catch (error) {
+        console.error('Aligned export failed:', error);
+        if (typeof window.showToast === 'function') window.showToast(error.message || 'Aligned export failed.');
+      } finally {
+        target.disabled = false;
+        target.textContent = originalText;
+      }
     }, true);
   }
 
   window.autoAlignResume = autoAlign;
   window.resetAutoAlignResume = resetAutoAlign;
+  window.isResumeAutoAligned = () => Boolean(activeConfig && paper()?.classList.contains('auto-aligned'));
+  window.exportAlignedResume = exportAlignedResume;
+  window.getAutoAlignConfig = () => activeConfig ? { ...activeConfig, horizontalMarginMm: BASE.horizontalMarginMm } : null;
+
+  function watchPreview() {
+    if (observerStarted) return;
+    observerStarted = true;
+    const observer = new MutationObserver(mutations => {
+      if (!activeConfig || applying) return;
+      const relevant = mutations.some(m => m.type === 'childList');
+      if (!relevant) return;
+      const el = paper();
+      if (!el) return;
+      requestAnimationFrame(() => {
+        if (!applying && activeConfig && paper() === el) apply(el, activeConfig, true);
+      });
+    });
+    // Observe DOM replacements only. Do NOT observe attributes: Auto Align itself changes
+    // styles, and observing attributes creates an endless mutation/reapply loop.
+    observer.observe(document.body, { childList: true, subtree: true, attributes: false });
+  }
 
   function init() {
     ensureControls();
