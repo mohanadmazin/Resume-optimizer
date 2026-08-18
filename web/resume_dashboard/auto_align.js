@@ -38,9 +38,6 @@
     };
   }
 
-  // Apply both CSS variables and direct inline styles. The builder can rerender
-  // the preview DOM after state changes; inline values make the live result
-  // deterministic even when template CSS has more-specific rules.
   function apply(el, cfg) {
     if (!el) return;
     const d = densityValues(cfg.density);
@@ -76,9 +73,6 @@
     el.querySelectorAll('.resume-section h2').forEach(n => {
       set(n, 'font-size', '11pt'); set(n, 'margin-bottom', `${8 * d.section}px`);
     });
-
-    // Force layout immediately so the user sees the adjustment before any
-    // export action or subsequent render.
     void el.offsetHeight;
   }
 
@@ -91,12 +85,7 @@
     const content = Math.max(1, el.scrollHeight - pt - pb);
     const pages = Math.max(1, Math.ceil(content / usable));
     const last = content - usable * (pages - 1);
-    return {
-      pages,
-      lastFill: Math.min(1, Math.max(0, last / usable)),
-      contentHeight: content,
-      usableHeight: usable
-    };
+    return { pages, lastFill: Math.min(1, Math.max(0, last / usable)), contentHeight: content, usableHeight: usable };
   }
 
   function score(m, cfg, target) {
@@ -128,15 +117,10 @@
     if (btn) { btn.disabled = true; btn.textContent = 'Aligning…'; }
     if (stat) stat.textContent = 'Testing page count, margins, typography and spacing live…';
 
-    // Never go below the professional 18mm vertical / 22mm horizontal edge.
-    // Try readable font sizes and spacing combinations instead of shrinking
-    // the page into the paper edge.
     const candidates = [];
     for (const fontPt of [9.6, 9.8, 10.0, 10.2, 10.4]) {
       for (const marginMm of [18, 19, 20]) {
-        for (const density of ['spacious', 'normal', 'compact']) {
-          candidates.push({ fontPt, marginMm, density });
-        }
+        for (const density of ['spacious', 'normal', 'compact']) candidates.push({ fontPt, marginMm, density });
       }
     }
 
@@ -174,9 +158,6 @@
     if (status()) status().textContent = 'Auto Align reset — using template defaults.';
   }
 
-  // The preview is frequently rebuilt by the builder. Reapply the active
-  // configuration whenever #resumePreview is replaced so Auto Align remains
-  // visible live instead of disappearing after a state/render update.
   function watchPreview() {
     const observer = new MutationObserver(() => {
       if (!activeConfig || applying) return;
@@ -188,15 +169,17 @@
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
+  // Do not replace the application's normal PDF/DOCX handlers. If a separate
+  // parity exporter is installed, it can opt in through this hook; otherwise
+  // the existing builder export code remains untouched.
   function installExportParity() {
+    if (typeof window.exportAlignedResume !== 'function') return;
     document.addEventListener('click', async event => {
       const target = event.target?.closest?.('#exportPdfButton, #exportDocxButton');
       const el = paper();
       if (!target || !el?.classList.contains('auto-aligned')) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      if (typeof window.exportAlignedResume === 'function') {
-        await window.exportAlignedResume(target.id === 'exportPdfButton' ? 'pdf' : 'docx');
-      }
+      await window.exportAlignedResume(target.id === 'exportPdfButton' ? 'pdf' : 'docx');
     }, true);
   }
 
