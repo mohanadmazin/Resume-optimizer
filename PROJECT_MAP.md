@@ -118,6 +118,10 @@ Legend:
 | Profile compiler (resume from profile)| ✅     |
 | Skill explorer                       | ✅      |
 | Resume scorer                        | ✅      |
+| FastAPI web interface (`web_main.py`) | ✅      |
+| Web dashboard with resume, jobs, ATS, optimize, cover letter, applications | ✅ |
+| Web resignation letter generator     | ✅      |
+| Web DOCX export (same template as optimize endpoint) | ✅ |
 | Optional encrypted sensitive fields  | 🔭      |
 | Optional job-board integrations      | 🔭      |
 
@@ -140,6 +144,10 @@ Legend:
 | lxml           | Compatible 5.x release | Fast HTML parser backend              |
 | Alembic        | Compatible 1.x release | Database schema migrations            |
 | circuitbreaker | Compatible 2.x release | Ollama circuit breaker                |
+| FastAPI        | Compatible 0.115.x     | Web API for the browser interface     |
+| uvicorn        | Compatible 0.34.x      | ASGI server for the web app           |
+| Jinja2         | Compatible 3.1.x       | HTML templating for the web app       |
+| python-multipart| Compatible 0.0.18     | Multipart form parsing (web uploads)  |
 
 ### Dev Tooling
 
@@ -147,10 +155,12 @@ Legend:
 | ---------- | ---------------------------------- | ------ |
 | pytest     | Automated testing                  | ✅      |
 | pytest-cov | Coverage reporting                 | ✅      |
-| ruff       | Linting and formatting             | ✅      |
+| pytest-qt  | Qt GUI testing                     | ✅      |
+| ruff       | Linting and formatting (pinned 0.15.*) | ✅  |
 | mypy       | Static type checking               | ✅      |
 | bandit     | Security scanning                  | ✅      |
 | pip-audit  | Dependency vulnerability scanning  | ✅      |
+| playwright | Browser fetching (SSRF-safe) + web e2e | ✅  |
 
 ### Packaging
 
@@ -178,6 +188,13 @@ Legend:
 │ Dashboard │ Studio │ Resumes │ Jobs │ Analysis │ Optimize  │
 │ Agent │ Letters │ Skill Gap │ Salary │ Apps │ Library     │
 │ Interview │ LinkedIn │ Compare │ Vault │ Matrix │ Settings │
+└──────────────┬─────────────────────────────────────────────┘
+               │
+               ▼
+┌────────────────────────────────────────────────────────────┐
+│                 FastAPI Web UI (web_main.py)               │
+│   Dashboard │ Resumes │ Jobs │ ATS │ Optimize │ Letters    │
+│   Applications │ Resignation Letter │ Settings │ Upload    │
 └──────────────┬─────────────────────────────────────────────┘
                │ Commands / Queries
                ▼
@@ -470,13 +487,15 @@ Rules:
 | `app/core/`       | Paths, typed settings (Pydantic with `onboarding_completed`), app constants |
 | `app/domain/`     | Pydantic schemas: resume, analysis, salary, skill gap, pipeline, scoring, fact guard, templates, keyword targeting, bullet writer, agent, job requirements, skill lexicon, certification, evidence, master profile, requirement matrix, discovery, content check |
 | `app/ai/`         | Ollama HTTP client (streaming, circuit breaker, JSON-schema), prompt templates (~600 lines), post-processor |
-| `app/database/`   | ORM models (20+ tables), engine (WAL + FK enforcement), session, repositories (11), legacy CRUD facade, migration helper |
+| `app/database/`   | ORM models (20+ tables), engine (WAL + FK enforcement), session, repositories (12), legacy CRUD facade, migration helper |
 | `app/application/`| Use cases: import, analyze, optimize, pipeline, compile_from_profile |
 | `app/data/`       | Salary benchmark data service                                 |
 | `app/services/`   | ATS engine, scoring engine (versioned rules), optimizer, cover letter, parser, fact guard, security, HTML extraction, metadata, job fetcher, browser fetcher, document reader, salary estimator (with benchmarks), skill gap, diff highlight, auto-fit, bullet writer, keyword targeting, job context, agent, interview prep, linkedin import, backup, global search, resume comparison, score history, summary/headline generators, evidence vault, content checker, career embeddings, career search, profile compiler, requirement matrix, skill explorer, resume scorer, discovery |
 | `app/exports/`    | Deterministic DOCX/PDF/Markdown export (PyMuPDF + python-docx) |
 | `app/config/`     | Legacy compatibility shim (delegates to `app/core/`)           |
+| `app/web/`        | FastAPI web helpers: session state for the browser interface   |
 | `app/ui/`         | Main window (20-page nav), state, workers, theme, undo stack, components (resumeai design system + legacy), pages (20), view models, dialogs (onboarding) |
+| `web_main.py`     | FastAPI application: routes, session management, DOCX export using the same template as the optimize endpoint |
 
 ### ResumeAI Design System (`app/ui/components/resumeai/`)
 
@@ -502,13 +521,21 @@ resume-optimizer-main/
 ├── pyproject.toml
 ├── README.md
 ├── PROJECT_MAP.md
+├── web_main.py                          # FastAPI web application (dashboard, resume, jobs, ATS, optimize, letters, applications, resignation letter)
 ├── .gitignore
 ├── alembic.ini
 ├── opencode.example.json
 │
+├── web/                                 # Web UI static assets and templates
+│   ├── templates/                       # Jinja2 templates (base, dashboard, jobs, ats, optimize, cover_letter, applications, resignation_letter, settings, upload)
+│   ├── static/
+│   │   ├── css/style.css
+│   │   └── js/app.js
+│   └── resume_dashboard/                # Standalone dashboard prototype (index.html, script.js, styles.css)
+│
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                          # CI: lint, typecheck, test matrix, security
+│       └── ci.yml                       # CI: lint, typecheck, test matrix (Win/Mac/Linux), security
 │
 ├── .opencode/
 │   └── agent/
@@ -603,7 +630,12 @@ resume-optimizer-main/
 │   │       ├── cover_letter_repository.py  # CoverLetter CRUD + full-text search
 │   │       ├── evidence_repository.py      # EvidenceItem CRUD + source linking
 │   │       ├── evidence_source_repository.py # EvidenceSource CRUD
-│   │       └── master_profile_repository.py # MasterProfile CRUD
+│   │       ├── master_profile_repository.py # MasterProfile CRUD
+│   │       └── web_repository.py            # Web-session helpers for the FastAPI interface
+│   │
+│   ├── web/
+│   │   ├── __init__.py                      # FastAPI web interface helpers
+│   │   └── session_state.py                 # Per-session state for the web app
 │   │
 │   ├── application/
 │   │   ├── __init__.py
@@ -726,7 +758,7 @@ resume-optimizer-main/
 │           ├── resumeai_contact.py         # ResumeAI contact page
 │           └── resumeai_placeholder.py     # Placeholder pages for ResumeAI sections
 │
-├── tests/                                  # 877 tests across 43 test files
+├── tests/                                  # 894 tests across 45 test files
 │   ├── __init__.py
 │   ├── test_agent.py                       # Agent domain, repository, service, UI
 │   ├── test_ats_engine.py                  # ATS scoring, keyword extraction, skill matching
@@ -761,6 +793,7 @@ resume-optimizer-main/
 │   ├── test_post_processor.py              # AI text post-processing
 │   ├── test_profile_compiler.py            # Profile compiler tests
 │   ├── test_requirement_matrix.py          # Requirement matrix tests
+│   ├── test_resignation_letter.py           # Resignation letter generator tests
 │   ├── test_salary_estimator.py            # Experience calculation, DI, benchmark integration
 │   ├── test_scoring_engine.py              # Versioned rule engine scoring
 │   ├── test_settings.py                    # Atomic write, backup, recovery, concurrency
@@ -770,6 +803,7 @@ resume-optimizer-main/
 │   ├── test_studio_review.py               # Studio review panel tests
 │   ├── test_templates.py                   # Template manifests, auto-fit
 │   ├── test_versioning.py                  # Resume versions, targeting, suggestions
+│   ├── test_web_app.py                     # FastAPI web interface routes and DOCX export
 │   └── test_workers.py                     # Worker timeout, cancellation, signals
 ```
 
@@ -959,7 +993,7 @@ MAX_AI_PARSE_CHARACTERS = 40,000
 
 ## 13. TEST_STRATEGY
 
-### Test Count: 877 tests across 43 test files
+### Test Count: 894 tests across 45 test files
 
 | Test File                         | Focus                                                      |
 | --------------------------------- | ---------------------------------------------------------- |
@@ -996,6 +1030,7 @@ MAX_AI_PARSE_CHARACTERS = 40,000
 | test_post_processor.py            | AI text post-processing                                    |
 | test_profile_compiler.py          | Profile compiler tests                                     |
 | test_requirement_matrix.py        | Requirement matrix tests                                   |
+| test_resignation_letter.py        | Resignation letter generator tests                         |
 | test_salary_estimator.py          | Experience calculation, DI, benchmark integration          |
 | test_scoring_engine.py            | Versioned rule engine scoring                              |
 | test_settings.py                  | Atomic write, backup, recovery, concurrency                |
@@ -1005,15 +1040,16 @@ MAX_AI_PARSE_CHARACTERS = 40,000
 | test_studio_review.py             | Studio review panel tests                                  |
 | test_templates.py                 | Template manifests, auto-fit                               |
 | test_versioning.py                | Resume versions, targeting, suggestions                    |
+| test_web_app.py                   | FastAPI web routes and DOCX export                         |
 | test_workers.py                   | Worker timeout, cancellation, signals                      |
 
 ### Quality Gates
 
 ```bash
-ruff check app/ tests/        # Lint
+ruff check app/ tests/        # Lint (ruff pinned to 0.15.*)
 mypy app/ --ignore-missing-imports  # Type check
-pytest --cov=app --cov-report=term-missing  # Tests + coverage
-bandit -r app/ -c pyproject.toml  # Security scan
+pytest --cov=app --cov-report=term-missing  # Tests + coverage (dev + browser extras)
+bandit -r app/ -c pyproject.toml -ll  # Security scan (fail on Medium+)
 pip-audit                     # Dependency audit
 ```
 
